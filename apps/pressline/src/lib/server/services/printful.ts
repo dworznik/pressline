@@ -9,6 +9,8 @@ import {
   type CatalogVariant,
   type FulfilmentProviderService,
   type PlacementPrintArea,
+  type ProviderOrder,
+  type ProviderOrderStatus,
   type ShippingRate,
   type VariantPrices,
 } from './fulfilment-provider';
@@ -101,6 +103,95 @@ const PricesWire = Schema.Struct({
 /** Printful's method names carry a dated estimate ("Flat Rate (Estimated delivery: May 19–24)"); the Quote computes its own days. */
 const cleanMethodName = (name: string) =>
   name.replace(/\s*\(estimated delivery:[^)]*\)\s*/i, '').trim();
+
+const OrderCostsWire = Schema.Struct({
+  calculation_status: Schema.optional(Schema.String),
+  currency: Schema.String,
+  subtotal: Schema.optional(DecimalString),
+  shipping: Schema.optional(DecimalString),
+  tax: Schema.optional(DecimalString),
+  vat: Schema.optional(DecimalString),
+  total: Schema.optional(DecimalString),
+});
+
+const OrderWire = Schema.Struct({
+  id: Schema.Number,
+  external_id: Schema.optional(Schema.NullOr(Schema.String)),
+  status: Schema.String,
+  recipient: Schema.Struct({
+    country_code: Schema.String,
+    state_code: Schema.optional(Schema.NullOr(Schema.String)),
+  }),
+  order_items: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        catalog_variant_id: Schema.optional(Schema.Number),
+        quantity: Schema.optional(Schema.Number),
+        placements: Schema.optional(
+          Schema.Array(
+            Schema.Struct({
+              placement: Schema.String,
+              status: Schema.optional(Schema.String),
+              status_explanation: Schema.optional(Schema.NullOr(Schema.String)),
+            }),
+          ),
+        ),
+      }),
+    ),
+  ),
+  costs: Schema.optional(Schema.NullOr(OrderCostsWire)),
+  _links: Schema.optional(Schema.Unknown),
+});
+
+const ORDER_STATUSES: ReadonlySet<string> = new Set([
+  'draft',
+  'failed',
+  'inreview',
+  'pending',
+  'canceled',
+  'onhold',
+  'inprocess',
+  'partial',
+  'fulfilled',
+]);
+
+const toProviderOrder = (o: typeof OrderWire.Type): ProviderOrder => {
+  const costs = o.costs ?? undefined;
+  return {
+    id: String(o.id),
+    ...(o.external_id ? { externalId: o.external_id } : {}),
+    // An unknown future status is treated as "in review": neither final nor actionable.
+    status: (ORDER_STATUSES.has(o.status) ? o.status : 'inreview') as ProviderOrderStatus,
+    recipient: {
+      countryCode: o.recipient.country_code,
+      ...(o.recipient.state_code ? { stateCode: o.recipient.state_code } : {}),
+    },
+    items: (o.order_items ?? []).map((i) => {
+      const failed = i.placements?.find((p) => p.status === 'failed');
+      return {
+        catalogVariantId: i.catalog_variant_id ?? 0,
+        quantity: i.quantity ?? 1,
+        ...(failed
+          ? { failedPlacement: `${failed.placement}: ${failed.status_explanation ?? 'rejected'}` }
+          : {}),
+      };
+    }),
+    ...(costs
+      ? {
+          costs: {
+            currency: costs.currency,
+            subtotal: toMinorUnits(costs.subtotal ?? '0', costs.currency),
+            shipping: toMinorUnits(costs.shipping ?? '0', costs.currency),
+            tax:
+              toMinorUnits(costs.tax ?? '0', costs.currency) +
+              toMinorUnits(costs.vat ?? '0', costs.currency),
+            total: toMinorUnits(costs.total ?? '0', costs.currency),
+            calculating: costs.calculation_status === 'calculating',
+          },
+        }
+      : {}),
+  };
+};
 
 const ErrorWire = Schema.Struct({
   code: Schema.optional(Schema.Number),
@@ -209,6 +300,62 @@ export const makePrintful = (options: PrintfulOptions) =>
 
     const service: FulfilmentProviderService = {
       health: () => get('/v2/catalog-products?limit=1', Schema.Unknown).pipe(Effect.asVoid),
+
+      findOrderByExternalId: (externalId) =>
+        get(`/v2/orders/@${encodeURIComponent(externalId)}`, Envelope(OrderWire)).pipe(
+          Effect.map(({ data }) => toProviderOrder(data)),
+          Effect.catchIf(
+            (e) => e.status === 404,
+            () => Effect.succeed(undefined),
+          ),
+        ),
+
+      createOrderDraft: (d) =>
+        post(
+          '/v2/orders',
+          {
+            external_id: d.externalId,
+            shipping: d.shippingMethod,
+            recipient: {
+              name: d.recipient.name,
+              address1: d.recipient.address1,
+              ...(d.recipient.address2 ? { address2: d.recipient.address2 } : {}),
+              city: d.recipient.city,
+              ...(d.recipient.stateCode ? { state_code: d.recipient.stateCode } : {}),
+              country_code: d.recipient.countryCode,
+              ...(d.recipient.zip ? { zip: d.recipient.zip } : {}),
+              email: d.recipient.email,
+              ...(d.recipient.phone ? { phone: d.recipient.phone } : {}),
+            },
+            order_items: [
+              {
+                source: 'catalog',
+                catalog_variant_id: d.item.catalogVariantId,
+                quantity: 1,
+                ...(d.item.retailPrice ? { retail_price: d.item.retailPrice } : {}),
+                placements: [
+                  {
+                    placement: d.item.placement,
+                    technique: d.item.technique,
+                    layers: [{ type: 'file', url: d.item.printfileUrl }],
+                  },
+                ],
+              },
+            ],
+            retail_costs: { currency: d.currency },
+          },
+          Envelope(OrderWire),
+        ).pipe(Effect.map(({ data }) => toProviderOrder(data))),
+
+      confirmOrder: (id) =>
+        post(`/v2/orders/${encodeURIComponent(id)}/confirmation`, {}, Envelope(OrderWire)).pipe(
+          Effect.map(({ data }) => toProviderOrder(data)),
+        ),
+
+      getOrder: (id) =>
+        get(`/v2/orders/${encodeURIComponent(id)}`, Envelope(OrderWire)).pipe(
+          Effect.map(({ data }) => toProviderOrder(data)),
+        ),
 
       getShippingRates: (req) =>
         post(

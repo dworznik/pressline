@@ -4,14 +4,22 @@ import { Db } from '../db/db';
 /**
  * Inbound Events (CONTEXT.md): every webhook delivery is recorded by the
  * provider's event ID so it is processed at most once (ADR-0007, ADR-0009).
- * A delivery whose processing failed keeps `processed_at` NULL, so the
- * provider's retry is processed again rather than ignored.
+ * `receive` inserts the row and *claims* it in one conditional UPDATE, so two
+ * concurrent deliveries of the same event cannot both process it. A claim
+ * that never settles (crash) expires after `CLAIM_TTL_MS`, so the provider's
+ * retry is processed again; every Transition is state-guarded, so a replay
+ * is safe.
  */
 export type InboundProvider = 'stripe' | 'printful';
 
-export type InboundOutcome = 'applied' | 'refused' | 'ignored' | 'unknown_order' | 'duplicate';
+export type InboundOutcome = 'applied' | 'refused' | 'ignored' | 'unknown_order' | 'failed';
 
-/** Insert-or-ignore; returns whether this delivery still needs processing. */
+export const CLAIM_TTL_MS = 60_000;
+
+export type Receipt =
+  | { readonly pending: true }
+  | { readonly pending: false; readonly outcome: string; readonly note?: string };
+
 export const receive = (
   provider: InboundProvider,
   eventId: string,
@@ -25,14 +33,26 @@ export const receive = (
       'INSERT OR IGNORE INTO inbound_events (provider, event_id, event_type, received_at, payload) VALUES (?, ?, ?, ?, ?)',
       [provider, eventId, eventType, now, payload],
     );
-    const rows = yield* db.all<{ processed_at: number | null; outcome: string | null }>(
-      'SELECT processed_at, outcome FROM inbound_events WHERE provider = ? AND event_id = ?',
+    const claimed = yield* db.run(
+      `UPDATE inbound_events SET claimed_at = ?
+       WHERE provider = ? AND event_id = ? AND processed_at IS NULL AND (claimed_at IS NULL OR claimed_at < ?)`,
+      [now, provider, eventId, now - CLAIM_TTL_MS],
+    );
+    if (claimed === 1) return { pending: true } satisfies Receipt;
+    const rows = yield* db.all<{
+      processed_at: number | null;
+      outcome: string | null;
+      note: string | null;
+    }>(
+      'SELECT processed_at, outcome, note FROM inbound_events WHERE provider = ? AND event_id = ?',
       [provider, eventId],
     );
     const row = rows[0];
-    return row?.processed_at
-      ? { pending: false as const, outcome: row.outcome ?? 'applied' }
-      : { pending: true as const };
+    return {
+      pending: false,
+      outcome: row?.processed_at ? (row.outcome ?? 'applied') : 'in_progress',
+      ...(row?.note ? { note: row.note } : {}),
+    } satisfies Receipt;
   }).pipe(Effect.orDie);
 
 export const settle = (
@@ -45,7 +65,17 @@ export const settle = (
     const db = yield* Db;
     const now = yield* Clock.currentTimeMillis;
     yield* db.run(
-      'UPDATE inbound_events SET processed_at = ?, outcome = ? WHERE provider = ? AND event_id = ?',
-      [now, note ? `${outcome}:${note}` : outcome, provider, eventId],
+      'UPDATE inbound_events SET processed_at = ?, outcome = ?, note = ? WHERE provider = ? AND event_id = ?',
+      [now, outcome, note ?? null, provider, eventId],
+    );
+  }).pipe(Effect.orDie);
+
+/** Release a claim without settling, so the provider's retry is processed. */
+export const release = (provider: InboundProvider, eventId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    yield* db.run(
+      'UPDATE inbound_events SET claimed_at = NULL WHERE provider = ? AND event_id = ?',
+      [provider, eventId],
     );
   }).pipe(Effect.orDie);

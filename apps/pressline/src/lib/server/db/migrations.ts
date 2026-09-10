@@ -157,8 +157,10 @@ export const migrations: ReadonlyArray<Migration> = [
          event_id TEXT NOT NULL,
          event_type TEXT NOT NULL,
          received_at INTEGER NOT NULL,
+         claimed_at INTEGER,
          processed_at INTEGER,
          outcome TEXT,
+         note TEXT,
          payload TEXT NOT NULL,
          PRIMARY KEY (provider, event_id)
        )`,

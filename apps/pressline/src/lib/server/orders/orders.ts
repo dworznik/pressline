@@ -306,6 +306,18 @@ export const attachSession = (orderId: string, sessionId: string, sessionExpires
     );
   }).pipe(Effect.orDie);
 
+/** Record the provider's order id as soon as a draft exists, so a re-run finds it even before confirmation. */
+export const attachProviderOrder = (orderId: string, providerOrderId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    yield* db.run('UPDATE orders SET provider_order_id = ?, updated_at = ? WHERE id = ?', [
+      providerOrderId,
+      now,
+      orderId,
+    ]);
+  }).pipe(Effect.orDie);
+
 /** Column updates that may accompany a Transition (all optional). */
 export interface OrderPatch {
   readonly recipient?: Recipient;
@@ -366,19 +378,32 @@ export const transition = (
       sets.push('tracking = ?');
       params.push(yield* Schema.encode(TrackingJson)(patch.tracking).pipe(Effect.orDie));
     }
-    yield* db
+    // Both statements are conditional on the state we read, so two racing
+    // deliveries cannot both move the row or append a phantom Transition:
+    // the loser's INSERT…SELECT matches zero rows and its UPDATE none.
+    const changed = yield* db
       .batch([
-        // The WHERE on the old state makes a concurrent duplicate a no-op on the row.
+        {
+          sql: `INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, at)
+                SELECT ?, ?, ?, ?, ?, ? FROM orders WHERE id = ? AND state = ?`,
+          params: [orderId, order.state, to, cause, causeRef ?? null, now, orderId, order.state],
+        },
         {
           sql: `UPDATE orders SET ${sets.join(', ')} WHERE id = ? AND state = ?`,
           params: [...params, orderId, order.state],
         },
-        {
-          sql: 'INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, at) VALUES (?, ?, ?, ?, ?, ?)',
-          params: [orderId, order.state, to, cause, causeRef ?? null, now],
-        },
       ])
-      .pipe(Effect.orDie);
+      .pipe(
+        Effect.flatMap(() => findOrder(orderId)),
+        Effect.map((after) => after.state === to),
+        Effect.orDie,
+      );
+    if (!changed) {
+      // Lost the race: whoever won already made (or refused) this move.
+      const after = yield* findOrder(orderId);
+      if (after.state !== to)
+        return yield* new TransitionRefused({ orderId, from: after.state, to });
+    }
     return yield* findOrder(orderId);
   });
 

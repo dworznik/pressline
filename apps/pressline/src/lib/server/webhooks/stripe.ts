@@ -1,14 +1,19 @@
 import { Effect, Schema } from 'effect';
+import type { Config } from '../config/schema';
 import type { Db } from '../db/db';
+import type { FulfilmentProvider } from '../services/fulfilment-provider';
 import {
   findOrder,
   findOrderBySession,
   transition,
+  type Order,
   type OrderPatch,
   type Recipient,
 } from '../orders/orders';
+import type { OrderState } from '../orders/state';
+import { submitOrder } from '../orders/submit';
 import { Psp, type CheckoutSessionDetails, type PspWebhookEvent } from '../services/psp';
-import { receive, settle, type InboundOutcome } from './inbound';
+import { receive, release, settle, type InboundOutcome } from './inbound';
 
 /**
  * Stripe webhook handling (ADR-0007, ADR-0009): verify, record the Inbound
@@ -25,6 +30,10 @@ export class WebhookProcessingFailed extends Schema.TaggedError<WebhookProcessin
   'WebhookProcessingFailed',
   { message: Schema.String },
 ) {}
+
+type Result = { readonly outcome: InboundOutcome; readonly note?: string };
+const result = (outcome: InboundOutcome, note?: string): Result =>
+  note ? { outcome, note } : { outcome };
 
 const toRecipient = (s: CheckoutSessionDetails): Recipient | undefined => {
   const ship = s.shipping;
@@ -48,67 +57,83 @@ const PAID_EVENTS = new Set([
   'checkout.session.completed',
   'checkout.session.async_payment_succeeded',
 ]);
+const HANDLED = new Set([...PAID_EVENTS, 'checkout.session.expired']);
 
-const apply = (
-  event: PspWebhookEvent,
-): Effect.Effect<{ outcome: InboundOutcome; note?: string }, WebhookProcessingFailed, Psp | Db> =>
+/** Apply a move, treating "already there" as applied (a replay after a crash) and a forbidden move as refused. */
+const recordTransition = (order: Order, to: OrderState, ref: string, patch: OrderPatch = {}) =>
+  transition(order.id, to, 'stripe_webhook', ref, patch).pipe(
+    Effect.map(() => result('applied')),
+    Effect.catchTag('TransitionRefused', (r) =>
+      Effect.succeed(
+        r.from === to ? result('applied', 'already') : result('refused', `${r.from}->${r.to}`),
+      ),
+    ),
+    Effect.catchTag('OrderNotFound', () => Effect.succeed(result('unknown_order'))),
+  );
+
+/** The Order a session belongs to: by the stored session id, else by the client reference Stripe echoes. */
+const resolveOrder = (session: CheckoutSessionDetails) =>
   Effect.gen(function* () {
-    if (
-      !event.sessionId ||
-      (!PAID_EVENTS.has(event.type) && event.type !== 'checkout.session.expired')
-    ) {
-      return { outcome: 'ignored', note: event.type };
-    }
-    const psp = yield* Psp;
-    // Re-fetch: the only facts we act on come from Stripe's API, not the delivery.
-    const session = yield* psp
-      .getCheckoutSession(event.sessionId)
-      .pipe(Effect.mapError((e) => new WebhookProcessingFailed({ message: e.message })));
-    const order =
-      (yield* findOrderBySession(session.id)) ??
-      (session.orderId
-        ? yield* findOrder(session.orderId).pipe(
-            Effect.option,
-            Effect.map((o) => (o._tag === 'Some' ? o.value : undefined)),
-          )
-        : undefined);
-    if (!order) return { outcome: 'unknown_order', note: session.id };
+    const bySession = yield* findOrderBySession(session.id);
+    if (bySession) return bySession;
+    if (!session.orderId) return undefined;
+    return yield* findOrder(session.orderId).pipe(
+      Effect.catchTag('OrderNotFound', () => Effect.succeed(undefined)),
+    );
+  });
 
-    if (event.type === 'checkout.session.expired') {
-      return yield* transition(order.id, 'expired', 'stripe_webhook', event.id).pipe(
-        Effect.map(() => ({ outcome: 'applied' as const })),
-        Effect.catchTag('TransitionRefused', (r) =>
-          Effect.succeed({ outcome: 'refused' as const, note: `${r.from}->${r.to}` }),
-        ),
-        Effect.catchTag('OrderNotFound', () =>
-          Effect.succeed({ outcome: 'unknown_order' as const }),
-        ),
-      );
-    }
+const applyExpired = (order: Order, session: CheckoutSessionDetails, event: PspWebhookEvent) =>
+  session.status === 'expired'
+    ? recordTransition(order, 'expired', event.id)
+    : Effect.succeed(result('ignored', `session status=${session.status}`));
 
-    if (session.paymentStatus !== 'paid') {
-      return { outcome: 'ignored', note: `payment_status=${session.paymentStatus}` };
-    }
+const applyPaid = (order: Order, session: CheckoutSessionDetails, event: PspWebhookEvent) =>
+  Effect.gen(function* () {
+    // `no_payment_required` is a fully discounted session: nothing to collect, still an order.
+    if (session.paymentStatus === 'unpaid') return result('ignored', 'payment_status=unpaid');
+    const recipient = toRecipient(session);
     const patch: OrderPatch = {
       ...(session.paymentIntentId ? { paymentIntentId: session.paymentIntentId } : {}),
       ...(session.amountTax !== undefined ? { amountTax: session.amountTax } : {}),
       ...(session.amountTotal !== undefined ? { amountTotal: session.amountTotal } : {}),
+      // Stripe records acceptance but not when; the completion event is the closest timestamp.
       ...(session.consentAccepted ? { consentAcceptedAt: event.created * 1000 } : {}),
+      ...(recipient ? { recipient } : {}),
     };
-    const recipient = toRecipient(session);
-    return yield* transition(
-      order.id,
-      'paid',
-      'stripe_webhook',
-      event.id,
-      recipient ? { ...patch, recipient } : patch,
-    ).pipe(
-      Effect.map(() => ({ outcome: 'applied' as const })),
-      Effect.catchTag('TransitionRefused', (r) =>
-        Effect.succeed({ outcome: 'refused' as const, note: `${r.from}->${r.to}` }),
-      ),
-      Effect.catchTag('OrderNotFound', () => Effect.succeed({ outcome: 'unknown_order' as const })),
-    );
+    const moved = yield* recordTransition(order, 'paid', event.id, patch);
+    const notes: string[] = [];
+    if (moved.note) notes.push(moved.note);
+    if (!recipient) notes.push('no_recipient');
+    if (!session.consentAccepted) notes.push('no_consent');
+    if (moved.outcome !== 'applied') return moved;
+    // Paid → submit to the provider (ticket #10). Also runs on a replay that
+    // found the Order already paid, so a redelivery retries a submission that
+    // failed transiently. Its result never fails the webhook.
+    const submitted = yield* submitOrder(order.id, 'stripe_webhook', event.id);
+    notes.push(`submit=${submitted.outcome}`);
+    return result('applied', notes.join(','));
+  });
+
+const apply = (
+  event: PspWebhookEvent,
+): Effect.Effect<Result, WebhookProcessingFailed, Psp | Db | Config | FulfilmentProvider> =>
+  Effect.gen(function* () {
+    if (!event.sessionId || !HANDLED.has(event.type)) return result('ignored', event.type);
+    const psp = yield* Psp;
+    // Re-fetch: the only facts we act on come from Stripe's API, not the delivery.
+    const fetched = yield* psp.getCheckoutSession(event.sessionId).pipe(Effect.either);
+    if (fetched._tag === 'Left') {
+      // Transient → 500 so Stripe retries; anything else (gone, misconfigured key) will not improve by retrying.
+      if (fetched.left.retryable)
+        return yield* new WebhookProcessingFailed({ message: fetched.left.message });
+      return result('failed', fetched.left.message);
+    }
+    const session = fetched.right;
+    const order = yield* resolveOrder(session);
+    if (!order) return result('unknown_order', session.id);
+    return event.type === 'checkout.session.expired'
+      ? yield* applyExpired(order, session, event)
+      : yield* applyPaid(order, session, event);
   });
 
 /** Handle one delivery end to end; the caller has already read the raw body and header. */
@@ -116,12 +141,20 @@ export const handleStripeWebhook = (rawBody: string, signature: string | undefin
   Effect.gen(function* () {
     const psp = yield* Psp;
     const event = yield* psp.verifyWebhook(rawBody, signature);
-    const state = yield* receive('stripe', event.id, event.type, rawBody);
-    if (!state.pending) return { received: true as const, outcome: `duplicate:${state.outcome}` };
-    const result = yield* apply(event);
-    yield* settle('stripe', event.id, result.outcome, result.note);
+    const receipt = yield* receive('stripe', event.id, event.type, rawBody);
+    if (!receipt.pending) {
+      return {
+        received: true as const,
+        outcome: `duplicate:${receipt.outcome}${receipt.note ? ':' + receipt.note : ''}`,
+      };
+    }
+    const outcome = yield* apply(event).pipe(
+      // Not settled: the claim lapses and Stripe's retry is processed again.
+      Effect.tapError(() => release('stripe', event.id)),
+    );
+    yield* settle('stripe', event.id, outcome.outcome, outcome.note);
     return {
       received: true as const,
-      outcome: result.note ? `${result.outcome}:${result.note}` : result.outcome,
+      outcome: outcome.note ? `${outcome.outcome}:${outcome.note}` : outcome.outcome,
     };
   });

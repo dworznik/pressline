@@ -1,0 +1,11 @@
+{
+  "status": 404,
+  "body": {
+    "code": 404,
+    "result": "Order not found",
+    "error": {
+      "reason": "NotFound",
+      "message": "Order not found"
+    }
+  }
+}

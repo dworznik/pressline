@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { formatMoney } from '$lib/money';
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
   const d = $derived(data.detail);
   const o = $derived(data.detail.order);
   const when = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
-  const money = (n: number) => `${(n / 100).toFixed(2)} ${o.currency}`;
+  const money = (n: number) => formatMoney(n, o.currency);
 </script>
 
 <svelte:head><title>Operator · Order {o.id.slice(-8)}</title></svelte:head>

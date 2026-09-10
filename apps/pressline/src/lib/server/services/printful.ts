@@ -379,6 +379,26 @@ export const makePrintful = (options: PrintfulOptions) =>
         }),
       );
 
+    const parseWebhook = (rawBody: string) =>
+      Effect.gen(function* () {
+        const parsed = yield* Schema.decodeUnknown(Schema.parseJson(WebhookWire))(rawBody).pipe(
+          Effect.mapError(
+            (e) => new ProviderWebhookRejected({ message: `unreadable event: ${e.message}` }),
+          ),
+        );
+        const occurredAt = Math.floor(Date.parse(parsed.occurred_at) / 1000);
+        return {
+          id: yield* eventIdOf(parsed),
+          type: parsed.type,
+          occurredAt: Number.isFinite(occurredAt) ? occurredAt : 0,
+          ...(parsed.data.order ? { providerOrderId: String(parsed.data.order.id) } : {}),
+          ...(parsed.data.order?.external_id
+            ? { orderExternalId: parsed.data.order.external_id }
+            : {}),
+          ...(parsed.data.shipment ? { shipmentId: String(parsed.data.shipment.id) } : {}),
+        } satisfies ProviderWebhookEvent;
+      });
+
     const service: FulfilmentProviderService = {
       health: () => get('/v2/catalog-products?limit=1', Schema.Unknown).pipe(Effect.asVoid),
 
@@ -434,23 +454,10 @@ export const makePrintful = (options: PrintfulOptions) =>
           if (!timingSafeEqual(expected, headers.signature.toLowerCase())) {
             return yield* new ProviderWebhookRejected({ message: 'signature mismatch' });
           }
-          const parsed = yield* Schema.decodeUnknown(Schema.parseJson(WebhookWire))(rawBody).pipe(
-            Effect.mapError(
-              (e) => new ProviderWebhookRejected({ message: `unreadable event: ${e.message}` }),
-            ),
-          );
-          const occurredAt = Math.floor(Date.parse(parsed.occurred_at) / 1000);
-          return {
-            id: yield* eventIdOf(parsed),
-            type: parsed.type,
-            occurredAt: Number.isFinite(occurredAt) ? occurredAt : 0,
-            ...(parsed.data.order ? { providerOrderId: String(parsed.data.order.id) } : {}),
-            ...(parsed.data.order?.external_id
-              ? { orderExternalId: parsed.data.order.external_id }
-              : {}),
-            ...(parsed.data.shipment ? { shipmentId: String(parsed.data.shipment.id) } : {}),
-          } satisfies ProviderWebhookEvent;
+          return yield* parseWebhook(rawBody);
         }),
+
+      parseWebhook,
 
       listShipments: (providerOrderId) =>
         get(

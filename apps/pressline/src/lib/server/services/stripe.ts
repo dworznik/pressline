@@ -8,6 +8,7 @@ import {
   type CheckoutSessionDetails,
   type CheckoutSessionInput,
   type PspService,
+  type PspWebhookEvent,
 } from './psp';
 
 /**
@@ -84,6 +85,16 @@ const toPspError = (e: unknown): PspError => {
   return new PspError({ message: `Stripe: ${String(e)}`, retryable: true });
 };
 
+const toWebhookEvent = (event: Stripe.Event): PspWebhookEvent => {
+  const object = event.data.object as { object?: string; id?: string };
+  return {
+    id: event.id,
+    type: event.type,
+    created: event.created,
+    ...(object.object === 'checkout.session' && object.id ? { sessionId: object.id } : {}),
+  };
+};
+
 export const makeStripe = (options: StripeOptions) =>
   Effect.gen(function* () {
     // Tests inject a fetch via FetchHttpClient.Fetch; production uses the platform's.
@@ -99,6 +110,23 @@ export const makeStripe = (options: StripeOptions) =>
 
     const service: PspService = {
       health: () => call(() => stripe.balance.retrieve()).pipe(Effect.asVoid),
+
+      getPaymentStatus: (paymentIntentId) =>
+        call(() =>
+          stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] }),
+        ).pipe(
+          Effect.map((pi) => {
+            const charge =
+              typeof pi.latest_charge === 'object' && pi.latest_charge
+                ? pi.latest_charge
+                : undefined;
+            return {
+              refunded: charge?.refunded ?? false,
+              amountRefunded: charge?.amount_refunded ?? 0,
+              disputed: charge?.disputed ?? false,
+            };
+          }),
+        ),
 
       getWebhookStatus: () =>
         call(() => stripe.webhookEndpoints.list({ limit: 100 })).pipe(
@@ -213,13 +241,14 @@ export const makeStripe = (options: StripeOptions) =>
             catch: (e) =>
               new WebhookRejected({ message: e instanceof Error ? e.message : String(e) }),
           });
-          const object = event.data.object as { object?: string; id?: string };
-          return {
-            id: event.id,
-            type: event.type,
-            created: event.created,
-            ...(object.object === 'checkout.session' && object.id ? { sessionId: object.id } : {}),
-          };
+          return toWebhookEvent(event);
+        }),
+
+      parseWebhook: (rawBody) =>
+        Effect.try({
+          try: () => toWebhookEvent(JSON.parse(rawBody) as Stripe.Event),
+          catch: (e) =>
+            new WebhookRejected({ message: e instanceof Error ? e.message : String(e) }),
         }),
     };
     return service;

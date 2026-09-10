@@ -33,6 +33,7 @@ import {
   type CheckoutSession,
   type CheckoutSessionDetails,
   type CheckoutSessionInput,
+  type PaymentStatus,
 } from './psp';
 
 /**
@@ -196,14 +197,39 @@ export interface MemoryWebhookBody {
  * to do, lets a test "complete" a session with the details a re-fetch would
  * return, and verifies webhooks with a fixed fake signature.
  */
+const parsePspWebhook = (rawBody: string) => {
+  try {
+    const body = JSON.parse(rawBody) as MemoryWebhookBody;
+    return Effect.succeed({
+      id: body.id,
+      type: body.type,
+      created: body.created ?? Math.floor(Date.now() / 1000),
+      ...(body.sessionId ? { sessionId: body.sessionId } : {}),
+    });
+  } catch {
+    return Effect.fail(new WebhookRejected({ message: 'not JSON' }));
+  }
+};
+
 export const makePspMemory = Effect.gen(function* () {
   const ref = yield* Ref.make<
     ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
   >([]);
   const details = new Map<string, CheckoutSessionDetails>();
+  const payments = new Map<string, PaymentStatus>();
   let down = false;
   const layer = Layer.succeed(Psp, {
     health: () => Effect.void,
+    getPaymentStatus: (paymentIntentId) =>
+      down
+        ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+        : Effect.succeed(
+            payments.get(paymentIntentId) ?? {
+              refunded: false,
+              amountRefunded: 0,
+              disputed: false,
+            },
+          ),
     getWebhookStatus: () =>
       Effect.succeed({ configured: true, url: 'https://pressline.test/webhooks/stripe' }),
     createCheckoutSession: (input) =>
@@ -239,27 +265,20 @@ export const makePspMemory = Effect.gen(function* () {
             }),
           );
     },
-    verifyWebhook: (rawBody, signature) => {
-      if (signature !== 'memory:valid') {
-        return Effect.fail(new WebhookRejected({ message: 'bad signature' }));
-      }
-      try {
-        const body = JSON.parse(rawBody) as MemoryWebhookBody;
-        return Effect.succeed({
-          id: body.id,
-          type: body.type,
-          created: body.created ?? Math.floor(Date.now() / 1000),
-          ...(body.sessionId ? { sessionId: body.sessionId } : {}),
-        });
-      } catch {
-        return Effect.fail(new WebhookRejected({ message: 'not JSON' }));
-      }
-    },
+    verifyWebhook: (rawBody, signature) =>
+      signature !== 'memory:valid'
+        ? Effect.fail(new WebhookRejected({ message: 'bad signature' }))
+        : parsePspWebhook(rawBody),
+    parseWebhook: parsePspWebhook,
   });
   return {
     layer,
     sessions: Ref.get(ref),
     setDown: (d: boolean) => void (down = d),
+    /** What the PSP reports for a payment intent (refunds, disputes). */
+    setPayment: (paymentIntentId: string, status: PaymentStatus) => {
+      payments.set(paymentIntentId, status);
+    },
     /** What a later re-fetch of this session returns (e.g. after the Customer paid). */
     setSession: (id: string, patch: Partial<CheckoutSessionDetails>) => {
       const current = details.get(id) ?? {
@@ -314,6 +333,33 @@ const notFound = (what: string, id: number) =>
  * Serves a seeded catalog and counts every call, so HTTP-seam tests can
  * assert that a cache hit does not reach the provider.
  */
+const parseProviderWebhook = (rawBody: string) => {
+  try {
+    const b = JSON.parse(rawBody) as {
+      type: string;
+      occurred_at?: string;
+      data?: {
+        order?: { id: number | string; external_id?: string };
+        shipment?: { id: number | string };
+      };
+    };
+    const occurredAt = b.occurred_at
+      ? Math.floor(Date.parse(b.occurred_at) / 1000)
+      : Math.floor(Date.now() / 1000);
+    const event: ProviderWebhookEvent = {
+      id: `${b.type}|${b.occurred_at ?? ''}|${b.data?.order?.id ?? ''}|${b.data?.shipment?.id ?? ''}`,
+      type: b.type,
+      occurredAt,
+      ...(b.data?.order ? { providerOrderId: String(b.data.order.id) } : {}),
+      ...(b.data?.order?.external_id ? { orderExternalId: b.data.order.external_id } : {}),
+      ...(b.data?.shipment ? { shipmentId: String(b.data.shipment.id) } : {}),
+    };
+    return Effect.succeed(event);
+  } catch {
+    return Effect.fail(new ProviderWebhookRejected({ message: 'not JSON' }));
+  }
+};
+
 export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatalog) =>
   Effect.map(Ref.make(0), (calls) => {
     const providerOrders = new Map<string, ProviderOrder>();
@@ -343,35 +389,11 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
           ),
         getPlacementPrintAreas: (productId) =>
           counted('catalog product', productId, catalog.printAreas[productId]),
-        verifyWebhook: (rawBody, headers) => {
-          if (headers.signature !== 'memory:valid') {
-            return Effect.fail(new ProviderWebhookRejected({ message: 'bad signature' }));
-          }
-          try {
-            const b = JSON.parse(rawBody) as {
-              type: string;
-              occurred_at?: string;
-              data?: {
-                order?: { id: number | string; external_id?: string };
-                shipment?: { id: number | string };
-              };
-            };
-            const occurredAt = b.occurred_at
-              ? Math.floor(Date.parse(b.occurred_at) / 1000)
-              : Math.floor(Date.now() / 1000);
-            const event: ProviderWebhookEvent = {
-              id: `${b.type}|${b.occurred_at ?? ''}|${b.data?.order?.id ?? ''}|${b.data?.shipment?.id ?? ''}`,
-              type: b.type,
-              occurredAt,
-              ...(b.data?.order ? { providerOrderId: String(b.data.order.id) } : {}),
-              ...(b.data?.order?.external_id ? { orderExternalId: b.data.order.external_id } : {}),
-              ...(b.data?.shipment ? { shipmentId: String(b.data.shipment.id) } : {}),
-            };
-            return Effect.succeed(event);
-          } catch {
-            return Effect.fail(new ProviderWebhookRejected({ message: 'not JSON' }));
-          }
-        },
+        verifyWebhook: (rawBody, headers) =>
+          headers.signature !== 'memory:valid'
+            ? Effect.fail(new ProviderWebhookRejected({ message: 'bad signature' }))
+            : parseProviderWebhook(rawBody),
+        parseWebhook: parseProviderWebhook,
         listShipments: (providerOrderId) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.map(() => shipments.get(providerOrderId) ?? []),

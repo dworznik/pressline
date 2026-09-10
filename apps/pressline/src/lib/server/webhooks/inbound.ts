@@ -70,6 +70,23 @@ export const settle = (
     );
   }).pipe(Effect.orDie);
 
+/** Deliveries never settled (crash mid-processing) whose claim has lapsed: Reconciliation reprocesses them. */
+export const listUnprocessed = () =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    return yield* db.all<{
+      provider: InboundProvider;
+      event_id: string;
+      event_type: string;
+      payload: string;
+    }>(
+      `SELECT provider, event_id, event_type, payload FROM inbound_events
+       WHERE processed_at IS NULL AND (claimed_at IS NULL OR claimed_at < ?) ORDER BY received_at LIMIT 100`,
+      [now - CLAIM_TTL_MS],
+    );
+  }).pipe(Effect.orDie);
+
 /** Release a claim without settling, so the provider's retry is processed. */
 export const release = (provider: InboundProvider, eventId: string) =>
   Effect.gen(function* () {

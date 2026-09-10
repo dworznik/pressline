@@ -13,7 +13,7 @@ import { DesignsLive } from './designs';
 import { HealthLive } from './health';
 import { PrintfilesLive } from './printfiles';
 import { OperatorAuthLive, type OperatorSecrets } from '../operator/auth';
-import { OperatorLive, type MailerKind } from './operator';
+import { CronLive, OperatorLive, type MailerKind } from './operator';
 import { OrdersLive } from './orders';
 import { QuotesLive } from './quotes';
 import { WebhooksLive } from './webhooks';
@@ -48,6 +48,7 @@ export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) =>
           OrdersLive,
           WebhooksLive,
           OperatorLive,
+          CronLive,
         ]),
         Layer.provide([EnginesLive, OperatorAuthLive]),
       ),

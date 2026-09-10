@@ -3,6 +3,8 @@ import { Clock, Context, Effect } from 'effect';
 import { OperatorPrincipal, OperatorSecrets, Unauthorized } from '../operator/auth';
 import { instanceHealth, orderDetail, orderList } from '../operator/read';
 import { SESSION_TTL_MS, signSession } from '../operator/session';
+import { latestReport, runReconciliation } from '../reconciliation/run';
+import { timingSafeEqual } from '../security';
 import { PresslineApi } from './api';
 
 /** Which Mailer is wired, for the health page (set by the runtime; tests get "memory"). */
@@ -25,5 +27,21 @@ export const OperatorLive = HttpApiBuilder.group(PresslineApi, 'operator', (hand
     )
     .handle('health', () => Effect.flatMap(MailerKind, (kind) => instanceHealth(kind)))
     .handle('orders', ({ urlParams }) => orderList(urlParams))
-    .handle('order', ({ path }) => orderDetail(path.id)),
+    .handle('order', ({ path }) => orderDetail(path.id))
+    .handle('reconcile', () => runReconciliation('operator'))
+    .handle('reconciliation', () => latestReport.pipe(Effect.map((r) => r ?? null))),
+);
+
+/** `GET /api/cron/reconcile` with `Authorization: Bearer <CRON_SECRET>`: exactly what Vercel Cron sends. */
+export const CronLive = HttpApiBuilder.group(PresslineApi, 'cron', (handlers) =>
+  handlers.handle('reconcile', ({ headers }) =>
+    Effect.gen(function* () {
+      const secrets = yield* OperatorSecrets;
+      const given = headers.authorization?.replace(/^Bearer\s+/i, '') ?? '';
+      if (!secrets.cronSecret || !timingSafeEqual(given, secrets.cronSecret)) {
+        return yield* new Unauthorized({ message: 'bad cron secret' });
+      }
+      return yield* runReconciliation('cron');
+    }),
+  ),
 );

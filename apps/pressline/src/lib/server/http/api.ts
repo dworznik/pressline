@@ -15,6 +15,7 @@ import { PublicOrder } from '../orders/public';
 import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
 import { OperatorAuth, Unauthorized } from '../operator/auth';
 import { InstanceHealth, OrderDetail, OrderList, OrderListQuery } from '../operator/read';
+import { ReconciliationReport } from '../reconciliation/run';
 import { ProviderWebhookRejected } from '../services/fulfilment-provider';
 import { WebhookRejected } from '../services/psp';
 import { ProviderWebhookProcessingFailed } from '../webhooks/printful';
@@ -235,7 +236,23 @@ export const OperatorGroup = HttpApiGroup.make('operator')
       .addSuccess(OrderDetail)
       .addError(OrderNotFound, { status: 404 }),
   )
+  .add(
+    HttpApiEndpoint.post('reconcile', '/api/operator/reconcile').addSuccess(ReconciliationReport),
+  )
+  .add(
+    HttpApiEndpoint.get('reconciliation', '/api/operator/reconciliation/latest').addSuccess(
+      Schema.NullOr(ReconciliationReport),
+    ),
+  )
   .middleware(OperatorAuth);
+
+/** Scheduled entry for Vercel Cron (Cloudflare uses the `scheduled` export instead, ADR-0012). */
+export const CronGroup = HttpApiGroup.make('cron').add(
+  HttpApiEndpoint.get('reconcile', '/api/cron/reconcile')
+    .setHeaders(Schema.Struct({ authorization: Schema.optional(Schema.String) }))
+    .addSuccess(ReconciliationReport)
+    .addError(Unauthorized, { status: 401 }),
+);
 
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)
@@ -245,4 +262,5 @@ export class PresslineApi extends HttpApi.make('pressline')
   .add(QuotesGroup)
   .add(OrdersGroup)
   .add(WebhooksGroup)
-  .add(OperatorGroup) {}
+  .add(OperatorGroup)
+  .add(CronGroup) {}

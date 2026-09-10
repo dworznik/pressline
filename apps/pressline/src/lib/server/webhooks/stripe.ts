@@ -12,7 +12,7 @@ import {
   type OrderPatch,
   type Recipient,
 } from '../orders/orders';
-import type { OrderState } from '../orders/state';
+import type { Cause, OrderState } from '../orders/state';
 import { submitOrder } from '../orders/submit';
 import { sendOrderEmail } from '../emails/send';
 import { Psp, type CheckoutSessionDetails, type PspWebhookEvent } from '../services/psp';
@@ -63,8 +63,14 @@ const PAID_EVENTS = new Set([
 const HANDLED = new Set([...PAID_EVENTS, 'checkout.session.expired']);
 
 /** Apply a move, treating "already there" as applied (a replay after a crash) and a forbidden move as refused. */
-const recordTransition = (order: Order, to: OrderState, ref: string, patch: OrderPatch = {}) =>
-  transition(order.id, to, 'stripe_webhook', ref, patch).pipe(
+const recordTransition = (
+  order: Order,
+  to: OrderState,
+  ref: string,
+  patch: OrderPatch = {},
+  cause: Cause = 'stripe_webhook',
+) =>
+  transition(order.id, to, cause, ref, patch).pipe(
     Effect.map(() => result('applied')),
     Effect.catchTag('TransitionRefused', (r) =>
       Effect.succeed(
@@ -90,7 +96,13 @@ const applyExpired = (order: Order, session: CheckoutSessionDetails, event: PspW
     ? recordTransition(order, 'expired', event.id)
     : Effect.succeed(result('ignored', `session status=${session.status}`));
 
-const applyPaid = (order: Order, session: CheckoutSessionDetails, event: PspWebhookEvent) =>
+/** Settle a session the PSP reports as paid onto its Order: used by the webhook and by Reconciliation. */
+export const applyPaid = (
+  order: Order,
+  session: CheckoutSessionDetails,
+  event: PspWebhookEvent,
+  cause: Cause = 'stripe_webhook',
+) =>
   Effect.gen(function* () {
     // `no_payment_required` is a fully discounted session: nothing to collect, still an order.
     if (session.paymentStatus === 'unpaid') return result('ignored', 'payment_status=unpaid');
@@ -103,7 +115,7 @@ const applyPaid = (order: Order, session: CheckoutSessionDetails, event: PspWebh
       ...(session.consentAccepted ? { consentAcceptedAt: event.created * 1000 } : {}),
       ...(recipient ? { recipient } : {}),
     };
-    const moved = yield* recordTransition(order, 'paid', event.id, patch);
+    const moved = yield* recordTransition(order, 'paid', event.id, patch, cause);
     const notes: string[] = [];
     if (moved.note) notes.push(moved.note);
     if (!recipient) notes.push('no_recipient');
@@ -112,7 +124,7 @@ const applyPaid = (order: Order, session: CheckoutSessionDetails, event: PspWebh
     // Paid → submit to the provider (ticket #10). Also runs on a replay that
     // found the Order already paid, so a redelivery retries a submission that
     // failed transiently. Its result never fails the webhook.
-    const submitted = yield* submitOrder(order.id, 'stripe_webhook', event.id);
+    const submitted = yield* submitOrder(order.id, cause, event.id);
     notes.push(`submit=${submitted.outcome}`);
     // Confirmation email (ticket #12): once, never blocking; failures are retried by Reconciliation.
     const mailed = yield* sendOrderEmail(order.id, 'confirmation');
@@ -120,7 +132,7 @@ const applyPaid = (order: Order, session: CheckoutSessionDetails, event: PspWebh
     return result('applied', notes.join(','));
   });
 
-const apply = (
+export const applyStripeEvent = (
   event: PspWebhookEvent,
 ): Effect.Effect<
   Result,
@@ -158,7 +170,7 @@ export const handleStripeWebhook = (rawBody: string, signature: string | undefin
         outcome: `duplicate:${receipt.outcome}${receipt.note ? ':' + receipt.note : ''}`,
       };
     }
-    const outcome = yield* apply(event).pipe(
+    const outcome = yield* applyStripeEvent(event).pipe(
       // Not settled: the claim lapses and Stripe's retry is processed again.
       Effect.tapError(() => release('stripe', event.id)),
     );

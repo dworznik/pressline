@@ -120,6 +120,8 @@ export const PresslineConfigSchema = Schema.Struct({
       /** Sender, e.g. `Shop Name <orders@shop.example>`; the domain must be verified with the Mailer. */
       from: Schema.optional(Schema.NonEmptyString),
       replyTo: Schema.optional(Schema.NonEmptyString),
+      /** Where Reconciliation sends Alarms. Nothing is sent on quiet nights. */
+      operator: Schema.optional(Schema.NonEmptyString),
     }),
     { default: () => ({}) },
   ),

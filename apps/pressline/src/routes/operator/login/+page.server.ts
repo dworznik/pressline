@@ -21,7 +21,7 @@ export const actions: Actions = {
     cookies.set(SESSION_COOKIE, cookie, {
       path: '/',
       httpOnly: true,
-      sameSite: 'strict',
+      sameSite: 'lax',
       secure: url.protocol === 'https:',
       expires: new Date(expiresAt),
     });

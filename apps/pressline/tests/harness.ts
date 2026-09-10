@@ -1,16 +1,18 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { Clock, Duration, Effect, Layer } from 'effect';
+import { FetchHttpClient } from '@effect/platform';
+import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effect';
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
-import { makeWebHandler } from '$lib/server/http/handler';
+import { makeWebHandler, type Services } from '$lib/server/http/handler';
 import {
   emptyCatalog,
-  layerDesignSourceMemory,
   layerPspMemory,
+  makeDesignSourceMemory,
   makeFulfilmentProviderMemory,
   makeMailerMemory,
+  type DesignSourceMemoryOptions,
   type MemoryCatalog,
 } from '$lib/server/services/memory';
 
@@ -32,7 +34,59 @@ export interface TestAppOptions {
   readonly catalog?: MemoryCatalog;
   /** Reuse an existing database (from a previous app's `dbPath`) instead of a fresh temp one. */
   readonly dbPath?: string;
+  /** Seed for the in-memory Engines. Defaults to one healthy, empty Engine `sample`. */
+  readonly engines?: DesignSourceMemoryOptions;
+  /** Files the Engine "hosts": what a ranged GET of a Printfile URL returns. */
+  readonly files?: Readonly<Record<string, HostedFile>>;
 }
+
+export interface HostedFile {
+  readonly bytes: Uint8Array;
+  readonly contentType: string;
+  /** Answer with this status instead of serving the file. */
+  readonly status?: number;
+  /** Ignore Range and answer 200 with the whole body. */
+  readonly ignoreRange?: boolean;
+}
+
+/** Serves the harness's hosted files with Range support; anything else is 404. */
+const makeHostedFetch =
+  (files: Readonly<Record<string, HostedFile>>, served: Map<string, number>): typeof fetch =>
+  async (input, init) => {
+    const req = new Request(input, init);
+    const file = files[req.url];
+    if (!file) return new Response('not found', { status: 404 });
+    if (file.status) return new Response('', { status: file.status });
+    // Stream in 16 KiB chunks and count every chunk handed out: a reader that
+    // stops early (the header validator) is observable as bytes not served.
+    const stream = (bytes: Uint8Array) =>
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          const offset = served.get(req.url) ?? 0;
+          if (offset >= bytes.length) return controller.close();
+          const chunk = bytes.slice(offset, offset + 16 * 1024);
+          served.set(req.url, offset + chunk.length);
+          controller.enqueue(chunk);
+        },
+      });
+    const range = /^bytes=(\d+)-(\d+)$/.exec(req.headers.get('range') ?? '');
+    if (range && !file.ignoreRange) {
+      const start = Number(range[1]);
+      const end = Math.min(Number(range[2]), file.bytes.length - 1);
+      return new Response(stream(file.bytes.slice(start, end + 1)), {
+        status: 206,
+        headers: {
+          'content-type': file.contentType,
+          'content-range': `bytes ${start}-${end}/${file.bytes.length}`,
+          'content-length': String(end - start + 1),
+        },
+      });
+    }
+    return new Response(stream(file.bytes), {
+      status: 200,
+      headers: { 'content-type': file.contentType, 'content-length': String(file.bytes.length) },
+    });
+  };
 
 export interface TestApp {
   readonly fetch: (path: string, init?: RequestInit) => Promise<Response>;
@@ -43,24 +97,34 @@ export interface TestApp {
   readonly sentMail: () => Promise<ReadonlyArray<{ to: string; subject: string }>>;
   /** How many calls reached the (in-memory) fulfilment provider. */
   readonly fulfilmentProviderCalls: () => Promise<number>;
+  /** How many design/printfile calls reached the (in-memory) Engines. */
+  readonly engineCalls: () => Promise<number>;
+  /** Bytes the hosted-file stub handed to the app for a URL (what a real transfer would have cost). */
+  readonly bytesServed: (url: string) => number;
   /** Move the app's clock forward. */
   readonly advanceClock: (by: Duration.DurationInput) => void;
+  /** Run an Effect against the app's services (for probing below the HTTP seam when debugging). */
+  readonly run: <A, E>(eff: Effect.Effect<A, E, Services>) => Promise<Exit.Exit<A, unknown>>;
   readonly dbPath: string;
   /** Release the app. `keepDb` leaves the database on disk for a successor app. */
   readonly dispose: (options?: { keepDb?: boolean }) => Promise<void>;
 }
 
-/** A clock the test moves by hand; starts at the real time so TTLs are realistic. */
+/** Real time plus an offset the test moves by hand, so timeouts and poll loops still see time pass. */
 const makeSettableClock = () => {
-  let now = Date.now();
+  let offset = 0;
+  const now = () => Date.now() + offset;
+  const base = Clock.make();
   const clock: Clock.Clock = {
-    ...Clock.make(),
-    unsafeCurrentTimeMillis: () => now,
-    unsafeCurrentTimeNanos: () => BigInt(now) * 1_000_000n,
-    currentTimeMillis: Effect.sync(() => now),
-    currentTimeNanos: Effect.sync(() => BigInt(now) * 1_000_000n),
+    [Clock.ClockTypeId]: Clock.ClockTypeId,
+    // Real sleeps (timeouts, poll intervals); only "what time is it" is settable.
+    sleep: (duration) => base.sleep(duration),
+    unsafeCurrentTimeMillis: now,
+    unsafeCurrentTimeNanos: () => BigInt(now()) * 1_000_000n,
+    currentTimeMillis: Effect.sync(now),
+    currentTimeNanos: Effect.sync(() => BigInt(now()) * 1_000_000n),
   };
-  return { clock, advance: (by: Duration.DurationInput) => void (now += Duration.toMillis(by)) };
+  return { clock, advance: (by: Duration.DurationInput) => void (offset += Duration.toMillis(by)) };
 };
 
 export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp> => {
@@ -71,16 +135,26 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     makeFulfilmentProviderMemory(options.catalog ?? emptyCatalog),
   );
   const { clock, advance } = makeSettableClock();
+  const served = new Map<string, number>();
+  const designSource = await Effect.runPromise(
+    makeDesignSourceMemory(options.engines ?? { engines: { sample: {} } }),
+  );
 
   const services = Layer.mergeAll(
     Config.layer({ ...testConfig, ...options.config }),
     layerSqliteMigrated(dbPath),
-    layerDesignSourceMemory(),
+    designSource.layer,
     provider.layer,
     layerPspMemory,
     mailer.layer,
+    FetchHttpClient.layer.pipe(
+      Layer.provide(
+        Layer.succeed(FetchHttpClient.Fetch, makeHostedFetch(options.files ?? {}, served)),
+      ),
+    ),
   ).pipe(Layer.provideMerge(Layer.setClock(clock)));
   const { handler, dispose } = makeWebHandler(services);
+  const runtime = ManagedRuntime.make(services);
   const base = 'http://pressline.test';
 
   const fetch = (path: string, init?: RequestInit) => handler(new Request(base + path, init));
@@ -92,9 +166,13 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     },
     sentMail: () => Effect.runPromise(mailer.sent),
     fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
+    engineCalls: () => Effect.runPromise(designSource.calls),
+    bytesServed: (url) => served.get(url) ?? 0,
     advanceClock: advance,
+    run: (eff) => runtime.runPromiseExit(eff),
     dbPath,
     dispose: async ({ keepDb = false } = {}) => {
+      await runtime.dispose();
       await dispose();
       if (!keepDb) rmSync(dir, { recursive: true, force: true });
     },

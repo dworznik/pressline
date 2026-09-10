@@ -14,7 +14,8 @@ describe('GET /api/health', () => {
       ok: true,
       protocolVersion: '1',
       demo: false,
-      config: { name: 'Test Shop', currency: 'EUR', engines: ['sample'], offers: 0 },
+      config: { name: 'Test Shop', currency: 'EUR', offers: 0 },
+      engines: [{ slug: 'sample', enabled: true, protocolVersion: '1' }],
     });
     expect(body.schemaVersion).toBeGreaterThanOrEqual(1);
   });
@@ -23,6 +24,21 @@ describe('GET /api/health', () => {
     app = await makeTestApp({ config: { demo: true } });
     const { body } = await app.json<HealthResponse>('/api/health');
     expect(body.demo).toBe(true);
+  });
+
+  it('disables an Engine whose protocol version does not match, and says so', async () => {
+    app = await makeTestApp({ engines: { engines: { sample: { protocolVersion: '2' } } } });
+    const { body } = await app.json<HealthResponse>('/api/health');
+    expect(body.engines[0]).toMatchObject({ slug: 'sample', enabled: false, protocolVersion: '2' });
+    expect(body.engines[0]!.reason).toMatch(/protocol version 2/);
+  });
+
+  it('disables an Engine that is unreachable at startup, without failing boot', async () => {
+    app = await makeTestApp({ engines: { engines: { sample: { down: true } } } });
+    const { status, body } = await app.json<HealthResponse>('/api/health');
+    expect(status).toBe(200);
+    expect(body.engines[0]).toMatchObject({ slug: 'sample', enabled: false, transient: true });
+    expect(body.engines[0]!.reason).toMatch(/unreachable/);
   });
 
   it('404s unknown API paths', async () => {

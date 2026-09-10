@@ -75,6 +75,15 @@ export const PresslineConfigSchema = Schema.Struct({
   catalogue: Schema.optionalWith(CatalogueConfig, { default: () => ({ offers: [] }) }),
   /** Demo Mode: no money and no goods move. */
   demo: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  printfile: Schema.optionalWith(
+    Schema.Struct({
+      /** How long one ensure-Printfile request may wait on a rendering Engine before answering 202 (ADR-0005). */
+      waitMs: Schema.optionalWith(Schema.Int.pipe(Schema.between(0, 25_000)), {
+        default: () => 8_000,
+      }),
+    }),
+    { default: () => ({ waitMs: 8_000 }) },
+  ),
 });
 export type PresslineConfig = typeof PresslineConfigSchema.Type;
 

@@ -1,4 +1,4 @@
-import { HttpApiBuilder, HttpServer } from '@effect/platform';
+import { HttpApiBuilder, HttpServer, type HttpClient } from '@effect/platform';
 import { Layer } from 'effect';
 import type { Config } from '../config/schema';
 import type { Db } from '../db/db';
@@ -7,11 +7,15 @@ import type { FulfilmentProvider } from '../services/fulfilment-provider';
 import type { Mailer } from '../services/mailer';
 import type { Psp } from '../services/psp';
 import { PresslineApi } from './api';
+import { EnginesLive } from '../design/engines';
 import { CatalogueLive } from './catalogue';
+import { DesignsLive } from './designs';
 import { HealthLive } from './health';
+import { PrintfilesLive } from './printfiles';
 
 /** Everything the HTTP layer needs from the outside world. */
-export type Services = Config | Db | DesignSource | FulfilmentProvider | Psp | Mailer;
+export type Services =
+  Config | Db | DesignSource | FulfilmentProvider | Psp | Mailer | HttpClient.HttpClient;
 
 /**
  * Build the web-standard `(Request) => Promise<Response>` for the whole API
@@ -21,7 +25,10 @@ export type Services = Config | Db | DesignSource | FulfilmentProvider | Psp | M
 export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) =>
   HttpApiBuilder.toWebHandler(
     Layer.mergeAll(
-      HttpApiBuilder.api(PresslineApi).pipe(Layer.provide([HealthLive, CatalogueLive])),
+      HttpApiBuilder.api(PresslineApi).pipe(
+        Layer.provide([HealthLive, CatalogueLive, DesignsLive, PrintfilesLive]),
+        Layer.provide(EnginesLive),
+      ),
       HttpServer.layerContext,
     ).pipe(Layer.provide(services)),
   );

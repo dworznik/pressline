@@ -35,12 +35,15 @@ export interface EngineClientOptions {
  * (`FetchHttpClient.layer` works on Node and Workers).
  */
 export const makeEngineClient = (options: EngineClientOptions) =>
-  isSecureEngineBaseUrl(options.baseUrl)
-    ? HttpApiClient.make(EngineApi, {
-        baseUrl: options.baseUrl,
-        transformClient: (client) =>
-          client.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(options.secret))),
-      })
-    : Effect.fail(new InsecureEngineBaseUrl({ baseUrl: String(options.baseUrl) }));
+  Effect.gen(function* () {
+    if (!isSecureEngineBaseUrl(options.baseUrl)) {
+      return yield* new InsecureEngineBaseUrl({ baseUrl: String(options.baseUrl) });
+    }
+    return yield* HttpApiClient.make(EngineApi, {
+      baseUrl: options.baseUrl,
+      transformClient: (client) =>
+        client.pipe(HttpClient.mapRequest(HttpClientRequest.bearerToken(options.secret))),
+    });
+  });
 
 export type EngineClient = Effect.Effect.Success<ReturnType<typeof makeEngineClient>>;

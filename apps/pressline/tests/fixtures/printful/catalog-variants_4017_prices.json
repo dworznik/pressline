@@ -1,0 +1,41 @@
+{
+  "data": {
+    "currency": "EUR",
+    "product": {
+      "id": 71,
+      "placements": [
+        {
+          "id": "front",
+          "title": "Front print",
+          "type": "DTG printing",
+          "technique_key": "dtg",
+          "price": "0.00",
+          "discounted_price": "0.00",
+          "placement_options": [],
+          "layers": []
+        },
+        {
+          "id": "back",
+          "title": "Back print",
+          "type": "DTG printing",
+          "technique_key": "dtg",
+          "price": "5.95",
+          "discounted_price": "5.95",
+          "placement_options": [],
+          "layers": []
+        }
+      ]
+    },
+    "variant": {
+      "id": 4017,
+      "techniques": [
+        {
+          "technique_key": "dtg",
+          "technique_display_name": "DTG printing",
+          "price": "11.50",
+          "discounted_price": "10.90"
+        }
+      ]
+    }
+  }
+}

@@ -52,8 +52,48 @@ export interface PlacementPrintArea extends PrintMethod {
   readonly dpi: number;
 }
 
+/** Minor-unit money as the provider quotes it (its own currency). */
+export interface ProviderMoney {
+  readonly amount: number;
+  readonly currency: string;
+}
+
+export interface ShippingRateRequest {
+  readonly countryCode: string;
+  readonly stateCode?: string;
+  readonly zip?: string;
+  readonly city?: string;
+  readonly items: ReadonlyArray<{ readonly catalogVariantId: number; readonly quantity: number }>;
+  /** Currency the rate should be quoted in. */
+  readonly currency: string;
+}
+
+export interface ShippingRate {
+  /** Provider shipping method id, e.g. `STANDARD`. */
+  readonly method: string;
+  readonly name: string;
+  readonly rate: ProviderMoney;
+  readonly minDeliveryDays?: number;
+  readonly maxDeliveryDays?: number;
+}
+
+/** What the provider charges the Operator for one variant, per technique. */
+export interface VariantPrices {
+  readonly currency: string;
+  /** Technique key → price in minor units (the discounted price when the provider offers one). */
+  readonly byTechnique: Readonly<Record<string, number>>;
+}
+
 export interface FulfilmentProviderService {
   readonly health: () => Effect.Effect<void, FulfilmentProviderError>;
+  /** Live shipping options for a destination. Empty when the provider cannot ship there. */
+  readonly getShippingRates: (
+    req: ShippingRateRequest,
+  ) => Effect.Effect<ReadonlyArray<ShippingRate>, FulfilmentProviderError>;
+  readonly getVariantPrices: (
+    variantId: number,
+    currency: string,
+  ) => Effect.Effect<VariantPrices, FulfilmentProviderError>;
   readonly getCatalogProduct: (
     id: number,
   ) => Effect.Effect<CatalogProduct, FulfilmentProviderError>;

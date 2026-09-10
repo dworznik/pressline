@@ -9,7 +9,10 @@ import {
   type CatalogVariant,
   type FulfilmentProviderService,
   type PlacementPrintArea,
+  type ShippingRate,
+  type VariantPrices,
 } from './fulfilment-provider';
+import { toMinorUnits } from '../quote/money';
 
 /**
  * Printful API v2 adapter (ADR-0007). The only place Printful's wire shapes
@@ -56,6 +59,29 @@ const MockupStyleWire = Schema.Struct({
   print_area_width: Schema.Number,
   print_area_height: Schema.Number,
   dpi: Schema.Number,
+});
+
+const ShippingRateWire = Schema.Struct({
+  shipping: Schema.String,
+  shipping_method_name: Schema.String,
+  rate: Schema.String,
+  currency: Schema.String,
+  min_delivery_days: Schema.optional(Schema.NullOr(Schema.Number)),
+  max_delivery_days: Schema.optional(Schema.NullOr(Schema.Number)),
+});
+
+const PricesWire = Schema.Struct({
+  currency: Schema.String,
+  variant: Schema.Struct({
+    id: Schema.Number,
+    techniques: Schema.Array(
+      Schema.Struct({
+        technique_key: Schema.String,
+        price: Schema.String,
+        discounted_price: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  }),
 });
 
 const ErrorWire = Schema.Struct({
@@ -127,8 +153,95 @@ export const makePrintful = (options: PrintfulOptions) =>
         }),
       );
 
+    const post = <A, I>(path: string, body: unknown, schema: Schema.Schema<A, I>) =>
+      HttpClientRequest.post(path).pipe(
+        HttpClientRequest.bodyJson(body),
+        Effect.mapError(
+          (e) =>
+            new FulfilmentProviderError({
+              message: `Printful ${path}: could not encode request body (${e.reason._tag})`,
+              retryable: false,
+            }),
+        ),
+        Effect.flatMap((req) => client.execute(req)),
+        Effect.flatMap((res) =>
+          res.status >= 200 && res.status < 300
+            ? HttpClientResponse.schemaBodyJson(schema)(res).pipe(
+                Effect.mapError(
+                  (e) =>
+                    new FulfilmentProviderError({
+                      message: `Printful ${path}: ${e.message}`,
+                      retryable: false,
+                    }),
+                ),
+              )
+            : failStatus(res),
+        ),
+        Effect.mapError(toFulfilmentProviderError),
+        Effect.scoped,
+        Effect.timeoutFail({
+          duration: timeout,
+          onTimeout: () =>
+            new FulfilmentProviderError({
+              message: `Printful ${path}: no response within ${Duration.format(timeout)}`,
+              retryable: true,
+            }),
+        }),
+      );
+
     const service: FulfilmentProviderService = {
       health: () => get('/v2/catalog-products?limit=1', Schema.Unknown).pipe(Effect.asVoid),
+
+      getShippingRates: (req) =>
+        post(
+          '/v2/shipping-rates',
+          {
+            recipient: {
+              country_code: req.countryCode,
+              ...(req.stateCode ? { state_code: req.stateCode } : {}),
+              ...(req.zip ? { zip: req.zip } : {}),
+              ...(req.city ? { city: req.city } : {}),
+            },
+            order_items: req.items.map((i) => ({
+              source: 'catalog',
+              catalog_variant_id: i.catalogVariantId,
+              quantity: i.quantity,
+            })),
+            currency: req.currency,
+          },
+          Envelope(Schema.Array(ShippingRateWire)),
+        ).pipe(
+          // Printful answers 400 for a destination it cannot ship to; that is "no options", not an outage.
+          Effect.catchIf(
+            (e) => e.status === 400,
+            () => Effect.succeed({ data: [] as ReadonlyArray<typeof ShippingRateWire.Type> }),
+          ),
+          Effect.map(({ data }) =>
+            data.map((r): ShippingRate => ({
+              method: r.shipping,
+              name: r.shipping_method_name.trim(),
+              rate: { amount: toMinorUnits(r.rate, r.currency), currency: r.currency },
+              ...(r.min_delivery_days != null ? { minDeliveryDays: r.min_delivery_days } : {}),
+              ...(r.max_delivery_days != null ? { maxDeliveryDays: r.max_delivery_days } : {}),
+            })),
+          ),
+        ),
+
+      getVariantPrices: (variantId, currency) =>
+        get(
+          `/v2/catalog-variants/${variantId}/prices?currency=${encodeURIComponent(currency)}`,
+          Envelope(PricesWire),
+        ).pipe(
+          Effect.map(({ data }): VariantPrices => ({
+            currency: data.currency,
+            byTechnique: Object.fromEntries(
+              data.variant.techniques.map((t) => [
+                t.technique_key,
+                toMinorUnits(t.discounted_price ?? t.price, data.currency),
+              ]),
+            ),
+          })),
+        ),
 
       getCatalogProduct: (id) =>
         get(`/v2/catalog-products/${id}`, Envelope(ProductWire)).pipe(

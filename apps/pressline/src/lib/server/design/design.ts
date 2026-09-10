@@ -1,6 +1,7 @@
 import type { CatalogueOffer, DesignResponse } from '@pressline/contract';
 import { Effect, Schema } from 'effect';
 import { resolveCatalogue } from '../catalogue/catalogue';
+import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { DesignSource } from '../services/design-source';
 import { Engines } from './engines';
@@ -53,10 +54,18 @@ export const loadDesign = (engine: string, designId: string) =>
     const design = yield* source.getDesign(engine, designId);
     const catalogue = yield* resolveCatalogue;
     const rejected = yield* rejectedOffers(engine, designId);
+    const config = yield* Config;
     return {
       engine,
       design,
       offers: design.sellable ? eligibleOffers(design, catalogue.offers, rejected) : [],
       currency: catalogue.currency,
+      storefront: {
+        name: config.name,
+        withdrawalNotice: config.legal.withdrawalNotice,
+        ...(config.legal.termsUrl ? { termsUrl: config.legal.termsUrl } : {}),
+        ...(config.legal.privacyUrl ? { privacyUrl: config.legal.privacyUrl } : {}),
+        ...(config.legal.contactEmail ? { contactEmail: config.legal.contactEmail } : {}),
+      },
     };
   });

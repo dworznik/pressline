@@ -1,0 +1,8 @@
+{
+  "status": 400,
+  "body": {
+    "code": 400,
+    "result": "Shipping to XX is not available",
+    "error": { "reason": "BadRequest", "message": "Shipping to XX is not available" }
+  }
+}

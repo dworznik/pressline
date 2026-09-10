@@ -57,6 +57,34 @@ export const catalog: MemoryCatalog = {
       },
     ],
   },
+  shippingRates: {
+    DE: [
+      {
+        method: 'STANDARD',
+        name: 'Flat Rate',
+        rate: { amount: 479, currency: 'EUR' },
+        minDeliveryDays: 4,
+        maxDeliveryDays: 7,
+      },
+      {
+        method: 'PRINTFUL_FAST',
+        name: 'Express',
+        rate: { amount: 1240, currency: 'EUR' },
+        minDeliveryDays: 1,
+        maxDeliveryDays: 3,
+      },
+    ],
+    US: [{ method: 'STANDARD', name: 'Flat Rate', rate: { amount: 399, currency: 'EUR' } }],
+    // A country with only non-standard methods: the cheapest wins.
+    CH: [
+      { method: 'PRINTFUL_FAST', name: 'Express', rate: { amount: 1500, currency: 'EUR' } },
+      { method: 'ECONOMY', name: 'Economy', rate: { amount: 890, currency: 'EUR' } },
+    ],
+  },
+  prices: {
+    4017: { currency: 'EUR', byTechnique: { dtg: 1090 } },
+    1349: { currency: 'EUR', byTechnique: { digital: 650 } },
+  },
 };
 
 /** Operator config matching the catalog above. */

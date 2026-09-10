@@ -70,4 +70,32 @@ export const migrations: ReadonlyArray<Migration> = [
        )`,
     ],
   },
+  {
+    version: 5,
+    name: 'quotes',
+    statements: [
+      // A locked Quote (ADR-0010): what the Customer will pay, plus the
+      // Operator's Provider Cost Estimate for margin reporting.
+      `CREATE TABLE quotes (
+         id TEXT PRIMARY KEY,
+         engine TEXT NOT NULL,
+         design_id TEXT NOT NULL,
+         offer_slug TEXT NOT NULL,
+         variant_key TEXT NOT NULL,
+         spec_hash TEXT NOT NULL,
+         country TEXT NOT NULL,
+         state TEXT,
+         currency TEXT NOT NULL,
+         retail INTEGER NOT NULL,
+         shipping INTEGER NOT NULL,
+         shipping_method TEXT NOT NULL,
+         shipping_method_name TEXT NOT NULL,
+         cost_product INTEGER NOT NULL,
+         cost_shipping INTEGER NOT NULL,
+         cost_currency TEXT NOT NULL,
+         created_at INTEGER NOT NULL,
+         expires_at INTEGER NOT NULL
+       )`,
+    ],
+  },
 ];

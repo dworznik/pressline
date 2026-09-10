@@ -10,7 +10,13 @@ import { Schema } from 'effect';
 import { EngineUnavailable } from '../design/design';
 import { EngineStatus } from '../design/engines';
 import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
-import { Quote, QuoteNotFound, QuoteRequest, QuoteUnavailable } from '../quote/quote';
+import {
+  Quote,
+  QuoteInconsistent,
+  QuoteNotFound,
+  QuoteRequest,
+  QuoteUnavailable,
+} from '../quote/quote';
 
 /**
  * The Effect HttpApi: JSON API, operator API, Engine-facing endpoints and
@@ -131,6 +137,7 @@ export const QuotesGroup = HttpApiGroup.make('quotes')
       .setUrlParams(QuoteRequest)
       .addSuccess(Quote)
       .addError(QuoteUnavailable, { status: 422 })
+      .addError(QuoteInconsistent, { status: 503 })
       .addError(DesignNotFound, { status: 404 })
       .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })

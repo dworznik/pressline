@@ -1,0 +1,380 @@
+import { Clock, Effect, Schema } from 'effect';
+import { Db } from '../db/db';
+import { canTransition, Cause, OrderState, TERMINAL } from './state';
+
+/**
+ * The Order ledger (ADR-0009): one state row per Order, an append-only
+ * Transition per state change with its Cause, written together in one batch
+ * (ADR-0008). Reads and writes go through here; nothing else touches the
+ * `orders` tables.
+ */
+export const Recipient = Schema.Struct({
+  name: Schema.String,
+  address1: Schema.String,
+  address2: Schema.optional(Schema.String),
+  city: Schema.String,
+  state: Schema.optional(Schema.String),
+  zip: Schema.optional(Schema.String),
+  country: Schema.String,
+  email: Schema.String,
+  phone: Schema.optional(Schema.String),
+});
+export type Recipient = typeof Recipient.Type;
+
+export const Tracking = Schema.Struct({
+  carrier: Schema.optional(Schema.String),
+  number: Schema.optional(Schema.String),
+  url: Schema.optional(Schema.String),
+});
+export type Tracking = typeof Tracking.Type;
+
+export const Order = Schema.Struct({
+  id: Schema.String,
+  state: OrderState,
+  statusToken: Schema.String,
+  engine: Schema.String,
+  designId: Schema.String,
+  offer: Schema.String,
+  variant: Schema.String,
+  specHash: Schema.String,
+  printfile: Schema.Struct({
+    url: Schema.String,
+    sha256: Schema.String,
+    contentType: Schema.String,
+  }),
+  quoteId: Schema.String,
+  currency: Schema.String,
+  retail: Schema.Int,
+  shipping: Schema.Int,
+  shippingMethod: Schema.Struct({ id: Schema.String, name: Schema.String }),
+  country: Schema.String,
+  providerCostEstimate: Schema.Struct({
+    product: Schema.Int,
+    shipping: Schema.Int,
+    currency: Schema.String,
+  }),
+  psp: Schema.Struct({
+    sessionId: Schema.optional(Schema.String),
+    sessionExpiresAt: Schema.optional(Schema.Int),
+    paymentIntentId: Schema.optional(Schema.String),
+  }),
+  amountTax: Schema.optional(Schema.Int),
+  amountTotal: Schema.optional(Schema.Int),
+  recipient: Schema.optional(Recipient),
+  consentAcceptedAt: Schema.optional(Schema.Int),
+  providerOrderId: Schema.optional(Schema.String),
+  tracking: Schema.optional(Tracking),
+  createdAt: Schema.Int,
+  updatedAt: Schema.Int,
+});
+export type Order = typeof Order.Type;
+
+export const Transition = Schema.Struct({
+  id: Schema.Int,
+  orderId: Schema.String,
+  from: Schema.NullOr(OrderState),
+  to: OrderState,
+  cause: Cause,
+  causeRef: Schema.optional(Schema.String),
+  at: Schema.Int,
+});
+export type Transition = typeof Transition.Type;
+
+export class OrderNotFound extends Schema.TaggedError<OrderNotFound>()('OrderNotFound', {
+  id: Schema.String,
+}) {}
+
+/** The state machine forbids this move; recorded by the caller, never applied. */
+export class TransitionRefused extends Schema.TaggedError<TransitionRefused>()(
+  'TransitionRefused',
+  { orderId: Schema.String, from: OrderState, to: OrderState },
+) {}
+
+type Row = {
+  id: string;
+  state: OrderState;
+  status_token: string;
+  engine: string;
+  design_id: string;
+  offer_slug: string;
+  variant_key: string;
+  spec_hash: string;
+  printfile_url: string;
+  printfile_sha256: string;
+  printfile_content_type: string;
+  quote_id: string;
+  currency: string;
+  retail: number;
+  shipping: number;
+  shipping_method: string;
+  shipping_method_name: string;
+  country: string;
+  cost_product: number;
+  cost_shipping: number;
+  cost_currency: string;
+  psp_session_id: string | null;
+  psp_session_expires_at: number | null;
+  psp_payment_intent_id: string | null;
+  amount_tax: number | null;
+  amount_total: number | null;
+  recipient: string | null;
+  consent_accepted_at: number | null;
+  provider_order_id: string | null;
+  tracking: string | null;
+  created_at: number;
+  updated_at: number;
+};
+
+const RecipientJson = Schema.parseJson(Recipient);
+const TrackingJson = Schema.parseJson(Tracking);
+const opt = <A>(v: A | null): { [k: string]: A } | Record<string, never> =>
+  v === null ? {} : ({} as never);
+
+const fromRow = (r: Row): Effect.Effect<Order> =>
+  Effect.gen(function* () {
+    const recipient = r.recipient
+      ? yield* Schema.decode(RecipientJson)(r.recipient).pipe(Effect.orDie)
+      : undefined;
+    const tracking = r.tracking
+      ? yield* Schema.decode(TrackingJson)(r.tracking).pipe(Effect.orDie)
+      : undefined;
+    void opt;
+    return {
+      id: r.id,
+      state: r.state,
+      statusToken: r.status_token,
+      engine: r.engine,
+      designId: r.design_id,
+      offer: r.offer_slug,
+      variant: r.variant_key,
+      specHash: r.spec_hash,
+      printfile: {
+        url: r.printfile_url,
+        sha256: r.printfile_sha256,
+        contentType: r.printfile_content_type,
+      },
+      quoteId: r.quote_id,
+      currency: r.currency,
+      retail: r.retail,
+      shipping: r.shipping,
+      shippingMethod: { id: r.shipping_method, name: r.shipping_method_name },
+      country: r.country,
+      providerCostEstimate: {
+        product: r.cost_product,
+        shipping: r.cost_shipping,
+        currency: r.cost_currency,
+      },
+      psp: {
+        ...(r.psp_session_id !== null ? { sessionId: r.psp_session_id } : {}),
+        ...(r.psp_session_expires_at !== null
+          ? { sessionExpiresAt: r.psp_session_expires_at }
+          : {}),
+        ...(r.psp_payment_intent_id !== null ? { paymentIntentId: r.psp_payment_intent_id } : {}),
+      },
+      ...(r.amount_tax !== null ? { amountTax: r.amount_tax } : {}),
+      ...(r.amount_total !== null ? { amountTotal: r.amount_total } : {}),
+      ...(recipient ? { recipient } : {}),
+      ...(r.consent_accepted_at !== null ? { consentAcceptedAt: r.consent_accepted_at } : {}),
+      ...(r.provider_order_id !== null ? { providerOrderId: r.provider_order_id } : {}),
+      ...(tracking ? { tracking } : {}),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  });
+
+const SELECT = 'SELECT * FROM orders';
+
+export const findOrder = (id: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const rows = yield* db.all<Row>(`${SELECT} WHERE id = ?`, [id]).pipe(Effect.orDie);
+    return rows[0] ? yield* fromRow(rows[0]) : yield* new OrderNotFound({ id });
+  });
+
+export const findOrderBySession = (sessionId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const rows = yield* db
+      .all<Row>(`${SELECT} WHERE psp_session_id = ?`, [sessionId])
+      .pipe(Effect.orDie);
+    return rows[0] ? yield* fromRow(rows[0]) : undefined;
+  });
+
+export const listOrders = (options: { state?: OrderState; limit?: number } = {}) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const rows = options.state
+      ? yield* db.all<Row>(`${SELECT} WHERE state = ? ORDER BY id DESC LIMIT ?`, [
+          options.state,
+          options.limit ?? 100,
+        ])
+      : yield* db.all<Row>(`${SELECT} ORDER BY id DESC LIMIT ?`, [options.limit ?? 100]);
+    return yield* Effect.forEach(rows, fromRow);
+  }).pipe(Effect.orDie);
+
+export const listTransitions = (orderId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const rows = yield* db.all<{
+      id: number;
+      order_id: string;
+      from_state: OrderState | null;
+      to_state: OrderState;
+      cause: Cause;
+      cause_ref: string | null;
+      at: number;
+    }>('SELECT * FROM order_transitions WHERE order_id = ? ORDER BY id', [orderId]);
+    return rows.map((r): Transition => ({
+      id: r.id,
+      orderId: r.order_id,
+      from: r.from_state,
+      to: r.to_state,
+      cause: r.cause,
+      ...(r.cause_ref !== null ? { causeRef: r.cause_ref } : {}),
+      at: r.at,
+    }));
+  }).pipe(Effect.orDie);
+
+export interface NewOrder {
+  readonly id: string;
+  readonly statusToken: string;
+  readonly engine: string;
+  readonly designId: string;
+  readonly offer: string;
+  readonly variant: string;
+  readonly specHash: string;
+  readonly printfile: { url: string; sha256: string; contentType: string };
+  readonly quoteId: string;
+  readonly currency: string;
+  readonly retail: number;
+  readonly shipping: number;
+  readonly shippingMethod: { id: string; name: string };
+  readonly country: string;
+  readonly providerCostEstimate: { product: number; shipping: number; currency: string };
+  readonly psp: { sessionId: string; sessionExpiresAt: number };
+}
+
+/** Create the Order in `checkout_open` with its first Transition, atomically. */
+export const createOrder = (o: NewOrder, causeRef: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    yield* db.batch([
+      {
+        sql: `INSERT INTO orders (id, state, status_token, engine, design_id, offer_slug, variant_key, spec_hash,
+                printfile_url, printfile_sha256, printfile_content_type, quote_id, currency, retail, shipping,
+                shipping_method, shipping_method_name, country, cost_product, cost_shipping, cost_currency,
+                psp_session_id, psp_session_expires_at, created_at, updated_at)
+              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          o.id,
+          o.statusToken,
+          o.engine,
+          o.designId,
+          o.offer,
+          o.variant,
+          o.specHash,
+          o.printfile.url,
+          o.printfile.sha256,
+          o.printfile.contentType,
+          o.quoteId,
+          o.currency,
+          o.retail,
+          o.shipping,
+          o.shippingMethod.id,
+          o.shippingMethod.name,
+          o.country,
+          o.providerCostEstimate.product,
+          o.providerCostEstimate.shipping,
+          o.providerCostEstimate.currency,
+          o.psp.sessionId,
+          o.psp.sessionExpiresAt,
+          now,
+          now,
+        ],
+      },
+      {
+        sql: `INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, at) VALUES (?, NULL, 'checkout_open', 'storefront', ?, ?)`,
+        params: [o.id, causeRef, now],
+      },
+    ]);
+    return yield* findOrder(o.id);
+  }).pipe(Effect.orDie);
+
+/** Column updates that may accompany a Transition (all optional). */
+export interface OrderPatch {
+  readonly recipient?: Recipient;
+  readonly consentAcceptedAt?: number;
+  readonly paymentIntentId?: string;
+  readonly amountTax?: number;
+  readonly amountTotal?: number;
+  readonly providerOrderId?: string;
+  readonly tracking?: Tracking;
+}
+
+/**
+ * Move an Order to a new state, recording the Transition and any patch in
+ * one batch. Refused (typed) when the state machine forbids the move; the
+ * caller decides whether that is an error or a no-op.
+ */
+export const transition = (
+  orderId: string,
+  to: OrderState,
+  cause: Cause,
+  causeRef: string | undefined,
+  patch: OrderPatch = {},
+) =>
+  Effect.gen(function* () {
+    const order = yield* findOrder(orderId);
+    if (!canTransition(order.state, to)) {
+      return yield* new TransitionRefused({ orderId, from: order.state, to });
+    }
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    const sets: string[] = ['state = ?', 'updated_at = ?'];
+    const params: (string | number)[] = [to, now];
+    if (patch.recipient) {
+      sets.push('recipient = ?');
+      params.push(yield* Schema.encode(RecipientJson)(patch.recipient).pipe(Effect.orDie));
+    }
+    if (patch.consentAcceptedAt !== undefined) {
+      sets.push('consent_accepted_at = ?');
+      params.push(patch.consentAcceptedAt);
+    }
+    if (patch.paymentIntentId !== undefined) {
+      sets.push('psp_payment_intent_id = ?');
+      params.push(patch.paymentIntentId);
+    }
+    if (patch.amountTax !== undefined) {
+      sets.push('amount_tax = ?');
+      params.push(patch.amountTax);
+    }
+    if (patch.amountTotal !== undefined) {
+      sets.push('amount_total = ?');
+      params.push(patch.amountTotal);
+    }
+    if (patch.providerOrderId !== undefined) {
+      sets.push('provider_order_id = ?');
+      params.push(patch.providerOrderId);
+    }
+    if (patch.tracking) {
+      sets.push('tracking = ?');
+      params.push(yield* Schema.encode(TrackingJson)(patch.tracking).pipe(Effect.orDie));
+    }
+    yield* db
+      .batch([
+        // The WHERE on the old state makes a concurrent duplicate a no-op on the row.
+        {
+          sql: `UPDATE orders SET ${sets.join(', ')} WHERE id = ? AND state = ?`,
+          params: [...params, orderId, order.state],
+        },
+        {
+          sql: 'INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, at) VALUES (?, ?, ?, ?, ?, ?)',
+          params: [orderId, order.state, to, cause, causeRef ?? null, now],
+        },
+      ])
+      .pipe(Effect.orDie);
+    return yield* findOrder(orderId);
+  });
+
+export const isTerminal = (state: OrderState) => TERMINAL.has(state);

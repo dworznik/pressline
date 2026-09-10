@@ -80,8 +80,10 @@ export interface ShippingRate {
 /** What the provider charges the Operator for one variant, per technique. */
 export interface VariantPrices {
   readonly currency: string;
-  /** Technique key → price in minor units (the discounted price when the provider offers one). */
+  /** Technique key → base price in minor units (the discounted price when the provider offers one). */
   readonly byTechnique: Readonly<Record<string, number>>;
+  /** `placement/technique` → extra charged for printing there (0 for the placement included in the base price). */
+  readonly placementSurcharge: Readonly<Record<string, number>>;
 }
 
 export interface FulfilmentProviderService {

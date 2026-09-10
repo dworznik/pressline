@@ -43,14 +43,21 @@ describe('GET /api/quote', () => {
       total: 2979,
       country: 'DE',
       shippingMethod: { id: 'STANDARD', name: 'Flat Rate', minDeliveryDays: 4, maxDeliveryDays: 7 },
-      providerCostEstimate: { product: 1090, shipping: 479, currency: 'EUR' },
     });
+    // The Operator's cost is recorded but never shown to the Customer.
+    expect(body).not.toHaveProperty('providerCostEstimate');
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(body.expiresAt - body.createdAt).toBe(30 * 60_000);
 
     const again = await app.json<Quote>(`/api/quotes/${body.id}`);
     expect(again.status).toBe(200);
-    expect(again.body).toMatchObject({ id: body.id, total: 2979, specHash: body.specHash });
+    expect(again.body).toMatchObject({
+      id: body.id,
+      total: 2979,
+      specHash: body.specHash,
+      shippingMethod: { minDeliveryDays: 4, maxDeliveryDays: 7 },
+    });
+    expect(again.body).not.toHaveProperty('providerCostEstimate');
   });
 
   it('applies the configured shipping markup to the Customer line only', async () => {
@@ -61,7 +68,6 @@ describe('GET /api/quote', () => {
     });
     const { body } = await q(app, { country: 'DE' });
     expect(body.shipping).toBe(527); // 479 × 1.1 = 526.9
-    expect(body.providerCostEstimate.shipping).toBe(479);
   });
 
   it('picks the cheapest method when the provider has no STANDARD one', async () => {
@@ -94,6 +100,17 @@ describe('GET /api/quote', () => {
     expect(wrong.body).toMatchObject({ reason: 'not_eligible' });
     const gone = await q(app, { country: 'DE', designId: withdrawn.id });
     expect(gone.body).toMatchObject({ reason: 'not_sellable' });
+  });
+
+  it('503s when the provider quotes in another currency than the instance sells in', async () => {
+    app = await makeTestApp({
+      config: { catalogue: { offers }, currency: 'USD' },
+      catalog,
+      engines,
+    });
+    const { status, body } = await q(app, { country: 'DE' });
+    expect(status).toBe(503);
+    expect(body.message).toMatch(/EUR.*USD/);
   });
 
   it('rejects a malformed country code at the schema boundary', async () => {

@@ -204,7 +204,7 @@
                 bind:value={stateCode}
                 maxlength="3"
                 placeholder="e.g. CA"
-                onchange={() => void fetchQuote()}
+                oninput={() => stateCode.length >= 2 && void fetchQuote()}
               />
             </label>
           {/if}

@@ -82,8 +82,16 @@ export const catalog: MemoryCatalog = {
     ],
   },
   prices: {
-    4017: { currency: 'EUR', byTechnique: { dtg: 1090 } },
-    1349: { currency: 'EUR', byTechnique: { digital: 650 } },
+    4017: {
+      currency: 'EUR',
+      byTechnique: { dtg: 1090 },
+      placementSurcharge: { 'front/dtg': 0, 'back/dtg': 595 },
+    },
+    1349: {
+      currency: 'EUR',
+      byTechnique: { digital: 650 },
+      placementSurcharge: { 'default/digital': 0 },
+    },
   },
 };
 

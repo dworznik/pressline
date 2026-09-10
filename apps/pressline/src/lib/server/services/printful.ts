@@ -12,7 +12,7 @@ import {
   type ShippingRate,
   type VariantPrices,
 } from './fulfilment-provider';
-import { toMinorUnits } from '../quote/money';
+import { DecimalString, toMinorUnits } from '../money';
 
 /**
  * Printful API v2 adapter (ADR-0007). The only place Printful's wire shapes
@@ -64,7 +64,7 @@ const MockupStyleWire = Schema.Struct({
 const ShippingRateWire = Schema.Struct({
   shipping: Schema.String,
   shipping_method_name: Schema.String,
-  rate: Schema.String,
+  rate: DecimalString,
   currency: Schema.String,
   min_delivery_days: Schema.optional(Schema.NullOr(Schema.Number)),
   max_delivery_days: Schema.optional(Schema.NullOr(Schema.Number)),
@@ -72,17 +72,35 @@ const ShippingRateWire = Schema.Struct({
 
 const PricesWire = Schema.Struct({
   currency: Schema.String,
+  product: Schema.optional(
+    Schema.Struct({
+      placements: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            technique_key: Schema.String,
+            price: DecimalString,
+            discounted_price: Schema.optional(Schema.NullOr(DecimalString)),
+          }),
+        ),
+      ),
+    }),
+  ),
   variant: Schema.Struct({
     id: Schema.Number,
     techniques: Schema.Array(
       Schema.Struct({
         technique_key: Schema.String,
-        price: Schema.String,
-        discounted_price: Schema.optional(Schema.NullOr(Schema.String)),
+        price: DecimalString,
+        discounted_price: Schema.optional(Schema.NullOr(DecimalString)),
       }),
     ),
   }),
 });
+
+/** Printful's method names carry a dated estimate ("Flat Rate (Estimated delivery: May 19–24)"); the Quote computes its own days. */
+const cleanMethodName = (name: string) =>
+  name.replace(/\s*\(estimated delivery:[^)]*\)\s*/i, '').trim();
 
 const ErrorWire = Schema.Struct({
   code: Schema.optional(Schema.Number),
@@ -211,15 +229,18 @@ export const makePrintful = (options: PrintfulOptions) =>
           },
           Envelope(Schema.Array(ShippingRateWire)),
         ).pipe(
-          // Printful answers 400 for a destination it cannot ship to; that is "no options", not an outage.
+          // Printful answers 400 for a destination it cannot ship to; that is "no options",
+          // not an outage. Any other 400 (bad variant, malformed body) stays an error.
           Effect.catchIf(
-            (e) => e.status === 400,
+            (e) =>
+              e.status === 400 &&
+              /not (available|possible|supported)|cannot ship|no shipping/i.test(e.message),
             () => Effect.succeed({ data: [] as ReadonlyArray<typeof ShippingRateWire.Type> }),
           ),
           Effect.map(({ data }) =>
             data.map((r): ShippingRate => ({
               method: r.shipping,
-              name: r.shipping_method_name.trim(),
+              name: cleanMethodName(r.shipping_method_name),
               rate: { amount: toMinorUnits(r.rate, r.currency), currency: r.currency },
               ...(r.min_delivery_days != null ? { minDeliveryDays: r.min_delivery_days } : {}),
               ...(r.max_delivery_days != null ? { maxDeliveryDays: r.max_delivery_days } : {}),
@@ -238,6 +259,12 @@ export const makePrintful = (options: PrintfulOptions) =>
               data.variant.techniques.map((t) => [
                 t.technique_key,
                 toMinorUnits(t.discounted_price ?? t.price, data.currency),
+              ]),
+            ),
+            placementSurcharge: Object.fromEntries(
+              (data.product?.placements ?? []).map((p) => [
+                `${p.id}/${p.technique_key}`,
+                toMinorUnits(p.discounted_price ?? p.price, data.currency),
               ]),
             ),
           })),

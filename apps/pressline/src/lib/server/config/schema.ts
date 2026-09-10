@@ -64,6 +64,9 @@ export const CatalogueConfig = Schema.Struct({
 });
 export type CatalogueConfig = typeof CatalogueConfig.Type;
 
+const DEFAULT_WITHDRAWAL_NOTICE =
+  'This item is made to your design. The 14-day right of withdrawal does not apply to personalised goods; defective or damaged items are replaced.';
+
 export const PresslineConfigSchema = Schema.Struct({
   /** Shown on the Storefront and in emails. */
   name: Schema.NonEmptyString,
@@ -77,7 +80,7 @@ export const PresslineConfigSchema = Schema.Struct({
   demo: Schema.optionalWith(Schema.Boolean, { default: () => false }),
   shipping: Schema.optionalWith(
     Schema.Struct({
-      /** Percent added on top of the provider's shipping rate for the Customer's shipping line (ADR-0010). */
+      /** Percent added on top of the provider's shipping rate for the Customer's shipping line. Default 0 = pass-through (ADR-0010). */
       markupPercent: Schema.optionalWith(Schema.Number.pipe(Schema.between(0, 100)), {
         default: () => 0,
       }),
@@ -97,8 +100,7 @@ export const PresslineConfigSchema = Schema.Struct({
     Schema.Struct({
       /** Withdrawal Notice (CONTEXT.md): shown on the Storefront and accepted at the PSP. Review with counsel. */
       withdrawalNotice: Schema.optionalWith(Schema.NonEmptyString, {
-        default: () =>
-          'This item is made to your design. The 14-day right of withdrawal does not apply to personalised goods; defective or damaged items are replaced.',
+        default: () => DEFAULT_WITHDRAWAL_NOTICE,
       }),
       termsUrl: Schema.optional(Schema.String),
       privacyUrl: Schema.optional(Schema.String),
@@ -111,6 +113,15 @@ export const PresslineConfigSchema = Schema.Struct({
           'This item is made to your design. The 14-day right of withdrawal does not apply to personalised goods; defective or damaged items are replaced.',
       }),
     },
+  ),
+  checkout: Schema.optionalWith(
+    Schema.Struct({
+      /** Let Stripe Checkout accept promotion codes (ADR-0015: no discount modelling in Pressline). */
+      allowPromotionCodes: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+      /** Public origin of this instance for PSP return URLs; defaults to the request's origin. */
+      publicUrl: Schema.optional(Schema.String.pipe(Schema.pattern(/^https?:\/\//))),
+    }),
+    { default: () => ({ allowPromotionCodes: false }) },
   ),
   printfile: Schema.optionalWith(
     Schema.Struct({

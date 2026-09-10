@@ -15,7 +15,8 @@
     "@effect/platform": "^0.97.2",
     "@pressline/contract": "workspace:*",
     "better-sqlite3": "^13.0.3",
-    "effect": "^3.22.2"
+    "effect": "^3.22.2",
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^7.0.1",

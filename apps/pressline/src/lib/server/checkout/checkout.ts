@@ -92,6 +92,7 @@ export const startCheckout = (req: CheckoutRequest, origin: string) =>
         shippingMethod: { id: quote.shippingMethod.id, name: quote.shippingMethod.name },
         country: quote.country,
         providerCostEstimate: quote.providerCostEstimate,
+        publicOrigin: base,
       },
       quote.id,
     );

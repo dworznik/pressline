@@ -7,6 +7,7 @@ import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
 import type { ProviderOrder, ProviderShipment } from '$lib/server/services/fulfilment-provider';
+import type { Email } from '$lib/server/services/mailer';
 import type {
   CheckoutSession,
   CheckoutSessionDetails,
@@ -100,7 +101,9 @@ export interface TestApp {
     path: string,
     init?: RequestInit,
   ) => Promise<{ status: number; body: T }>;
-  readonly sentMail: () => Promise<ReadonlyArray<{ to: string; subject: string }>>;
+  readonly sentMail: () => Promise<ReadonlyArray<Email>>;
+  /** Make the in-memory Mailer fail every send. */
+  readonly mailerDown: (down: boolean) => void;
   /** How many calls reached the (in-memory) fulfilment provider. */
   readonly fulfilmentProviderCalls: () => Promise<number>;
   /** How many design/printfile calls reached the (in-memory) Engines. */
@@ -203,6 +206,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
       return { status: res.status, body: (await res.json()) as never };
     },
     sentMail: () => Effect.runPromise(mailer.sent),
+    mailerDown: mailer.setDown,
     fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
     engineCalls: () => Effect.runPromise(designSource.calls),
     bytesServed: (url) => served.get(url) ?? 0,

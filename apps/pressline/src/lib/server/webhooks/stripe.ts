@@ -1,7 +1,9 @@
 import { Effect, Schema } from 'effect';
 import type { Config } from '../config/schema';
 import type { Db } from '../db/db';
+import type { DesignSource } from '../services/design-source';
 import type { FulfilmentProvider } from '../services/fulfilment-provider';
+import type { Mailer } from '../services/mailer';
 import {
   findOrder,
   findOrderBySession,
@@ -12,6 +14,7 @@ import {
 } from '../orders/orders';
 import type { OrderState } from '../orders/state';
 import { submitOrder } from '../orders/submit';
+import { sendOrderEmail } from '../emails/send';
 import { Psp, type CheckoutSessionDetails, type PspWebhookEvent } from '../services/psp';
 import { receive, release, settle, type InboundOutcome } from './inbound';
 
@@ -111,12 +114,19 @@ const applyPaid = (order: Order, session: CheckoutSessionDetails, event: PspWebh
     // failed transiently. Its result never fails the webhook.
     const submitted = yield* submitOrder(order.id, 'stripe_webhook', event.id);
     notes.push(`submit=${submitted.outcome}`);
+    // Confirmation email (ticket #12): once, never blocking; failures are retried by Reconciliation.
+    const mailed = yield* sendOrderEmail(order.id, 'confirmation');
+    notes.push(`email=${mailed}`);
     return result('applied', notes.join(','));
   });
 
 const apply = (
   event: PspWebhookEvent,
-): Effect.Effect<Result, WebhookProcessingFailed, Psp | Db | Config | FulfilmentProvider> =>
+): Effect.Effect<
+  Result,
+  WebhookProcessingFailed,
+  Psp | Db | Config | FulfilmentProvider | DesignSource | Mailer
+> =>
   Effect.gen(function* () {
     if (!event.sessionId || !HANDLED.has(event.type)) return result('ignored', event.type);
     const psp = yield* Psp;

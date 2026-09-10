@@ -1,5 +1,8 @@
 import { Clock, Effect, Schema } from 'effect';
+import type { Config } from '../config/schema';
 import type { Db } from '../db/db';
+import type { DesignSource } from '../services/design-source';
+import type { Mailer } from '../services/mailer';
 import {
   findOrder,
   findOrderByProviderOrder,
@@ -15,6 +18,7 @@ import {
   type ProviderShipment,
   type ProviderWebhookEvent,
 } from '../services/fulfilment-provider';
+import { sendOrderEmail } from '../emails/send';
 import { receive, release, settle, type InboundOutcome } from './inbound';
 
 /**
@@ -58,7 +62,14 @@ export const stateFor = (status: ProviderOrder['status']): OrderState | undefine
 
 const recordTransition = (order: Order, to: OrderState, ref: string, patch: OrderPatch = {}) =>
   transition(order.id, to, 'printful_webhook', ref, patch).pipe(
-    Effect.map(() => result('applied')),
+    Effect.flatMap(() =>
+      // Shipped email (ticket #12): once, never blocking.
+      to === 'shipped'
+        ? sendOrderEmail(order.id, 'shipped').pipe(
+            Effect.map((mailed) => result('applied', `email=${mailed}`)),
+          )
+        : Effect.succeed(result('applied')),
+    ),
     Effect.catchTag('TransitionRefused', (r) =>
       Effect.succeed(
         r.from === to ? result('applied', 'already') : result('refused', `${r.from}->${r.to}`),
@@ -93,7 +104,11 @@ const resolveOrder = (event: ProviderWebhookEvent) =>
 
 const apply = (
   event: ProviderWebhookEvent,
-): Effect.Effect<Result, ProviderWebhookProcessingFailed, FulfilmentProvider | Db> =>
+): Effect.Effect<
+  Result,
+  ProviderWebhookProcessingFailed,
+  FulfilmentProvider | Db | Config | DesignSource | Mailer
+> =>
   Effect.gen(function* () {
     if (!event.providerOrderId) return result('ignored', event.type);
     const order = yield* resolveOrder(event);

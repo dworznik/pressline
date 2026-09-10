@@ -6,6 +6,7 @@ import { layerSqliteMigrated } from './db/layer';
 import { makeWebHandler, type WebHandler } from './http/handler';
 import { layerDesignSourceHttp } from './services/design-source-http';
 import { layerMailerConsole, layerMailerNone } from './services/mailer';
+import { layerResend } from './services/resend';
 import { layerFulfilmentProviderMemory, layerPspMemory } from './services/memory';
 import { layerPrintful } from './services/printful';
 import { layerStripe } from './services/stripe';
@@ -22,6 +23,7 @@ const Env = Schema.Struct({
   PRINTFUL_WEBHOOK_PUBLIC_KEY: Schema.optional(Schema.NonEmptyString),
   STRIPE_SECRET_KEY: Schema.optional(Schema.NonEmptyString),
   STRIPE_WEBHOOK_SECRET: Schema.optional(Schema.NonEmptyString),
+  RESEND_API_KEY: Schema.optional(Schema.NonEmptyString),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),
@@ -62,8 +64,17 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   const PspLive = env.STRIPE_SECRET_KEY
     ? layerStripe({ secretKey: env.STRIPE_SECRET_KEY })
     : layerPspMemory;
-  // No real Mailer until ticket #12; `none` keeps Customers out of the logs.
-  const MailerLive = env.MAILER === 'console' ? layerMailerConsole : layerMailerNone;
+  // Resend when a key and a sender are configured; `console` for local runs; else `none`.
+  const MailerLive =
+    env.RESEND_API_KEY && rawConfig.email?.from
+      ? layerResend({
+          apiKey: env.RESEND_API_KEY,
+          from: rawConfig.email.from,
+          ...(rawConfig.email.replyTo ? { replyTo: rawConfig.email.replyTo } : {}),
+        })
+      : env.MAILER === 'console'
+        ? layerMailerConsole
+        : layerMailerNone;
 
   const services = Layer.mergeAll(
     Config.layer(rawConfig),

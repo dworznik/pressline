@@ -8,6 +8,7 @@ import { layerDesignSourceHttp } from './services/design-source-http';
 import { layerMailerConsole, layerMailerNone } from './services/mailer';
 import { layerFulfilmentProviderMemory, layerPspMemory } from './services/memory';
 import { layerPrintful } from './services/printful';
+import { layerStripe } from './services/stripe';
 
 /**
  * Secrets and platform settings (ADR-0014): validated like any other boundary.
@@ -17,6 +18,7 @@ import { layerPrintful } from './services/printful';
 const Env = Schema.Struct({
   DATABASE_PATH: Schema.optionalWith(Schema.NonEmptyString, { default: () => './pressline.db' }),
   PRINTFUL_TOKEN: Schema.optional(Schema.NonEmptyString),
+  STRIPE_SECRET_KEY: Schema.optional(Schema.NonEmptyString),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),
@@ -48,6 +50,9 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   const FulfilmentProviderLive = env.PRINTFUL_TOKEN
     ? layerPrintful({ token: env.PRINTFUL_TOKEN })
     : layerFulfilmentProviderMemory;
+  const PspLive = env.STRIPE_SECRET_KEY
+    ? layerStripe({ secretKey: env.STRIPE_SECRET_KEY })
+    : layerPspMemory;
   // No real Mailer until ticket #12; `none` keeps Customers out of the logs.
   const MailerLive = env.MAILER === 'console' ? layerMailerConsole : layerMailerNone;
 
@@ -56,7 +61,7 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     layerSqliteMigrated(env.DATABASE_PATH),
     layerDesignSourceHttp(engines),
     FulfilmentProviderLive,
-    layerPspMemory,
+    PspLive,
     MailerLive,
   ).pipe(
     // One outbound HTTP client for the Engine client, Printful and Printfile validation.

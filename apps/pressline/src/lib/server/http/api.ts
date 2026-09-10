@@ -9,6 +9,9 @@ import {
 import { Schema } from 'effect';
 import { EngineUnavailable } from '../design/design';
 import { EngineStatus } from '../design/engines';
+import { CheckoutRequest, CheckoutStarted, CheckoutUnavailable } from '../checkout/checkout';
+import { OrderNotFound } from '../orders/orders';
+import { PublicOrder } from '../orders/public';
 import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
 import {
   Quote,
@@ -150,9 +153,37 @@ export const QuotesGroup = HttpApiGroup.make('quotes')
       .addError(QuoteNotFound, { status: 404 }),
   );
 
+/** The PSP could not be reached or refused the session. */
+export class PspUnavailable extends Schema.TaggedError<PspUnavailable>()('PspUnavailable', {
+  message: Schema.String,
+}) {}
+
+/** Checkout and public order status (tickets #8, #13). */
+export const OrdersGroup = HttpApiGroup.make('orders')
+  .add(
+    HttpApiEndpoint.post('checkout', '/api/checkout')
+      .setPayload(CheckoutRequest)
+      .addSuccess(CheckoutStarted)
+      .addError(CheckoutUnavailable, { status: 422 })
+      .addError(QuoteNotFound, { status: 404 })
+      .addError(DesignNotFound, { status: 404 })
+      .addError(PspUnavailable, { status: 502 })
+      .addError(EngineUnavailable, { status: 503 })
+      .addError(EngineError, { status: 502 })
+      .addError(CatalogueUnavailable, { status: 503 }),
+  )
+  .add(
+    HttpApiEndpoint.get('publicOrder', '/api/orders/:id')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .setUrlParams(Schema.Struct({ t: Schema.String }))
+      .addSuccess(PublicOrder)
+      .addError(OrderNotFound, { status: 404 }),
+  );
+
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)
   .add(CatalogueGroup)
   .add(DesignsGroup)
   .add(PrintfilesGroup)
-  .add(QuotesGroup) {}
+  .add(QuotesGroup)
+  .add(OrdersGroup) {}

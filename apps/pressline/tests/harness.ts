@@ -6,7 +6,11 @@ import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effec
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
-import type { CheckoutSession, CheckoutSessionInput } from '$lib/server/services/psp';
+import type {
+  CheckoutSession,
+  CheckoutSessionDetails,
+  CheckoutSessionInput,
+} from '$lib/server/services/psp';
 import {
   emptyCatalog,
   makeDesignSourceMemory,
@@ -108,6 +112,13 @@ export interface TestApp {
   >;
   /** Make the in-memory PSP fail every call (simulates an outage). */
   readonly pspDown: (down: boolean) => void;
+  /** What a re-fetch of a PSP session returns from now on (e.g. after the Customer paid). */
+  readonly setPspSession: (id: string, patch: Partial<CheckoutSessionDetails>) => void;
+  /** Deliver a webhook the in-memory PSP will accept (signature `memory:valid` unless overridden). */
+  readonly pspWebhook: (
+    body: { id: string; type: string; sessionId?: string; created?: number },
+    signature?: string,
+  ) => Promise<{ status: number; body: { outcome?: string; message?: string } }>;
   /** Move the app's clock forward. */
   readonly advanceClock: (by: Duration.DurationInput) => void;
   /** Run an Effect against the app's services (for probing below the HTTP seam when debugging). */
@@ -178,6 +189,15 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     bytesServed: (url) => served.get(url) ?? 0,
     pspSessions: () => Effect.runPromise(psp.sessions),
     pspDown: psp.setDown,
+    setPspSession: psp.setSession,
+    pspWebhook: async (body, signature = 'memory:valid') => {
+      const res = await fetch('/webhooks/stripe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'stripe-signature': signature },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, body: (await res.json().catch(() => ({}))) as never };
+    },
     advanceClock: advance,
     run: (eff) => runtime.runPromiseExit(eff),
     dbPath,

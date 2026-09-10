@@ -4,20 +4,35 @@
   let { data }: { data: PageData } = $props();
   const order = $derived(data.order);
   // Stripe redirects here as soon as payment succeeds; the webhook that marks
-  // the Order paid may land a moment later, so both states read as success.
-  const paid = $derived(order.state !== 'checkout_open' && order.state !== 'expired');
+  // the Order paid may land a moment later, so "still confirming" is normal.
+  const tone = $derived(
+    order.state === 'checkout_open'
+      ? 'confirming'
+      : order.state === 'expired'
+        ? 'expired'
+        : order.state === 'cancelled' || order.state === 'refunded'
+          ? 'cancelled'
+          : 'confirmed',
+  );
 </script>
 
 <svelte:head>
   <title>Thank you · Order {order.id.slice(0, 8)}</title>
 </svelte:head>
 
-<main class="thanks" data-state={order.state}>
-  <h1>Thank you!</h1>
-  {#if paid}
+<main class="thanks" data-tone={tone}>
+  {#if tone === 'confirmed'}
+    <h1>Thank you!</h1>
     <p>Your order is confirmed. We will email you when it ships.</p>
-  {:else}
+  {:else if tone === 'confirming'}
+    <h1>Thank you!</h1>
     <p>We are confirming your payment. You will get an email with your order details shortly.</p>
+  {:else if tone === 'expired'}
+    <h1>This checkout has expired</h1>
+    <p>No payment was taken. Please start again from your design.</p>
+  {:else}
+    <h1>This order was cancelled</h1>
+    <p>If you were charged, the refund will arrive on the same payment method.</p>
   {/if}
   <p class="ref">Order reference: <code>{order.id}</code></p>
   <!-- The order-status page (ticket #13) is linked from here and from the emails. -->

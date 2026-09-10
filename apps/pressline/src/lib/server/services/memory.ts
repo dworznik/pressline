@@ -21,7 +21,14 @@ import {
   type VariantPrices,
 } from './fulfilment-provider';
 import { Mailer, type Email } from './mailer';
-import { Psp, PspError, type CheckoutSession, type CheckoutSessionInput } from './psp';
+import {
+  Psp,
+  PspError,
+  WebhookRejected,
+  type CheckoutSession,
+  type CheckoutSessionDetails,
+  type CheckoutSessionInput,
+} from './psp';
 
 /**
  * In-memory implementations of every external service. The test harness
@@ -171,31 +178,88 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
 export const layerDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) =>
   Layer.unwrapEffect(Effect.map(makeDesignSourceMemory(options), (m) => m.layer));
 
-/** Records every session request so tests can assert what the PSP was asked to do. */
-export const makePspMemory = Effect.map(
-  Ref.make<ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>>([]),
-  (ref) => {
-    let down = false;
-    return {
-      setDown: (d: boolean) => void (down = d),
-      layer: Layer.succeed(Psp, {
-        health: () => Effect.void,
-        createCheckoutSession: (input) =>
-          down
-            ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
-            : Ref.modify(ref, (all) => {
-                const session: CheckoutSession = {
-                  id: `cs_test_${all.length + 1}`,
-                  url: `https://checkout.stripe.test/c/pay/cs_test_${all.length + 1}`,
-                  expiresAt: input.expiresAt,
-                };
-                return [session, [...all, { input, session }]];
-              }),
-      }),
-      sessions: Ref.get(ref),
-    };
-  },
-);
+/** The in-memory PSP's idea of a webhook body; the signature header must be `memory:valid`. */
+export interface MemoryWebhookBody {
+  readonly id: string;
+  readonly type: string;
+  readonly created?: number;
+  readonly sessionId?: string;
+}
+
+/**
+ * Records every session request so tests can assert what the PSP was asked
+ * to do, lets a test "complete" a session with the details a re-fetch would
+ * return, and verifies webhooks with a fixed fake signature.
+ */
+export const makePspMemory = Effect.gen(function* () {
+  const ref = yield* Ref.make<
+    ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
+  >([]);
+  const details = new Map<string, CheckoutSessionDetails>();
+  let down = false;
+  const layer = Layer.succeed(Psp, {
+    health: () => Effect.void,
+    createCheckoutSession: (input) =>
+      down
+        ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+        : Ref.modify(ref, (all) => {
+            const session: CheckoutSession = {
+              id: `cs_test_${all.length + 1}`,
+              url: `https://checkout.stripe.test/c/pay/cs_test_${all.length + 1}`,
+              expiresAt: input.expiresAt,
+            };
+            details.set(session.id, {
+              id: session.id,
+              status: 'open',
+              paymentStatus: 'unpaid',
+              orderId: input.orderId,
+              currency: input.currency,
+              consentAccepted: false,
+              customer: {},
+            });
+            return [session, [...all, { input, session }]];
+          }),
+    getCheckoutSession: (id) => {
+      if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
+      const d = details.get(id);
+      return d
+        ? Effect.succeed(d)
+        : Effect.fail(
+            new PspError({
+              message: `No such checkout session: ${id}`,
+              retryable: false,
+              status: 404,
+            }),
+          );
+    },
+    verifyWebhook: (rawBody, signature) => {
+      if (signature !== 'memory:valid') {
+        return Effect.fail(new WebhookRejected({ message: 'bad signature' }));
+      }
+      try {
+        const body = JSON.parse(rawBody) as MemoryWebhookBody;
+        return Effect.succeed({
+          id: body.id,
+          type: body.type,
+          created: body.created ?? Math.floor(Date.now() / 1000),
+          ...(body.sessionId ? { sessionId: body.sessionId } : {}),
+        });
+      } catch {
+        return Effect.fail(new WebhookRejected({ message: 'not JSON' }));
+      }
+    },
+  });
+  return {
+    layer,
+    sessions: Ref.get(ref),
+    setDown: (d: boolean) => void (down = d),
+    /** What a later re-fetch of this session returns (e.g. after the Customer paid). */
+    setSession: (id: string, patch: Partial<CheckoutSessionDetails>) => {
+      const current = details.get(id);
+      if (current) details.set(id, { ...current, ...patch });
+    },
+  };
+});
 
 export const layerPspMemory = Layer.unwrapEffect(Effect.map(makePspMemory, (m) => m.layer));
 

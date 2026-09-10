@@ -19,6 +19,7 @@ const Env = Schema.Struct({
   DATABASE_PATH: Schema.optionalWith(Schema.NonEmptyString, { default: () => './pressline.db' }),
   PRINTFUL_TOKEN: Schema.optional(Schema.NonEmptyString),
   STRIPE_SECRET_KEY: Schema.optional(Schema.NonEmptyString),
+  STRIPE_WEBHOOK_SECRET: Schema.optional(Schema.NonEmptyString),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),

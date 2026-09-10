@@ -1,5 +1,6 @@
 import type { DesignResponse } from '@pressline/contract';
 import { afterEach, describe, expect, it } from 'vitest';
+import { listOrders, listTransitions } from '$lib/server/orders/orders';
 import type { PublicOrder } from '$lib/server/orders/public';
 import type { Quote } from '$lib/server/quote/quote';
 import { catalog, offers } from './fixtures/catalogue';
@@ -98,6 +99,11 @@ describe('POST /api/checkout', () => {
       shipping: 479,
     });
     expect(order.body).not.toHaveProperty('recipient');
+
+    const transitions = await app.run(listTransitions(body.orderId));
+    expect(
+      transitions._tag === 'Success' && transitions.value.map((t) => [t.from, t.to, t.cause]),
+    ).toEqual([[null, 'checkout_open', 'storefront']]);
   });
 
   it('refuses checkout without a validated Printfile (ADR-0004)', async () => {
@@ -128,12 +134,17 @@ describe('POST /api/checkout', () => {
     expect((await app.fetch(`/api/orders/${body.orderId}?t=wrong`)).status).toBe(404);
   });
 
-  it('502s when the PSP is down, leaving no Order behind', async () => {
+  it('502s when the PSP is down and expires the Order it had opened', async () => {
     app = await boot();
     const { body: q } = await quote(app);
     await ensure(app);
     app.pspDown(true);
     const { status } = await checkout(app, q.id);
     expect(status).toBe(502);
+    expect(await app.pspSessions()).toHaveLength(0);
+    const orders = await app.run(listOrders());
+    expect(
+      orders._tag === 'Success' && orders.value.map((o) => [o.state, o.psp.sessionId]),
+    ).toEqual([['expired', undefined]]);
   });
 });

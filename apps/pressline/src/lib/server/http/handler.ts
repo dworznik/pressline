@@ -14,6 +14,7 @@ import { HealthLive } from './health';
 import { PrintfilesLive } from './printfiles';
 import { OrdersLive } from './orders';
 import { QuotesLive } from './quotes';
+import { WebhooksLive } from './webhooks';
 
 /** Everything the HTTP layer needs from the outside world. */
 export type Services =
@@ -35,6 +36,7 @@ export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) =>
           PrintfilesLive,
           QuotesLive,
           OrdersLive,
+          WebhooksLive,
         ]),
         Layer.provide(EnginesLive),
       ),

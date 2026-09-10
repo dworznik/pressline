@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer } from 'effect';
@@ -32,8 +33,14 @@ const stubFetch: typeof fetch = async (input, init) => {
       { status: forceStatus },
     );
   }
-  if (new URL(req.url).pathname === '/v1/checkout/sessions') {
+  const path = new URL(req.url).pathname;
+  if (path === '/v1/checkout/sessions') {
     return new Response(fixture('checkout-session.json'), {
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (path.startsWith('/v1/checkout/sessions/cs_test_')) {
+    return new Response(fixture('checkout-session.completed.json'), {
       headers: { 'content-type': 'application/json' },
     });
   }
@@ -43,7 +50,8 @@ const stubFetch: typeof fetch = async (input, init) => {
   );
 };
 
-const layer = layerStripe({ secretKey: 'sk_test_stub' }).pipe(
+const WEBHOOK_SECRET = 'whsec_test_secret';
+const layer = layerStripe({ secretKey: 'sk_test_stub', webhookSecret: WEBHOOK_SECRET }).pipe(
   Layer.provide(Layer.succeed(FetchHttpClient.Fetch, stubFetch)),
 );
 const create = Effect.flatMap(Psp, (p) =>
@@ -104,6 +112,70 @@ describe('Stripe Checkout adapter', () => {
       success_url: 'https://shop.test/orders/0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/thank-you?t=tok',
     });
     expect(b).not.toHaveProperty('customer');
+  });
+
+  it('re-fetches a completed session into PSP-neutral details (recipient, consent, payment intent, tax)', async () => {
+    const details = await Effect.runPromise(
+      Effect.flatMap(Psp, (p) =>
+        p.getCheckoutSession('cs_test_a11YYufWQzNY63zpQ6QSNRQhkUpVph4WRmzW0zWJO2znZKdVujZ0N0S22u'),
+      ).pipe(Effect.provide(layer)),
+    );
+    expect(details).toMatchObject({
+      status: 'complete',
+      paymentStatus: 'paid',
+      orderId: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+      paymentIntentId: 'pi_3Test123',
+      currency: 'EUR',
+      amountTotal: 3479,
+      amountTax: 500,
+      consentAccepted: true,
+      customer: { email: 'anna@example.com', name: 'Anna Example', phone: '+4915112345678' },
+      shipping: {
+        name: 'Anna Example',
+        address1: 'Torstraße 1',
+        address2: 'Hinterhaus',
+        city: 'Berlin',
+        zip: '10119',
+        country: 'DE',
+      },
+    });
+  });
+
+  describe('webhook verification', () => {
+    const payload = JSON.stringify({
+      id: 'evt_test_1',
+      object: 'event',
+      type: 'checkout.session.completed',
+      created: 1789080000,
+      data: { object: { object: 'checkout.session', id: 'cs_test_1' } },
+    });
+    const sign = (secret: string, ts = Math.floor(Date.now() / 1000)) =>
+      `t=${ts},v1=${createHmac('sha256', secret).update(`${ts}.${payload}`).digest('hex')}`;
+    const verify = (sig: string | undefined) =>
+      Effect.runPromiseExit(
+        Effect.flatMap(Psp, (p) => p.verifyWebhook(payload, sig)).pipe(Effect.provide(layer)),
+      );
+
+    it('accepts a correctly signed delivery and reduces it to id, type, created and session id', async () => {
+      const exit = await verify(sign(WEBHOOK_SECRET));
+      expect(exit._tag).toBe('Success');
+      if (exit._tag === 'Success') {
+        expect(exit.value).toEqual({
+          id: 'evt_test_1',
+          type: 'checkout.session.completed',
+          created: 1789080000,
+          sessionId: 'cs_test_1',
+        });
+      }
+    });
+
+    it('rejects a wrong secret, a stale timestamp and a missing header', async () => {
+      expect((await verify(sign('whsec_other')))._tag).toBe('Failure');
+      expect((await verify(sign(WEBHOOK_SECRET, Math.floor(Date.now() / 1000) - 3600)))._tag).toBe(
+        'Failure',
+      );
+      expect((await verify(undefined))._tag).toBe('Failure');
+    });
   });
 
   it('maps Stripe errors: 4xx non-retryable, 429/5xx retryable', async () => {

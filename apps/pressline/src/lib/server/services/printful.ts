@@ -11,6 +11,9 @@ import {
   type PlacementPrintArea,
   type ProviderOrder,
   type ProviderOrderStatus,
+  type ProviderShipment,
+  type ProviderWebhookEvent,
+  ProviderWebhookRejected,
   type ShippingRate,
   type VariantPrices,
 } from './fulfilment-provider';
@@ -26,7 +29,86 @@ export interface PrintfulOptions {
   readonly baseUrl?: string;
   /** Bound on one request including body decoding; a stall is a retryable error. */
   readonly timeout?: Duration.DurationInput;
+  /** Hex secret returned when the webhook configuration was created; required to accept webhooks. */
+  readonly webhookSecret?: string;
+  /** Public key of that configuration; when set, deliveries for another configuration are rejected. */
+  readonly webhookPublicKey?: string;
 }
+
+const WebhookWire = Schema.Struct({
+  type: Schema.String,
+  occurred_at: Schema.String,
+  retries: Schema.optional(Schema.Number),
+  store_id: Schema.optional(Schema.Number),
+  data: Schema.optionalWith(
+    Schema.Struct({
+      order: Schema.optional(
+        Schema.Struct({
+          id: Schema.Number,
+          external_id: Schema.optional(Schema.NullOr(Schema.String)),
+          status: Schema.optional(Schema.String),
+        }),
+      ),
+      shipment: Schema.optional(
+        Schema.Struct({ id: Schema.Number, status: Schema.optional(Schema.String) }),
+      ),
+    }),
+    { default: () => ({}) },
+  ),
+});
+
+const ShipmentWire = Schema.Struct({
+  id: Schema.Number,
+  carrier: Schema.optional(Schema.NullOr(Schema.String)),
+  service: Schema.optional(Schema.NullOr(Schema.String)),
+  shipment_status: Schema.String,
+  shipped_at: Schema.optional(Schema.NullOr(Schema.String)),
+  tracking_number: Schema.optional(Schema.NullOr(Schema.String)),
+  tracking_url: Schema.optional(Schema.NullOr(Schema.String)),
+});
+
+const SHIPMENT_STATUSES: ReadonlySet<string> = new Set([
+  'pending',
+  'onhold',
+  'canceled',
+  'packaged',
+  'shipped',
+  'returned',
+  'outstock',
+]);
+
+const hexToBytes = (hex: string) =>
+  Uint8Array.from(hex.match(/.{1,2}/g) ?? [], (b) => parseInt(b, 16));
+const bytesToHex = (bytes: ArrayBuffer) =>
+  Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, '0')).join('');
+const timingSafeEqual = (a: string, b: string) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+};
+
+/** HMAC-SHA256 over the raw body with the hex-decoded secret, hex digest in `x-pf-webhook-signature`. */
+const hmacHex = (secretHex: string, body: string) =>
+  Effect.promise(async () => {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      hexToBytes(secretHex),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign'],
+    );
+    return bytesToHex(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body)));
+  });
+
+/** Printful sends no event id; derive a stable one so retries of the same event are duplicates. */
+const eventIdOf = (e: typeof WebhookWire.Type) =>
+  Effect.promise(async () => {
+    const material = `${e.type}|${e.occurred_at}|${e.data.order?.id ?? ''}|${e.data.shipment?.id ?? ''}`;
+    return bytesToHex(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material)),
+    ).slice(0, 32);
+  });
 
 export const DEFAULT_TIMEOUT: Duration.DurationInput = '15 seconds';
 
@@ -160,8 +242,7 @@ const toProviderOrder = (o: typeof OrderWire.Type): ProviderOrder => {
   return {
     id: String(o.id),
     ...(o.external_id ? { externalId: o.external_id } : {}),
-    // An unknown future status is treated as "in review": neither final nor actionable.
-    status: (ORDER_STATUSES.has(o.status) ? o.status : 'inreview') as ProviderOrderStatus,
+    status: (ORDER_STATUSES.has(o.status) ? o.status : 'unknown') as ProviderOrderStatus,
     recipient: {
       countryCode: o.recipient.country_code,
       ...(o.recipient.state_code ? { stateCode: o.recipient.state_code } : {}),
@@ -301,6 +382,64 @@ export const makePrintful = (options: PrintfulOptions) =>
     const service: FulfilmentProviderService = {
       health: () => get('/v2/catalog-products?limit=1', Schema.Unknown).pipe(Effect.asVoid),
 
+      verifyWebhook: (rawBody, headers) =>
+        Effect.gen(function* () {
+          if (!options.webhookSecret) {
+            return yield* new ProviderWebhookRejected({
+              message: 'PRINTFUL_WEBHOOK_SECRET is not configured',
+            });
+          }
+          if (!headers.signature)
+            return yield* new ProviderWebhookRejected({
+              message: 'missing x-pf-webhook-signature',
+            });
+          if (options.webhookPublicKey && headers.publicKey !== options.webhookPublicKey) {
+            return yield* new ProviderWebhookRejected({
+              message: 'delivery is for another webhook configuration',
+            });
+          }
+          const expected = yield* hmacHex(options.webhookSecret, rawBody);
+          if (!timingSafeEqual(expected, headers.signature.toLowerCase())) {
+            return yield* new ProviderWebhookRejected({ message: 'signature mismatch' });
+          }
+          const parsed = yield* Schema.decodeUnknown(Schema.parseJson(WebhookWire))(rawBody).pipe(
+            Effect.mapError(
+              (e) => new ProviderWebhookRejected({ message: `unreadable event: ${e.message}` }),
+            ),
+          );
+          const occurredAt = Math.floor(Date.parse(parsed.occurred_at) / 1000);
+          return {
+            id: yield* eventIdOf(parsed),
+            type: parsed.type,
+            occurredAt: Number.isFinite(occurredAt) ? occurredAt : 0,
+            ...(parsed.data.order ? { providerOrderId: String(parsed.data.order.id) } : {}),
+            ...(parsed.data.order?.external_id
+              ? { orderExternalId: parsed.data.order.external_id }
+              : {}),
+            ...(parsed.data.shipment ? { shipmentId: String(parsed.data.shipment.id) } : {}),
+          } satisfies ProviderWebhookEvent;
+        }),
+
+      listShipments: (providerOrderId) =>
+        get(
+          `/v2/orders/${encodeURIComponent(providerOrderId)}/shipments?limit=100`,
+          Envelope(Schema.Array(ShipmentWire)),
+        ).pipe(
+          Effect.map(({ data }) =>
+            data.map((sh): ProviderShipment => ({
+              id: String(sh.id),
+              status: (SHIPMENT_STATUSES.has(sh.shipment_status)
+                ? sh.shipment_status
+                : 'pending') as ProviderShipment['status'],
+              ...(sh.carrier ? { carrier: sh.carrier } : {}),
+              ...(sh.service ? { service: sh.service } : {}),
+              ...(sh.tracking_number ? { trackingNumber: sh.tracking_number } : {}),
+              ...(sh.tracking_url ? { trackingUrl: sh.tracking_url } : {}),
+              ...(sh.shipped_at ? { shippedAt: sh.shipped_at } : {}),
+            })),
+          ),
+        ),
+
       findOrderByExternalId: (externalId) =>
         get(`/v2/orders/@${encodeURIComponent(externalId)}`, Envelope(OrderWire)).pipe(
           Effect.map(({ data }) => toProviderOrder(data)),
@@ -355,6 +494,16 @@ export const makePrintful = (options: PrintfulOptions) =>
       getOrder: (id) =>
         get(`/v2/orders/${encodeURIComponent(id)}`, Envelope(OrderWire)).pipe(
           Effect.map(({ data }) => toProviderOrder(data)),
+        ),
+
+      cancelOrder: (id) =>
+        HttpClientRequest.del(`/v2/orders/${encodeURIComponent(id)}`).pipe(
+          client.execute,
+          Effect.flatMap((res) =>
+            res.status >= 200 && res.status < 300 ? Effect.void : failStatus(res),
+          ),
+          Effect.mapError(toFulfilmentProviderError),
+          Effect.scoped,
         ),
 
       getShippingRates: (req) =>

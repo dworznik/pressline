@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "order_id": 123,
+      "order_external_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      "carrier": "DHL",
+      "service": "DHL Paket",
+      "shipment_status": "shipped",
+      "shipped_at": "2026-09-12T09:15:00Z",
+      "delivery_status": "in_transit",
+      "delivered_at": null,
+      "departure_address": { "country_name": "Latvia", "country_code": "LV", "state_code": null },
+      "is_reshipment": false,
+      "tracking_number": "00340434161234567890",
+      "tracking_url": "https://www.dhl.com/de-en/home/tracking/tracking-parcel.html?tracking-id=00340434161234567890",
+      "tracking_events": [],
+      "estimated_delivery": {
+        "from_date": "2026-09-15",
+        "to_date": "2026-09-17",
+        "calculated_at": "2026-09-12T09:15:00Z"
+      },
+      "shipment_items": [
+        {
+          "id": 10,
+          "order_item_id": 1,
+          "order_item_external_id": null,
+          "order_item_name": "Unisex Staple T-Shirt",
+          "quantity": 1
+        }
+      ]
+    }
+  ],
+  "paging": { "total": 1, "offset": 0, "limit": 100 }
+}

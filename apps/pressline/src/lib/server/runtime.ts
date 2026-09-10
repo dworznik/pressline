@@ -18,6 +18,8 @@ import { layerStripe } from './services/stripe';
 const Env = Schema.Struct({
   DATABASE_PATH: Schema.optionalWith(Schema.NonEmptyString, { default: () => './pressline.db' }),
   PRINTFUL_TOKEN: Schema.optional(Schema.NonEmptyString),
+  PRINTFUL_WEBHOOK_SECRET: Schema.optional(Schema.NonEmptyString),
+  PRINTFUL_WEBHOOK_PUBLIC_KEY: Schema.optional(Schema.NonEmptyString),
   STRIPE_SECRET_KEY: Schema.optional(Schema.NonEmptyString),
   STRIPE_WEBHOOK_SECRET: Schema.optional(Schema.NonEmptyString),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
@@ -49,7 +51,13 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   });
 
   const FulfilmentProviderLive = env.PRINTFUL_TOKEN
-    ? layerPrintful({ token: env.PRINTFUL_TOKEN })
+    ? layerPrintful({
+        token: env.PRINTFUL_TOKEN,
+        ...(env.PRINTFUL_WEBHOOK_SECRET ? { webhookSecret: env.PRINTFUL_WEBHOOK_SECRET } : {}),
+        ...(env.PRINTFUL_WEBHOOK_PUBLIC_KEY
+          ? { webhookPublicKey: env.PRINTFUL_WEBHOOK_PUBLIC_KEY }
+          : {}),
+      })
     : layerFulfilmentProviderMemory;
   const PspLive = env.STRIPE_SECRET_KEY
     ? layerStripe({ secretKey: env.STRIPE_SECRET_KEY })

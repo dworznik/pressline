@@ -149,6 +149,14 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
     expect(app.providerOrders()[0]!.status).toBe('draft'); // never confirmed
   });
 
+  it('a variant mismatch between draft and Order blocks confirmation → submit_failed, with the reason on the Transition', async () => {
+    app = await boot({ draftVariantOverride: 4018 });
+    const { orderId, token } = await payFor(app);
+    expect(await stateOf(app, orderId, token)).toBe('submit_failed');
+    const t = await app.run(listTransitions(orderId));
+    expect(t._tag === 'Success' && t.value.at(-1)?.note).toMatch(/variant 4018, expected 4017/);
+  });
+
   it('a rejected placement (bad file) → submit_failed', async () => {
     app = await boot({ placementFailure: 'front: file is not printable' });
     const { orderId, token } = await payFor(app);

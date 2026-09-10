@@ -96,7 +96,9 @@ export type ProviderOrderStatus =
   | 'onhold'
   | 'inprocess'
   | 'partial'
-  | 'fulfilled';
+  | 'fulfilled'
+  /** A status this adapter does not recognise; never acted on. */
+  | 'unknown';
 
 export interface ProviderOrder {
   readonly id: string;
@@ -149,8 +151,45 @@ export interface ProviderOrderDraft {
   readonly currency: string;
 }
 
+export interface ProviderShipment {
+  readonly id: string;
+  readonly status:
+    'pending' | 'onhold' | 'canceled' | 'packaged' | 'shipped' | 'returned' | 'outstock';
+  readonly carrier?: string;
+  readonly service?: string;
+  readonly trackingNumber?: string;
+  readonly trackingUrl?: string;
+  readonly shippedAt?: string;
+}
+
+/** A verified provider webhook, reduced to what the handler needs; the payload is never the truth (ADR-0007). */
+export interface ProviderWebhookEvent {
+  /** Stable id derived from the delivery (Printful sends none), for the Inbound Event table. */
+  readonly id: string;
+  readonly type: string;
+  /** Unix seconds. */
+  readonly occurredAt: number;
+  readonly providerOrderId?: string;
+  /** Pressline Order ID as the provider echoes it. */
+  readonly orderExternalId?: string;
+  readonly shipmentId?: string;
+}
+
+export class ProviderWebhookRejected extends Schema.TaggedError<ProviderWebhookRejected>()(
+  'ProviderWebhookRejected',
+  { message: Schema.String },
+) {}
+
 export interface FulfilmentProviderService {
   readonly health: () => Effect.Effect<void, FulfilmentProviderError>;
+  /** Verify a raw webhook body against the provider's signature headers. */
+  readonly verifyWebhook: (
+    rawBody: string,
+    headers: { readonly signature?: string; readonly publicKey?: string },
+  ) => Effect.Effect<ProviderWebhookEvent, ProviderWebhookRejected>;
+  readonly listShipments: (
+    providerOrderId: string,
+  ) => Effect.Effect<ReadonlyArray<ProviderShipment>, FulfilmentProviderError>;
   /** The provider order created for a Pressline Order ID, if any (the idempotency lookup, ADR-0009). */
   readonly findOrderByExternalId: (
     externalId: string,
@@ -159,6 +198,8 @@ export interface FulfilmentProviderService {
     draft: ProviderOrderDraft,
   ) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
   readonly confirmOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
+  /** Cancel/delete a provider order. Printful v2 deletes drafts, failed and cancelled orders; confirmed orders need support. */
+  readonly cancelOrder: (id: string) => Effect.Effect<void, FulfilmentProviderError>;
   readonly getOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
   /** Live shipping options for a destination. Empty when the provider cannot ship there. */
   readonly getShippingRates: (

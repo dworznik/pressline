@@ -18,6 +18,9 @@ import {
   type PlacementPrintArea,
   type ProviderOrder,
   type ProviderOrderDraft,
+  type ProviderShipment,
+  type ProviderWebhookEvent,
+  ProviderWebhookRejected,
   type ShippingRate,
   type ShippingRateRequest,
   type VariantPrices,
@@ -289,6 +292,8 @@ export interface MemoryCatalog {
     readonly confirmRetryableFailures?: number;
     /** Draft comes back with this country instead of the recipient's (simulates a mismatch). */
     readonly draftCountryOverride?: string;
+    /** Draft comes back holding this variant instead of the requested one. */
+    readonly draftVariantOverride?: number;
     /** Draft comes back with a failed placement explanation. */
     readonly placementFailure?: string;
   };
@@ -310,6 +315,7 @@ const notFound = (what: string, id: number) =>
 export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatalog) =>
   Effect.map(Ref.make(0), (calls) => {
     const providerOrders = new Map<string, ProviderOrder>();
+    const shipments = new Map<string, ReadonlyArray<ProviderShipment>>();
     let createFailuresLeft = catalog.orders?.createRetryableFailures ?? 0;
     let confirmFailuresLeft = catalog.orders?.confirmRetryableFailures ?? 0;
     const counted = <A>(what: string, id: number, item: A | undefined) =>
@@ -333,6 +339,39 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
           ),
         getPlacementPrintAreas: (productId) =>
           counted('catalog product', productId, catalog.printAreas[productId]),
+        verifyWebhook: (rawBody, headers) => {
+          if (headers.signature !== 'memory:valid') {
+            return Effect.fail(new ProviderWebhookRejected({ message: 'bad signature' }));
+          }
+          try {
+            const b = JSON.parse(rawBody) as {
+              type: string;
+              occurred_at?: string;
+              data?: {
+                order?: { id: number | string; external_id?: string };
+                shipment?: { id: number | string };
+              };
+            };
+            const occurredAt = b.occurred_at
+              ? Math.floor(Date.parse(b.occurred_at) / 1000)
+              : Math.floor(Date.now() / 1000);
+            const event: ProviderWebhookEvent = {
+              id: `${b.type}|${b.occurred_at ?? ''}|${b.data?.order?.id ?? ''}|${b.data?.shipment?.id ?? ''}`,
+              type: b.type,
+              occurredAt,
+              ...(b.data?.order ? { providerOrderId: String(b.data.order.id) } : {}),
+              ...(b.data?.order?.external_id ? { orderExternalId: b.data.order.external_id } : {}),
+              ...(b.data?.shipment ? { shipmentId: String(b.data.shipment.id) } : {}),
+            };
+            return Effect.succeed(event);
+          } catch {
+            return Effect.fail(new ProviderWebhookRejected({ message: 'not JSON' }));
+          }
+        },
+        listShipments: (providerOrderId) =>
+          Ref.update(calls, (n) => n + 1).pipe(
+            Effect.map(() => shipments.get(providerOrderId) ?? []),
+          ),
         findOrderByExternalId: (externalId) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.map(() => [...providerOrders.values()].find((o) => o.externalId === externalId)),
@@ -371,7 +410,7 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
                 },
                 items: [
                   {
-                    catalogVariantId: d.item.catalogVariantId,
+                    catalogVariantId: cfg.draftVariantOverride ?? d.item.catalogVariantId,
                     quantity: 1,
                     ...(cfg.placementFailure ? { failedPlacement: cfg.placementFailure } : {}),
                   },
@@ -413,6 +452,15 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
           const o = providerOrders.get(id);
           return counted('provider order', Number(id), o);
         },
+        cancelOrder: (id) =>
+          Ref.update(calls, (n) => n + 1).pipe(
+            Effect.flatMap(() => {
+              const o = providerOrders.get(id);
+              if (!o) return notFound('provider order', Number(id));
+              providerOrders.set(id, { ...o, status: 'canceled' });
+              return Effect.void;
+            }),
+          ),
         getShippingRates: (req: ShippingRateRequest) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.map(() => catalog.shippingRates?.[req.countryCode] ?? []),
@@ -427,6 +475,10 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
       setProviderOrderStatus: (id: string, status: ProviderOrder['status']) => {
         const o = providerOrders.get(id);
         if (o) providerOrders.set(id, { ...o, status });
+      },
+      /** What the provider reports as shipments for one of its orders. */
+      setProviderShipments: (id: string, list: ReadonlyArray<ProviderShipment>) => {
+        shipments.set(id, list);
       },
     };
   });

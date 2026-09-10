@@ -62,6 +62,43 @@
   let quote = $state<QuoteState>({ kind: 'idle' });
   let quoteAttempt = 0;
   const needsState = $derived(STATE_REQUIRED.has(country));
+  // Checkout (ticket #8): POST the Quote, then leave for the PSP's hosted page.
+  let checkout = $state<
+    { kind: 'idle' } | { kind: 'starting' } | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+  const startCheckout = async () => {
+    if (quote.kind !== 'ready') return;
+    checkout = { kind: 'starting' };
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ quoteId: quote.quote.id }),
+      });
+      const body: unknown = await res.json().catch(() => undefined);
+      if (
+        res.ok &&
+        typeof body === 'object' &&
+        body !== null &&
+        typeof (body as { url?: unknown }).url === 'string'
+      ) {
+        window.location.assign((body as { url: string }).url);
+        return;
+      }
+      checkout = {
+        kind: 'error',
+        message: hasMessage(body)
+          ? body.message
+          : 'We could not start the payment. Please try again.',
+      };
+      if (res.status === 422 && hasMessage(body) && /expired/i.test(body.message))
+        void fetchQuote();
+    } catch {
+      checkout = { kind: 'error', message: 'Network error. Please try again.' };
+    }
+  };
+  const cancelled = $derived(data.cancelled);
+
   const isQuote = (b: unknown): b is Quote =>
     typeof b === 'object' && b !== null && typeof (b as { total?: unknown }).total === 'number';
 
@@ -157,6 +194,11 @@
 
   <section class="details">
     <h1>{design.title ?? 'Your design'}</h1>
+    {#if cancelled}
+      <p class="notice" data-state="cancelled">
+        Payment was cancelled. Your design is still here when you are ready.
+      </p>
+    {/if}
 
     {#if !design.sellable}
       <p class="notice" data-state="not-sellable">This design is no longer available to order.</p>
@@ -204,7 +246,7 @@
                 bind:value={stateCode}
                 maxlength="3"
                 placeholder="e.g. CA"
-                onchange={() => void fetchQuote()}
+                oninput={() => stateCode.length >= 2 && void fetchQuote()}
               />
             </label>
           {/if}
@@ -242,9 +284,17 @@
             </p>
             <p class="withdrawal" data-withdrawal>{data.page.storefront.withdrawalNotice}</p>
             <!-- Checkout arrives with ticket #8; until then the button only reflects readiness. -->
-            <button type="button" class="continue" disabled={quote.kind !== 'ready'}>
-              Continue to payment
+            <button
+              type="button"
+              class="continue"
+              disabled={quote.kind !== 'ready' || checkout.kind === 'starting'}
+              onclick={() => void startCheckout()}
+            >
+              {checkout.kind === 'starting' ? 'Opening payment…' : 'Continue to payment'}
             </button>
+            {#if checkout.kind === 'error'}
+              <p class="notice">{checkout.message}</p>
+            {/if}
           {:else if printfile.kind === 'unavailable'}
             <p class="notice">{printfile.message}</p>
           {:else if printfile.kind === 'error'}

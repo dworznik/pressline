@@ -21,7 +21,7 @@ import {
   type VariantPrices,
 } from './fulfilment-provider';
 import { Mailer, type Email } from './mailer';
-import { Psp } from './psp';
+import { Psp, PspError, type CheckoutSession, type CheckoutSessionInput } from './psp';
 
 /**
  * In-memory implementations of every external service. The test harness
@@ -171,7 +171,33 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
 export const layerDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) =>
   Layer.unwrapEffect(Effect.map(makeDesignSourceMemory(options), (m) => m.layer));
 
-export const layerPspMemory = Layer.succeed(Psp, { health: () => Effect.void });
+/** Records every session request so tests can assert what the PSP was asked to do. */
+export const makePspMemory = Effect.map(
+  Ref.make<ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>>([]),
+  (ref) => {
+    let down = false;
+    return {
+      setDown: (d: boolean) => void (down = d),
+      layer: Layer.succeed(Psp, {
+        health: () => Effect.void,
+        createCheckoutSession: (input) =>
+          down
+            ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+            : Ref.modify(ref, (all) => {
+                const session: CheckoutSession = {
+                  id: `cs_test_${all.length + 1}`,
+                  url: `https://checkout.stripe.test/c/pay/cs_test_${all.length + 1}`,
+                  expiresAt: input.expiresAt,
+                };
+                return [session, [...all, { input, session }]];
+              }),
+      }),
+      sessions: Ref.get(ref),
+    };
+  },
+);
+
+export const layerPspMemory = Layer.unwrapEffect(Effect.map(makePspMemory, (m) => m.layer));
 
 export interface MemoryCatalog {
   readonly products: ReadonlyArray<CatalogProduct>;

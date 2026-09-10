@@ -6,10 +6,11 @@ import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effec
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
+import type { CheckoutSession, CheckoutSessionInput } from '$lib/server/services/psp';
 import {
   emptyCatalog,
-  layerPspMemory,
   makeDesignSourceMemory,
+  makePspMemory,
   makeFulfilmentProviderMemory,
   makeMailerMemory,
   type DesignSourceMemoryOptions,
@@ -101,6 +102,12 @@ export interface TestApp {
   readonly engineCalls: () => Promise<number>;
   /** Bytes the hosted-file stub handed to the app for a URL (what a real transfer would have cost). */
   readonly bytesServed: (url: string) => number;
+  /** Checkout sessions the in-memory PSP was asked to create. */
+  readonly pspSessions: () => Promise<
+    ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
+  >;
+  /** Make the in-memory PSP fail every call (simulates an outage). */
+  readonly pspDown: (down: boolean) => void;
   /** Move the app's clock forward. */
   readonly advanceClock: (by: Duration.DurationInput) => void;
   /** Run an Effect against the app's services (for probing below the HTTP seam when debugging). */
@@ -135,6 +142,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     makeFulfilmentProviderMemory(options.catalog ?? emptyCatalog),
   );
   const { clock, advance } = makeSettableClock();
+  const psp = await Effect.runPromise(makePspMemory);
   const served = new Map<string, number>();
   const designSource = await Effect.runPromise(
     makeDesignSourceMemory(options.engines ?? { engines: { sample: {} } }),
@@ -145,7 +153,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     layerSqliteMigrated(dbPath),
     designSource.layer,
     provider.layer,
-    layerPspMemory,
+    psp.layer,
     mailer.layer,
     FetchHttpClient.layer.pipe(
       Layer.provide(
@@ -168,6 +176,8 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
     engineCalls: () => Effect.runPromise(designSource.calls),
     bytesServed: (url) => served.get(url) ?? 0,
+    pspSessions: () => Effect.runPromise(psp.sessions),
+    pspDown: psp.setDown,
     advanceClock: advance,
     run: (eff) => runtime.runPromiseExit(eff),
     dbPath,

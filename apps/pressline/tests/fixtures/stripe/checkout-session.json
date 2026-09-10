@@ -1,0 +1,42 @@
+{
+  "id": "cs_test_a11YYufWQzNY63zpQ6QSNRQhkUpVph4WRmzW0zWJO2znZKdVujZ0N0S22u",
+  "object": "checkout.session",
+  "allow_promotion_codes": false,
+  "amount_subtotal": 2500,
+  "amount_total": 2979,
+  "automatic_tax": { "enabled": true, "liability": null, "status": null },
+  "client_reference_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+  "consent": null,
+  "consent_collection": {
+    "terms_of_service": "required",
+    "promotions": null,
+    "payment_method_reuse_agreement": null
+  },
+  "created": 1789079000,
+  "currency": "eur",
+  "custom_text": {
+    "terms_of_service_acceptance": { "message": "This item is made to your design." },
+    "shipping_address": null,
+    "submit": null,
+    "after_submit": null
+  },
+  "customer": null,
+  "customer_creation": "if_required",
+  "customer_details": null,
+  "expires_at": 1789082600,
+  "livemode": false,
+  "metadata": { "pressline_order_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b" },
+  "mode": "payment",
+  "payment_intent": null,
+  "payment_status": "unpaid",
+  "phone_number_collection": { "enabled": true },
+  "shipping_address_collection": { "allowed_countries": ["DE"] },
+  "shipping_cost": null,
+  "shipping_details": null,
+  "status": "open",
+  "success_url": "https://shop.test/orders/0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/thank-you?t=tok",
+  "cancel_url": "https://shop.test/order/sample/design-portrait-1?cancelled=1",
+  "total_details": { "amount_discount": 0, "amount_shipping": 479, "amount_tax": 0 },
+  "ui_mode": "hosted_page",
+  "url": "https://checkout.stripe.com/c/pay/cs_test_a11YYufWQzNY63zpQ6QSNRQhkUpVph4WRmzW0zWJO2znZKdVujZ0N0S22u"
+}

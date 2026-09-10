@@ -114,7 +114,7 @@ describe('Printful v2 adapter', () => {
     );
     expect(rates[0]).toEqual({
       method: 'STANDARD',
-      name: 'Flat Rate (Estimated delivery: May 19–24)',
+      name: 'Flat Rate',
       rate: { amount: 479, currency: 'EUR' },
       minDeliveryDays: 4,
       maxDeliveryDays: 7,
@@ -141,11 +141,30 @@ describe('Printful v2 adapter', () => {
     expect(rates).toEqual([]);
   });
 
+  it('keeps a 400 that is not about the destination as a real error', async () => {
+    forceStatus = 400;
+    const err = await fail(
+      Effect.flatMap(FulfilmentProvider, (p) =>
+        p.getShippingRates({
+          countryCode: 'DE',
+          items: [{ catalogVariantId: 1, quantity: 1 }],
+          currency: 'EUR',
+        }),
+      ),
+    );
+    forceStatus = undefined;
+    expect(err).toMatchObject({ status: 400, retryable: false });
+  });
+
   it('reads variant prices per technique, preferring the discounted price', async () => {
     const prices = await run(
       Effect.flatMap(FulfilmentProvider, (p) => p.getVariantPrices(4017, 'EUR')),
     );
-    expect(prices).toEqual({ currency: 'EUR', byTechnique: { dtg: 1090 } });
+    expect(prices).toEqual({
+      currency: 'EUR',
+      byTechnique: { dtg: 1090 },
+      placementSurcharge: { 'front/dtg': 0, 'back/dtg': 595 },
+    });
     expect(new URL(seen.at(-1)!.url).search).toBe('?currency=EUR');
   });
 

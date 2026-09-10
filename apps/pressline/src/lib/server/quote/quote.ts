@@ -4,7 +4,8 @@ import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { loadDesign } from '../design/design';
 import { FulfilmentProvider, type ShippingRate } from '../services/fulfilment-provider';
-import { withMarkup } from './money';
+import { STATE_REQUIRED } from '../../countries';
+import { withMarkup } from '../money';
 
 /**
  * Quote (CONTEXT.md, ADR-0010): the locked price for one Order — Offer retail
@@ -24,8 +25,7 @@ export const QuoteRequest = Schema.Struct({
 });
 export type QuoteRequest = typeof QuoteRequest.Type;
 
-export const Money = Schema.Struct({ amount: Schema.Int, currency: Schema.String });
-
+/** What the Customer sees (`GET /api/quote`): never the Operator's cost. */
 export const Quote = Schema.Struct({
   id: Schema.String,
   engine: Schema.String,
@@ -48,39 +48,55 @@ export const Quote = Schema.Struct({
     minDeliveryDays: Schema.optional(Schema.Int),
     maxDeliveryDays: Schema.optional(Schema.Int),
   }),
+  createdAt: Schema.Int,
+  expiresAt: Schema.Int,
+});
+export type Quote = typeof Quote.Type;
+
+/** The stored record: the Quote plus the Provider Cost Estimate (CONTEXT.md), for the Operator only. */
+export const QuoteRecord = Schema.Struct({
+  ...Quote.fields,
   providerCostEstimate: Schema.Struct({
     product: Schema.Int,
     shipping: Schema.Int,
     currency: Schema.String,
   }),
-  createdAt: Schema.Int,
-  expiresAt: Schema.Int,
 });
-export type Quote = typeof Quote.Type;
+export type QuoteRecord = typeof QuoteRecord.Type;
+
+export const toPublicQuote = ({ providerCostEstimate: _cost, ...quote }: QuoteRecord): Quote =>
+  quote;
 
 export class QuoteUnavailable extends Schema.TaggedError<QuoteUnavailable>()('QuoteUnavailable', {
   reason: Schema.Literal('not_sellable', 'not_eligible', 'state_required', 'no_shipping'),
   message: Schema.String,
 }) {}
 
+/** The provider's answer does not fit the instance (currency, missing technique price). */
+export class QuoteInconsistent extends Schema.TaggedError<QuoteInconsistent>()(
+  'QuoteInconsistent',
+  {
+    message: Schema.String,
+  },
+) {}
+
 export class QuoteNotFound extends Schema.TaggedError<QuoteNotFound>()('QuoteNotFound', {
   id: Schema.String,
 }) {}
-
-const STATE_REQUIRED = new Set(['US', 'CA', 'AU']);
 
 /** Prefer the provider's standard method; otherwise the cheapest. */
 const chooseRate = (rates: ReadonlyArray<ShippingRate>) =>
   rates.find((r) => r.method === 'STANDARD') ??
   [...rates].sort((a, b) => a.rate.amount - b.rate.amount)[0];
 
-const persist = (q: Quote) =>
+const persist = (q: QuoteRecord) =>
   Effect.gen(function* () {
     const db = yield* Db;
     yield* db.run(
       `INSERT INTO quotes (id, engine, design_id, offer_slug, variant_key, spec_hash, country, state, currency,
-         retail, shipping, shipping_method, shipping_method_name, cost_product, cost_shipping, cost_currency, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         retail, shipping, shipping_method, shipping_method_name, min_delivery_days, max_delivery_days,
+         cost_product, cost_shipping, cost_currency, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         q.id,
         q.engine,
@@ -95,6 +111,8 @@ const persist = (q: Quote) =>
         q.shipping,
         q.shippingMethod.id,
         q.shippingMethod.name,
+        q.shippingMethod.minDeliveryDays ?? null,
+        q.shippingMethod.maxDeliveryDays ?? null,
         q.providerCostEstimate.product,
         q.providerCostEstimate.shipping,
         q.providerCostEstimate.currency,
@@ -118,6 +136,8 @@ type Row = {
   shipping: number;
   shipping_method: string;
   shipping_method_name: string;
+  min_delivery_days: number | null;
+  max_delivery_days: number | null;
   cost_product: number;
   cost_shipping: number;
   cost_currency: string;
@@ -125,7 +145,7 @@ type Row = {
   expires_at: number;
 };
 
-const fromRow = (r: Row): Quote => ({
+const fromRow = (r: Row): QuoteRecord => ({
   id: r.id,
   engine: r.engine,
   designId: r.design_id,
@@ -138,7 +158,12 @@ const fromRow = (r: Row): Quote => ({
   retail: r.retail,
   shipping: r.shipping,
   total: r.retail + r.shipping,
-  shippingMethod: { id: r.shipping_method, name: r.shipping_method_name },
+  shippingMethod: {
+    id: r.shipping_method,
+    name: r.shipping_method_name,
+    ...(r.min_delivery_days !== null ? { minDeliveryDays: r.min_delivery_days } : {}),
+    ...(r.max_delivery_days !== null ? { maxDeliveryDays: r.max_delivery_days } : {}),
+  },
   providerCostEstimate: {
     product: r.cost_product,
     shipping: r.cost_shipping,
@@ -158,7 +183,7 @@ export const findQuote = (id: string) =>
 
 export const makeQuote = (req: QuoteRequest) =>
   Effect.gen(function* () {
-    const country = req.country.toUpperCase();
+    const country = req.country;
     const state = req.state?.toUpperCase();
     if (STATE_REQUIRED.has(country) && !state) {
       return yield* new QuoteUnavailable({
@@ -186,8 +211,15 @@ export const makeQuote = (req: QuoteRequest) =>
     }
 
     const config = yield* Config;
-    const offerConfig = config.catalogue.offers.find((o) => o.slug === offer.slug)!;
-    const catalogVariantId = offerConfig.variants[variant.key]!.catalogVariantId;
+    const catalogVariantId = config.catalogue.offers.find((o) => o.slug === offer.slug)?.variants[
+      variant.key
+    ]?.catalogVariantId;
+    if (catalogVariantId === undefined) {
+      // The Catalogue was resolved from this same config a moment ago; only a redeploy mid-request gets here.
+      return yield* new QuoteInconsistent({
+        message: `Offer "${offer.slug}" variant "${variant.key}" is no longer configured`,
+      });
+    }
     const provider = yield* FulfilmentProvider;
 
     const rates = yield* provider.getShippingRates({
@@ -203,12 +235,24 @@ export const makeQuote = (req: QuoteRequest) =>
         message: `We cannot ship this product to ${country}.`,
       });
     }
+    if (rate.rate.currency !== config.currency) {
+      return yield* new QuoteInconsistent({
+        message: `provider quoted shipping in ${rate.rate.currency}, this instance sells in ${config.currency}`,
+      });
+    }
     const prices = yield* provider.getVariantPrices(catalogVariantId, config.currency);
-    const productCost = prices.byTechnique[offer.technique] ?? 0;
+    const baseCost = prices.byTechnique[offer.technique];
+    if (baseCost === undefined || prices.currency !== config.currency) {
+      return yield* new QuoteInconsistent({
+        message: `provider has no ${config.currency} price for technique "${offer.technique}" on variant ${catalogVariantId}`,
+      });
+    }
+    const productCost =
+      baseCost + (prices.placementSurcharge[`${offer.placement}/${offer.technique}`] ?? 0);
 
     const now = yield* Clock.currentTimeMillis;
     const shipping = withMarkup(rate.rate.amount, config.shipping.markupPercent);
-    const quote: Quote = {
+    const quote: QuoteRecord = {
       id: crypto.randomUUID(),
       engine: req.engine,
       designId: req.designId,

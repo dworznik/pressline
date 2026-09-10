@@ -16,3 +16,5 @@ The Engine's UI is for playing with designs and shows no prices. When a Customer
 
 - The country step must happen on the Storefront before the Stripe session exists.
 - Checkout entry from the Engine is a hand-off to the Storefront, not a price-bearing widget.
+- The Customer's shipping line is the provider's rate passed through; an optional `shipping.markupPercent` (default 0) exists for Operators who want to round it up, and the Provider Cost Estimate always keeps the raw rate.
+- The Provider Cost Estimate is an Operator-only figure: it is stored with the Quote and the Order but never returned by a public endpoint.

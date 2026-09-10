@@ -12,6 +12,7 @@ import { CatalogueLive } from './catalogue';
 import { DesignsLive } from './designs';
 import { HealthLive } from './health';
 import { PrintfilesLive } from './printfiles';
+import { OrdersLive } from './orders';
 import { QuotesLive } from './quotes';
 
 /** Everything the HTTP layer needs from the outside world. */
@@ -27,7 +28,14 @@ export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) =>
   HttpApiBuilder.toWebHandler(
     Layer.mergeAll(
       HttpApiBuilder.api(PresslineApi).pipe(
-        Layer.provide([HealthLive, CatalogueLive, DesignsLive, PrintfilesLive, QuotesLive]),
+        Layer.provide([
+          HealthLive,
+          CatalogueLive,
+          DesignsLive,
+          PrintfilesLive,
+          QuotesLive,
+          OrdersLive,
+        ]),
         Layer.provide(EnginesLive),
       ),
       HttpServer.layerContext,

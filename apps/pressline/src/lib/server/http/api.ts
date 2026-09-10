@@ -10,6 +10,7 @@ import { Schema } from 'effect';
 import { EngineUnavailable } from '../design/design';
 import { EngineStatus } from '../design/engines';
 import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
+import { Quote, QuoteNotFound, QuoteRequest, QuoteUnavailable } from '../quote/quote';
 
 /**
  * The Effect HttpApi: JSON API, operator API, Engine-facing endpoints and
@@ -53,12 +54,22 @@ export class EngineError extends Schema.TaggedError<EngineError>()('EngineError'
 }) {}
 
 /** What the Storefront needs to show a Design (ticket #5). */
+/** Operator branding and legal wording the Storefront shows (ADR-0010, ADR-0014). */
+export const StorefrontInfo = Schema.Struct({
+  name: Schema.String,
+  withdrawalNotice: Schema.String,
+  termsUrl: Schema.optional(Schema.String),
+  privacyUrl: Schema.optional(Schema.String),
+  contactEmail: Schema.optional(Schema.String),
+});
+
 export const DesignPage = Schema.Struct({
   engine: Schema.String,
   design: DesignResponse,
   /** Eligible Offers; empty when the Design is not sellable. */
   offers: Schema.Array(CatalogueOffer),
   currency: Schema.String,
+  storefront: StorefrontInfo,
 });
 export type DesignPage = typeof DesignPage.Type;
 
@@ -113,8 +124,28 @@ export const PrintfilesGroup = HttpApiGroup.make('printfiles')
       .addError(CatalogueUnavailable, { status: 503 }),
   );
 
+/** Quotes (ticket #7, ADR-0010). */
+export const QuotesGroup = HttpApiGroup.make('quotes')
+  .add(
+    HttpApiEndpoint.get('quote', '/api/quote')
+      .setUrlParams(QuoteRequest)
+      .addSuccess(Quote)
+      .addError(QuoteUnavailable, { status: 422 })
+      .addError(DesignNotFound, { status: 404 })
+      .addError(EngineUnavailable, { status: 503 })
+      .addError(EngineError, { status: 502 })
+      .addError(CatalogueUnavailable, { status: 503 }),
+  )
+  .add(
+    HttpApiEndpoint.get('quoteById', '/api/quotes/:id')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(Quote)
+      .addError(QuoteNotFound, { status: 404 }),
+  );
+
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)
   .add(CatalogueGroup)
   .add(DesignsGroup)
-  .add(PrintfilesGroup) {}
+  .add(PrintfilesGroup)
+  .add(QuotesGroup) {}

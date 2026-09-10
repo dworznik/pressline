@@ -21,7 +21,13 @@ const fixture = (name: string) =>
 const stubFetch: typeof fetch = async (input, init) => {
   const req = new Request(input, init);
   seen.push(req);
-  const key = new URL(req.url).pathname.replace(/^\/v2\//, '').replaceAll('/', '_');
+  const url = new URL(req.url);
+  let key = url.pathname.replace(/^\/v2\//, '').replaceAll('/', '_');
+  if (key === 'shipping-rates') {
+    // Country-specific stub: XX is a destination Printful cannot ship to.
+    const body = (await req.clone().json()) as { recipient?: { country_code?: string } };
+    if (body.recipient?.country_code === 'XX') key = 'shipping-rates.XX';
+  }
   if (hang) return new Promise<Response>(() => {});
   if (forceStatus)
     return Response.json({ code: forceStatus, result: 'forced' }, { status: forceStatus });
@@ -94,6 +100,53 @@ describe('Printful v2 adapter', () => {
       printAreaHeightIn: 16,
       dpi: 150,
     });
+  });
+
+  it('quotes shipping rates for a destination in minor units', async () => {
+    const rates = await run(
+      Effect.flatMap(FulfilmentProvider, (p) =>
+        p.getShippingRates({
+          countryCode: 'DE',
+          items: [{ catalogVariantId: 4017, quantity: 1 }],
+          currency: 'EUR',
+        }),
+      ),
+    );
+    expect(rates[0]).toEqual({
+      method: 'STANDARD',
+      name: 'Flat Rate (Estimated delivery: May 19–24)',
+      rate: { amount: 479, currency: 'EUR' },
+      minDeliveryDays: 4,
+      maxDeliveryDays: 7,
+    });
+    expect(rates[1]!.rate.amount).toBe(1240);
+    const sent = JSON.parse(await seen.at(-1)!.clone().text()) as Record<string, unknown>;
+    expect(sent).toMatchObject({
+      recipient: { country_code: 'DE' },
+      order_items: [{ source: 'catalog', catalog_variant_id: 4017, quantity: 1 }],
+      currency: 'EUR',
+    });
+  });
+
+  it('treats a 400 for an unshippable destination as "no options", not an outage', async () => {
+    const rates = await run(
+      Effect.flatMap(FulfilmentProvider, (p) =>
+        p.getShippingRates({
+          countryCode: 'XX',
+          items: [{ catalogVariantId: 4017, quantity: 1 }],
+          currency: 'EUR',
+        }),
+      ),
+    );
+    expect(rates).toEqual([]);
+  });
+
+  it('reads variant prices per technique, preferring the discounted price', async () => {
+    const prices = await run(
+      Effect.flatMap(FulfilmentProvider, (p) => p.getVariantPrices(4017, 'EUR')),
+    );
+    expect(prices).toEqual({ currency: 'EUR', byTechnique: { dtg: 1090 } });
+    expect(new URL(seen.at(-1)!.url).search).toBe('?currency=EUR');
   });
 
   it('maps 404 to a non-retryable FulfilmentProviderError carrying Printful’s message', async () => {

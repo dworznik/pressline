@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { COUNTRIES, STATE_REQUIRED } from '$lib/countries';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -42,10 +43,63 @@
   const offer = $derived(offers.find((o) => o.slug === offerSlug));
   const base = $derived(`/api/designs/${data.page.engine}/${design.id}/printfile`);
 
+  // Quote (ticket #7): re-fetched whenever the variant or destination changes.
+  type Quote = {
+    id: string;
+    retail: number;
+    shipping: number;
+    total: number;
+    shippingMethod: { name: string; minDeliveryDays?: number; maxDeliveryDays?: number };
+  };
+  type QuoteState =
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'ready'; quote: Quote }
+    | { kind: 'unavailable'; message: string }
+    | { kind: 'error'; message: string };
+  let country = $state('');
+  let stateCode = $state('');
+  let quote = $state<QuoteState>({ kind: 'idle' });
+  let quoteAttempt = 0;
+  const needsState = $derived(STATE_REQUIRED.has(country));
+  const isQuote = (b: unknown): b is Quote =>
+    typeof b === 'object' && b !== null && typeof (b as { total?: unknown }).total === 'number';
+
+  const fetchQuote = async () => {
+    if (!offerSlug || !variantKey || !country || (needsState && !stateCode)) {
+      quote = { kind: 'idle' };
+      return;
+    }
+    const mine = ++quoteAttempt;
+    quote = { kind: 'loading' };
+    const params = new URLSearchParams({
+      engine: data.page.engine,
+      designId: design.id,
+      offer: offerSlug,
+      variant: variantKey,
+      country,
+      ...(needsState ? { state: stateCode.toUpperCase() } : {}),
+    });
+    try {
+      const res = await fetch(`/api/quote?${params}`);
+      const body: unknown = await res.json().catch(() => undefined);
+      if (mine !== quoteAttempt) return;
+      if (res.status === 200 && isQuote(body)) quote = { kind: 'ready', quote: body };
+      else if (res.status === 422 && hasMessage(body))
+        quote = { kind: 'unavailable', message: body.message };
+      else
+        quote = { kind: 'error', message: 'We could not price this right now. Please try again.' };
+    } catch {
+      if (mine === quoteAttempt)
+        quote = { kind: 'error', message: 'Network error. Please try again.' };
+    }
+  };
+
   const choose = (slug: string, key: string) => {
     offerSlug = slug;
     variantKey = key;
     void ensure();
+    void fetchQuote();
   };
 
   const apply = async (res: Response, mine: number) => {
@@ -133,6 +187,52 @@
       </ul>
 
       {#if offer && variantKey}
+        <div class="destination">
+          <label>
+            Ship to
+            <select bind:value={country} onchange={() => void fetchQuote()}>
+              <option value="">Choose a country</option>
+              {#each COUNTRIES as [code, name] (code)}
+                <option value={code}>{name}</option>
+              {/each}
+            </select>
+          </label>
+          {#if needsState}
+            <label>
+              State / province
+              <input
+                bind:value={stateCode}
+                maxlength="3"
+                placeholder="e.g. CA"
+                onchange={() => void fetchQuote()}
+              />
+            </label>
+          {/if}
+        </div>
+
+        <div class="quote" data-quote={quote.kind}>
+          {#if quote.kind === 'loading'}
+            <p>Getting a price…</p>
+          {:else if quote.kind === 'ready'}
+            <dl>
+              <dt>{offer.name}</dt>
+              <dd>{money(quote.quote.retail)}</dd>
+              <dt>
+                Shipping ({quote.quote.shippingMethod
+                  .name}{#if quote.quote.shippingMethod.minDeliveryDays},
+                  {quote.quote.shippingMethod.minDeliveryDays}–{quote.quote.shippingMethod
+                    .maxDeliveryDays} days{/if})
+              </dt>
+              <dd>{money(quote.quote.shipping)}</dd>
+              <dt class="total">Total</dt>
+              <dd class="total">{money(quote.quote.total)}</dd>
+            </dl>
+            <p class="tax-note">Tax is calculated at payment.</p>
+          {:else if quote.kind === 'unavailable' || quote.kind === 'error'}
+            <p class="notice">{quote.message}</p>
+          {/if}
+        </div>
+
         <div class="printfile" data-printfile={printfile.kind}>
           {#if printfile.kind === 'preparing'}
             <p>Preparing your print file… this can take a moment.</p>
@@ -140,8 +240,11 @@
             <p>
               Your print file is ready ({printfile.printfile.width}×{printfile.printfile.height}).
             </p>
-            <!-- Continue to quote/checkout arrives with tickets #7 and #8. -->
-            <button type="button" class="continue" disabled>Continue</button>
+            <p class="withdrawal" data-withdrawal>{data.page.storefront.withdrawalNotice}</p>
+            <!-- Checkout arrives with ticket #8; until then the button only reflects readiness. -->
+            <button type="button" class="continue" disabled={quote.kind !== 'ready'}>
+              Continue to payment
+            </button>
           {:else if printfile.kind === 'unavailable'}
             <p class="notice">{printfile.message}</p>
           {:else if printfile.kind === 'error'}
@@ -206,8 +309,34 @@
     background: #fff4e5;
     border-radius: 0.5rem;
   }
-  .printfile {
+  .printfile,
+  .destination,
+  .quote {
     margin-top: 1rem;
+  }
+  .destination label {
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+  .quote dl {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.25rem 1rem;
+    margin: 0;
+  }
+  .quote dd {
+    margin: 0;
+    text-align: right;
+  }
+  .quote .total {
+    font-weight: 600;
+    border-top: 1px solid #ddd;
+    padding-top: 0.25rem;
+  }
+  .tax-note,
+  .withdrawal {
+    font-size: 0.9rem;
+    color: #555;
   }
   .continue {
     padding: 0.6rem 1.2rem;

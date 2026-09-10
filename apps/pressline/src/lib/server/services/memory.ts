@@ -16,6 +16,9 @@ import {
   type CatalogProduct,
   type CatalogVariant,
   type PlacementPrintArea,
+  type ShippingRate,
+  type ShippingRateRequest,
+  type VariantPrices,
 } from './fulfilment-provider';
 import { Mailer, type Email } from './mailer';
 import { Psp } from './psp';
@@ -174,6 +177,10 @@ export interface MemoryCatalog {
   readonly products: ReadonlyArray<CatalogProduct>;
   readonly variants: ReadonlyArray<CatalogVariant>;
   readonly printAreas: Readonly<Record<number, ReadonlyArray<PlacementPrintArea>>>;
+  /** Shipping rates by destination country code; a country absent here cannot be shipped to. */
+  readonly shippingRates?: Readonly<Record<string, ReadonlyArray<ShippingRate>>>;
+  /** Operator cost per variant. */
+  readonly prices?: Readonly<Record<number, VariantPrices>>;
 }
 
 export const emptyCatalog: MemoryCatalog = { products: [], variants: [], printAreas: {} };
@@ -212,6 +219,12 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
           ),
         getPlacementPrintAreas: (productId) =>
           counted('catalog product', productId, catalog.printAreas[productId]),
+        getShippingRates: (req: ShippingRateRequest) =>
+          Ref.update(calls, (n) => n + 1).pipe(
+            Effect.map(() => catalog.shippingRates?.[req.countryCode] ?? []),
+          ),
+        getVariantPrices: (variantId) =>
+          counted('catalog variant prices', variantId, catalog.prices?.[variantId]),
       }),
       calls: Ref.get(calls),
     };

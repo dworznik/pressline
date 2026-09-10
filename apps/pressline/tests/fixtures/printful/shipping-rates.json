@@ -1,0 +1,30 @@
+{
+  "data": [
+    {
+      "shipping": "STANDARD",
+      "shipping_method_name": "Flat Rate (Estimated delivery: May 19–24) ",
+      "rate": "4.79",
+      "currency": "EUR",
+      "min_delivery_days": 4,
+      "max_delivery_days": 7,
+      "min_delivery_date": "2026-09-15",
+      "max_delivery_date": "2026-09-18",
+      "shipments": [
+        {
+          "departure_country": "LV",
+          "shipment_items": [{ "catalog_variant_id": 4017, "quantity": 1 }],
+          "customs_fees_possible": false
+        }
+      ]
+    },
+    {
+      "shipping": "PRINTFUL_FAST",
+      "shipping_method_name": "Express (Estimated delivery: May 16–18) ",
+      "rate": "12.40",
+      "currency": "EUR",
+      "min_delivery_days": 1,
+      "max_delivery_days": 3,
+      "shipments": []
+    }
+  ]
+}

@@ -75,6 +75,43 @@ export const PresslineConfigSchema = Schema.Struct({
   catalogue: Schema.optionalWith(CatalogueConfig, { default: () => ({ offers: [] }) }),
   /** Demo Mode: no money and no goods move. */
   demo: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  shipping: Schema.optionalWith(
+    Schema.Struct({
+      /** Percent added on top of the provider's shipping rate for the Customer's shipping line (ADR-0010). */
+      markupPercent: Schema.optionalWith(Schema.Number.pipe(Schema.between(0, 100)), {
+        default: () => 0,
+      }),
+    }),
+    { default: () => ({ markupPercent: 0 }) },
+  ),
+  quote: Schema.optionalWith(
+    Schema.Struct({
+      /** How long a Quote stays usable for creating a checkout session. */
+      ttlMs: Schema.optionalWith(Schema.Int.pipe(Schema.between(60_000, 86_400_000)), {
+        default: () => 30 * 60_000,
+      }),
+    }),
+    { default: () => ({ ttlMs: 30 * 60_000 }) },
+  ),
+  legal: Schema.optionalWith(
+    Schema.Struct({
+      /** Withdrawal Notice (CONTEXT.md): shown on the Storefront and accepted at the PSP. Review with counsel. */
+      withdrawalNotice: Schema.optionalWith(Schema.NonEmptyString, {
+        default: () =>
+          'This item is made to your design. The 14-day right of withdrawal does not apply to personalised goods; defective or damaged items are replaced.',
+      }),
+      termsUrl: Schema.optional(Schema.String),
+      privacyUrl: Schema.optional(Schema.String),
+      /** Where a Customer can reach the Operator quickly (confirmation email, Storefront). */
+      contactEmail: Schema.optional(Schema.String),
+    }),
+    {
+      default: () => ({
+        withdrawalNotice:
+          'This item is made to your design. The 14-day right of withdrawal does not apply to personalised goods; defective or damaged items are replaced.',
+      }),
+    },
+  ),
   printfile: Schema.optionalWith(
     Schema.Struct({
       /** How long one ensure-Printfile request may wait on a rendering Engine before answering 202 (ADR-0005). */

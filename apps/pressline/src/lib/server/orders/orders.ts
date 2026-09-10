@@ -127,8 +127,6 @@ type Row = {
 
 const RecipientJson = Schema.parseJson(Recipient);
 const TrackingJson = Schema.parseJson(Tracking);
-const opt = <A>(v: A | null): { [k: string]: A } | Record<string, never> =>
-  v === null ? {} : ({} as never);
 
 const fromRow = (r: Row): Effect.Effect<Order> =>
   Effect.gen(function* () {
@@ -138,7 +136,6 @@ const fromRow = (r: Row): Effect.Effect<Order> =>
     const tracking = r.tracking
       ? yield* Schema.decode(TrackingJson)(r.tracking).pipe(Effect.orDie)
       : undefined;
-    void opt;
     return {
       id: r.id,
       state: r.state,
@@ -251,7 +248,6 @@ export interface NewOrder {
   readonly shippingMethod: { id: string; name: string };
   readonly country: string;
   readonly providerCostEstimate: { product: number; shipping: number; currency: string };
-  readonly psp: { sessionId: string; sessionExpiresAt: number };
 }
 
 /** Create the Order in `checkout_open` with its first Transition, atomically. */
@@ -264,8 +260,8 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
         sql: `INSERT INTO orders (id, state, status_token, engine, design_id, offer_slug, variant_key, spec_hash,
                 printfile_url, printfile_sha256, printfile_content_type, quote_id, currency, retail, shipping,
                 shipping_method, shipping_method_name, country, cost_product, cost_shipping, cost_currency,
-                psp_session_id, psp_session_expires_at, created_at, updated_at)
-              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                created_at, updated_at)
+              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           o.id,
           o.statusToken,
@@ -287,8 +283,6 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
           o.providerCostEstimate.product,
           o.providerCostEstimate.shipping,
           o.providerCostEstimate.currency,
-          o.psp.sessionId,
-          o.psp.sessionExpiresAt,
           now,
           now,
         ],
@@ -299,6 +293,17 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
       },
     ]);
     return yield* findOrder(o.id);
+  }).pipe(Effect.orDie);
+
+/** Attach the PSP session once it exists (the Order is created first so a session can never point at an unknown Order). */
+export const attachSession = (orderId: string, sessionId: string, sessionExpiresAt: number) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    yield* db.run(
+      'UPDATE orders SET psp_session_id = ?, psp_session_expires_at = ?, updated_at = ? WHERE id = ?',
+      [sessionId, sessionExpiresAt, now, orderId],
+    );
   }).pipe(Effect.orDie);
 
 /** Column updates that may accompany a Transition (all optional). */

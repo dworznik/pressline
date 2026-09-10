@@ -99,9 +99,10 @@ export const PresslineConfigSchema = Schema.Struct({
   legal: Schema.optionalWith(
     Schema.Struct({
       /** Withdrawal Notice (CONTEXT.md): shown on the Storefront and accepted at the PSP. Review with counsel. */
-      withdrawalNotice: Schema.optionalWith(Schema.NonEmptyString, {
-        default: () => DEFAULT_WITHDRAWAL_NOTICE,
-      }),
+      withdrawalNotice: Schema.optionalWith(
+        Schema.NonEmptyString.pipe(Schema.maxLength(1200)), // Stripe's custom-text limit
+        { default: () => DEFAULT_WITHDRAWAL_NOTICE },
+      ),
       termsUrl: Schema.optional(Schema.String),
       privacyUrl: Schema.optional(Schema.String),
       /** Where a Customer can reach the Operator quickly (confirmation email, Storefront). */

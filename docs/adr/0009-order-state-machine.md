@@ -20,3 +20,4 @@ States: `checkout_open → expired | paid`; `paid → submitted | submit_failed`
 - `submit_failed` and `on_hold` are the states the CLI's resubmit and cancel commands act on.
 - Every Transition records its Cause (see CONTEXT.md).
 - `paid → submitted` is draft-then-confirm on the provider, and every submit attempt begins with a lookup by `external_id` so the paid-webhook handler is safely re-runnable. The draft's cost delta against the Provider Cost Estimate is logged, not enforced; only a variant or destination-country mismatch blocks confirmation.
+- Webhooks can be missed, so the machine also allows skipping forward past intermediate states the provider has already passed (`submitted → shipped`, `submitted → fulfilled`, `in_production → fulfilled`), a hold during production (`in_production → on_hold`), and the operator's resubmit (`submit_failed → submitted`). Reconciliation relies on the first of these.

@@ -7,12 +7,11 @@ import { toApiError } from './errors';
 
 /**
  * Public origin for PSP return URLs when `checkout.publicUrl` is not set:
- * the proxy's forwarded host if present, else the Host header; https unless
- * it is plainly local.
+ * the request's own URL. Forwarded headers are deliberately not trusted
+ * (a client could point its success URL, token included, at another host);
+ * Operators behind a proxy set `checkout.publicUrl`.
  */
 const originOf = (req: HttpServerRequest.HttpServerRequest) => {
-  const forwardedHost = req.headers['x-forwarded-host'];
-  if (forwardedHost) return `${req.headers['x-forwarded-proto'] ?? 'https'}://${forwardedHost}`;
   const source = req.source;
   if (source instanceof Request) return new URL(source.url).origin;
   return `https://${req.headers['host'] ?? 'localhost'}`;
@@ -27,7 +26,7 @@ export const OrdersLive = HttpApiBuilder.group(PresslineApi, 'orders', (handlers
         return yield* startCheckout(payload, originOf(req));
       }).pipe(
         Effect.catchTag('PspError', (e) => new PspUnavailable({ message: e.message })),
-        (eff) => toApiError('', eff),
+        (eff) => toApiError(payload.quoteId, eff),
       ),
     )
     .handle('publicOrder', ({ path, urlParams }) => publicOrder(path.id, urlParams.t)),

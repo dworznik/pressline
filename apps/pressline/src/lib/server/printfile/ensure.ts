@@ -54,7 +54,8 @@ type Row = {
   spec_hash: string;
 };
 
-const findStored = (engine: string, designId: string, specHash: string) =>
+/** The validated Printfile stored for (Engine, Design, Spec Hash), if any. */
+export const findStored = (engine: string, designId: string, specHash: string) =>
   Effect.gen(function* () {
     const db = yield* Db;
     const rows = yield* db.all<Row>(

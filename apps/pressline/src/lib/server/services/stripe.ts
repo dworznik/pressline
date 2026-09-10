@@ -1,7 +1,14 @@
 import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer, Option } from 'effect';
 import Stripe from 'stripe';
-import { Psp, PspError, type CheckoutSessionInput, type PspService } from './psp';
+import {
+  Psp,
+  PspError,
+  WebhookRejected,
+  type CheckoutSessionDetails,
+  type CheckoutSessionInput,
+  type PspService,
+} from './psp';
 
 /**
  * Stripe Checkout adapter (ADR-0010). Hosted page, payment mode, automatic
@@ -11,7 +18,55 @@ import { Psp, PspError, type CheckoutSessionInput, type PspService } from './psp
  */
 export interface StripeOptions {
   readonly secretKey: string;
+  /** Signing secret of the webhook endpoint (`whsec_…`); required to accept webhooks. */
+  readonly webhookSecret?: string;
+  /** Seconds of clock skew tolerated on webhook timestamps. */
+  readonly webhookToleranceSeconds?: number;
 }
+
+const toSessionDetails = (s: Stripe.Checkout.Session): CheckoutSessionDetails => {
+  const ship = s.collected_information?.shipping_details;
+  const addr = ship?.address;
+  const pi = typeof s.payment_intent === 'string' ? s.payment_intent : s.payment_intent?.id;
+  // The SDK types allow unknown future strings; anything else reads as the conservative value.
+  const status: CheckoutSessionDetails['status'] =
+    s.status === 'complete' ? 'complete' : s.status === 'expired' ? 'expired' : 'open';
+  const paymentStatus: CheckoutSessionDetails['paymentStatus'] =
+    s.payment_status === 'paid'
+      ? 'paid'
+      : s.payment_status === 'no_payment_required'
+        ? 'no_payment_required'
+        : 'unpaid';
+  return {
+    id: s.id,
+    status,
+    paymentStatus,
+    ...(s.client_reference_id ? { orderId: s.client_reference_id } : {}),
+    ...(pi ? { paymentIntentId: pi } : {}),
+    ...(s.currency ? { currency: s.currency.toUpperCase() } : {}),
+    ...(s.amount_total !== null ? { amountTotal: s.amount_total } : {}),
+    ...(s.total_details?.amount_tax !== undefined ? { amountTax: s.total_details.amount_tax } : {}),
+    consentAccepted: s.consent?.terms_of_service === 'accepted',
+    customer: {
+      ...(s.customer_details?.email ? { email: s.customer_details.email } : {}),
+      ...(s.customer_details?.name ? { name: s.customer_details.name } : {}),
+      ...(s.customer_details?.phone ? { phone: s.customer_details.phone } : {}),
+    },
+    ...(ship
+      ? {
+          shipping: {
+            ...(ship.name ? { name: ship.name } : {}),
+            ...(addr?.line1 ? { address1: addr.line1 } : {}),
+            ...(addr?.line2 ? { address2: addr.line2 } : {}),
+            ...(addr?.city ? { city: addr.city } : {}),
+            ...(addr?.state ? { state: addr.state } : {}),
+            ...(addr?.postal_code ? { zip: addr.postal_code } : {}),
+            ...(addr?.country ? { country: addr.country } : {}),
+          },
+        }
+      : {}),
+  };
+};
 
 const toPspError = (e: unknown): PspError => {
   if (e instanceof Stripe.errors.StripeError) {
@@ -40,6 +95,7 @@ export const makeStripe = (options: StripeOptions) =>
     });
 
     const call = <A>(f: () => Promise<A>) => Effect.tryPromise({ try: f, catch: toPspError });
+    const cryptoProvider = Stripe.createSubtleCryptoProvider();
 
     const service: PspService = {
       health: () => call(() => stripe.balance.retrieve()).pipe(Effect.asVoid),
@@ -117,6 +173,39 @@ export const makeStripe = (options: StripeOptions) =>
                 ),
           ),
         ),
+
+      getCheckoutSession: (id) =>
+        call(() => stripe.checkout.sessions.retrieve(id)).pipe(Effect.map(toSessionDetails)),
+
+      verifyWebhook: (rawBody, signature) =>
+        Effect.gen(function* () {
+          if (!options.webhookSecret) {
+            return yield* new WebhookRejected({
+              message: 'STRIPE_WEBHOOK_SECRET is not configured',
+            });
+          }
+          if (!signature)
+            return yield* new WebhookRejected({ message: 'missing stripe-signature header' });
+          const event = yield* Effect.tryPromise({
+            try: () =>
+              stripe.webhooks.constructEventAsync(
+                rawBody,
+                signature,
+                options.webhookSecret!,
+                options.webhookToleranceSeconds ?? 300,
+                cryptoProvider,
+              ),
+            catch: (e) =>
+              new WebhookRejected({ message: e instanceof Error ? e.message : String(e) }),
+          });
+          const object = event.data.object as { object?: string; id?: string };
+          return {
+            id: event.id,
+            type: event.type,
+            created: event.created,
+            ...(object.object === 'checkout.session' && object.id ? { sessionId: object.id } : {}),
+          };
+        }),
     };
     return service;
   });

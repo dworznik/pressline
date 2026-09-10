@@ -1,0 +1,24 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      effect:
+        patterns: ['effect', '@effect/*']
+      svelte:
+        patterns:
+          [
+            'svelte',
+            '@sveltejs/*',
+            'svelte-check',
+            'eslint-plugin-svelte',
+            'prettier-plugin-svelte',
+          ]
+      lint:
+        patterns: ['eslint', '@eslint/*', 'typescript-eslint', 'prettier', 'lint-staged', 'globals']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

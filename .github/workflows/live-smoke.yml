@@ -1,0 +1,32 @@
+name: live-smoke
+
+# Nightly run of the adapter contract tests against real Printful (drafts only,
+# never confirmed) and Stripe test mode. Spends no money. Skipped when the
+# secrets are absent (forks). Ticket #25 fills in the job body.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.repository == 'dworznik/pressline'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Live smoke
+        if: ${{ env.PRINTFUL_TOKEN != '' && env.STRIPE_SECRET_KEY != '' }}
+        env:
+          PRINTFUL_TOKEN: ${{ secrets.PRINTFUL_TOKEN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}
+        run: pnpm -r --if-present test:live

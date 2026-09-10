@@ -1,0 +1,51 @@
+{
+  "name": "pressline",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Self-hostable bridge from an image-generating app to print-on-demand products (Printful + Stripe)",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "check": "pnpm -r --if-present check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "pnpm -r --if-present build",
+    "adr:check": "node scripts/check-adrs.mjs",
+    "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.23.0",
+    "globals": "^17.12.0",
+    "lint-staged": "^17.5.1",
+    "prettier": "^3.9.6",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.57.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^4.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs,svelte}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css,html}": [
+      "prettier --write"
+    ],
+    "docs/adr/*.md": [
+      "node scripts/check-adrs.mjs"
+    ]
+  }
+}

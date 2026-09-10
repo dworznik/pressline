@@ -1,0 +1,9 @@
+node_modules
+dist
+build
+.svelte-kit
+.wrangler
+.vercel
+coverage
+pnpm-lock.yaml
+CHANGELOG.md

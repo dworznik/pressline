@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+.svelte-kit/
+.wrangler/
+.vercel/
+.turbo/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# Local env — never commit keys. Templates live as .env.example.
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases and test artefacts
+*.db
+*.db-journal
+*.sqlite
+test-results/
+playwright-report/
+
+# Agent/editor scratch
+.claude/worktrees/
+.cursor/
+.history/

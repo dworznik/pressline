@@ -1,0 +1,15 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# Native/postinstall builds are opt-in. sharp is needed by @pressline/render's
+# node backend; workerd by the Cloudflare dev server. Everything else stays off.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  workerd: true
+  fsevents: false
+  core-js: false
+
+minimumReleaseAgeExclude:
+  - lint-staged@17.5.1

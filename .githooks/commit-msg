@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# Conventional-ish subject line: type(scope)?: summary, <= 72 chars.
+# Types: feat fix docs test refactor chore ci build perf adr
+msg="$(head -n1 "$1")"
+case "$msg" in
+  Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
+esac
+if ! printf '%s' "$msg" | grep -Eq '^(feat|fix|docs|test|refactor|chore|ci|build|perf|adr)(\([a-z0-9/_-]+\))?!?: .{1,72}$'; then
+  echo "commit-msg: subject must look like 'type(scope): summary' (<=72 chars)." >&2
+  echo "  got: $msg" >&2
+  exit 1
+fi

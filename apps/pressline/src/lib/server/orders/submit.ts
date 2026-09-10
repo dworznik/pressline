@@ -1,4 +1,4 @@
-import { Duration, Effect, Schedule } from 'effect';
+import { Duration, Effect, Option, Schedule } from 'effect';
 import { Config } from '../config/schema';
 import { toDecimalString } from '../money';
 import {
@@ -9,18 +9,13 @@ import {
 import { attachProviderOrder, findOrder, transition, type Order } from './orders';
 import type { Cause } from './state';
 
-/**
- * Submit a paid Order to the fulfilment provider (ADR-0009):
- * lookup by external id → draft → check → confirm. Safe to run again after
- * any partial failure: an existing draft is reused, an already confirmed
- * provider order is simply recorded. Retryable provider errors are retried
- * with backoff inside the caller's budget; if they persist the Order stays
- * `paid` for Reconciliation. Non-retryable errors and mismatches land in
- * `submit_failed` for the Operator.
- */
+/** Backoff for retryable provider errors within one submit attempt. */
 export const SUBMIT_RETRY = Schedule.exponential(Duration.millis(100)).pipe(
   Schedule.compose(Schedule.recurs(3)),
 );
+
+/** Wall-clock cap on one submit attempt: a webhook handler must answer well within the Inbound Event claim TTL. */
+export const SUBMIT_BUDGET = Duration.seconds(20);
 
 export type SubmitOutcome =
   | { readonly outcome: 'submitted'; readonly providerOrderId: string }
@@ -38,6 +33,7 @@ const CONFIRMED: ReadonlySet<ProviderOrder['status']> = new Set([
   'fulfilled',
 ]);
 
+/** Land in submit_failed with the reason on the Transition (and in the log) for the Operator. */
 const fail = (
   order: Order,
   cause: Cause,
@@ -45,21 +41,25 @@ const fail = (
   reason: string,
   providerOrderId?: string,
 ) =>
-  transition(
-    order.id,
-    'submit_failed',
-    cause,
-    ref,
-    providerOrderId ? { providerOrderId } : {},
-  ).pipe(
-    Effect.map((): SubmitOutcome => ({ outcome: 'submit_failed', reason })),
-    Effect.catchTag('TransitionRefused', () =>
-      Effect.succeed<SubmitOutcome>({ outcome: 'skipped', reason: 'state changed' }),
-    ),
-    Effect.catchTag('OrderNotFound', () =>
-      Effect.succeed<SubmitOutcome>({ outcome: 'skipped', reason: 'order vanished' }),
-    ),
-  );
+  Effect.gen(function* () {
+    yield* Effect.logWarning(`order ${order.id}: submit failed: ${reason}`);
+    if (order.state === 'submit_failed') {
+      // A resubmit that failed again: nothing to move, the reason is logged.
+      return { outcome: 'submit_failed', reason } satisfies SubmitOutcome;
+    }
+    return yield* transition(order.id, 'submit_failed', cause, ref, {
+      note: reason,
+      ...(providerOrderId ? { providerOrderId } : {}),
+    }).pipe(
+      Effect.map((): SubmitOutcome => ({ outcome: 'submit_failed', reason })),
+      Effect.catchTag('TransitionRefused', () =>
+        Effect.succeed<SubmitOutcome>({ outcome: 'skipped', reason: 'state changed' }),
+      ),
+      Effect.catchTag('OrderNotFound', () =>
+        Effect.succeed<SubmitOutcome>({ outcome: 'skipped', reason: 'order vanished' }),
+      ),
+    );
+  });
 
 /** The draft must be for the variant and destination the Customer paid for; anything else is a bug, never confirmed. */
 const mismatch = (
@@ -78,7 +78,27 @@ const mismatch = (
   return undefined;
 };
 
+/**
+ * Submit a paid Order to the fulfilment provider (ADR-0009):
+ * lookup by external id → draft → check → confirm. Safe to run again after
+ * any partial failure: an existing draft is reused, an already confirmed
+ * provider order is simply recorded. Retryable provider errors are retried
+ * with backoff inside `SUBMIT_BUDGET`; if they persist the Order stays
+ * `paid` for Reconciliation. Non-retryable errors and mismatches land in
+ * `submit_failed` for the Operator, with the reason on the Transition.
+ */
 export const submitOrder = (orderId: string, cause: Cause, causeRef?: string) =>
+  submitAttempt(orderId, cause, causeRef).pipe(
+    Effect.timeoutOption(SUBMIT_BUDGET),
+    Effect.map(
+      Option.getOrElse((): SubmitOutcome => ({
+        outcome: 'retry_later',
+        reason: 'submit budget exhausted',
+      })),
+    ),
+  );
+
+const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
   Effect.gen(function* () {
     const order = yield* findOrder(orderId);
     if (order.state !== 'paid' && order.state !== 'submit_failed') {
@@ -154,10 +174,11 @@ export const submitOrder = (orderId: string, cause: Cause, causeRef?: string) =>
     const problem = mismatch(order, draft, catalogVariantId);
     if (problem) return yield* fail(order, cause, causeRef, problem, draft.id);
     if (draft.costs && !draft.costs.calculating) {
+      // Compare like with like: the estimate has no tax, so neither does this side.
       const est = order.providerCostEstimate;
-      const delta = draft.costs.total - (est.product + est.shipping);
+      const actual = draft.costs.subtotal + draft.costs.shipping;
       yield* Effect.logInfo(
-        `order ${order.id}: provider total ${draft.costs.total} ${draft.costs.currency} vs estimate ${est.product + est.shipping} ${est.currency} (delta ${delta})`,
+        `order ${order.id}: provider product+shipping ${actual} ${draft.costs.currency} vs estimate ${est.product + est.shipping} ${est.currency} (delta ${actual - (est.product + est.shipping)})`,
       );
     }
 

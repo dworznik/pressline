@@ -76,6 +76,8 @@ export const Transition = Schema.Struct({
   to: OrderState,
   cause: Cause,
   causeRef: Schema.optional(Schema.String),
+  /** Free text for the Operator, e.g. why a submit failed. */
+  note: Schema.optional(Schema.String),
   at: Schema.Int,
 });
 export type Transition = typeof Transition.Type;
@@ -197,6 +199,15 @@ export const findOrderBySession = (sessionId: string) =>
     return rows[0] ? yield* fromRow(rows[0]) : undefined;
   });
 
+export const findOrderByProviderOrder = (providerOrderId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const rows = yield* db
+      .all<Row>(`${SELECT} WHERE provider_order_id = ?`, [providerOrderId])
+      .pipe(Effect.orDie);
+    return rows[0] ? yield* fromRow(rows[0]) : undefined;
+  });
+
 export const listOrders = (options: { state?: OrderState; limit?: number } = {}) =>
   Effect.gen(function* () {
     const db = yield* Db;
@@ -219,6 +230,7 @@ export const listTransitions = (orderId: string) =>
       to_state: OrderState;
       cause: Cause;
       cause_ref: string | null;
+      note: string | null;
       at: number;
     }>('SELECT * FROM order_transitions WHERE order_id = ? ORDER BY id', [orderId]);
     return rows.map((r): Transition => ({
@@ -228,6 +240,7 @@ export const listTransitions = (orderId: string) =>
       to: r.to_state,
       cause: r.cause,
       ...(r.cause_ref !== null ? { causeRef: r.cause_ref } : {}),
+      ...(r.note !== null ? { note: r.note } : {}),
       at: r.at,
     }));
   }).pipe(Effect.orDie);
@@ -327,12 +340,16 @@ export interface OrderPatch {
   readonly amountTotal?: number;
   readonly providerOrderId?: string;
   readonly tracking?: Tracking;
+  /** Recorded on the Transition, not the Order: why this move happened. */
+  readonly note?: string;
 }
 
 /**
  * Move an Order to a new state, recording the Transition and any patch in
- * one batch. Refused (typed) when the state machine forbids the move; the
- * caller decides whether that is an error or a no-op.
+ * one batch. Refused (typed) when the state machine forbids the move or when
+ * a concurrent writer moved the Order elsewhere first; if that writer made
+ * the same move, this call reports success without writing (its patch is
+ * dropped: the winner's facts stand).
  */
 export const transition = (
   orderId: string,
@@ -384,9 +401,19 @@ export const transition = (
     const changed = yield* db
       .batch([
         {
-          sql: `INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, at)
-                SELECT ?, ?, ?, ?, ?, ? FROM orders WHERE id = ? AND state = ?`,
-          params: [orderId, order.state, to, cause, causeRef ?? null, now, orderId, order.state],
+          sql: `INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, note, at)
+                SELECT ?, ?, ?, ?, ?, ?, ? FROM orders WHERE id = ? AND state = ?`,
+          params: [
+            orderId,
+            order.state,
+            to,
+            cause,
+            causeRef ?? null,
+            patch.note ?? null,
+            now,
+            orderId,
+            order.state,
+          ],
         },
         {
           sql: `UPDATE orders SET ${sets.join(', ')} WHERE id = ? AND state = ?`,

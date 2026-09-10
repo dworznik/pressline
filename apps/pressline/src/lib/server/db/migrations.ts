@@ -166,4 +166,12 @@ export const migrations: ReadonlyArray<Migration> = [
        )`,
     ],
   },
+  {
+    version: 7,
+    name: 'transition_notes',
+    statements: [
+      // Transitions carry a free-text note (e.g. why a submit failed) for the Operator.
+      `ALTER TABLE order_transitions ADD COLUMN note TEXT`,
+    ],
+  },
 ];

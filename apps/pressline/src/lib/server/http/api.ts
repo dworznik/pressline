@@ -13,7 +13,9 @@ import { CheckoutRequest, CheckoutStarted, CheckoutUnavailable } from '../checko
 import { OrderNotFound } from '../orders/orders';
 import { PublicOrder } from '../orders/public';
 import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
+import { ProviderWebhookRejected } from '../services/fulfilment-provider';
 import { WebhookRejected } from '../services/psp';
+import { ProviderWebhookProcessingFailed } from '../webhooks/printful';
 import { WebhookAck, WebhookProcessingFailed } from '../webhooks/stripe';
 import {
   Quote,
@@ -183,14 +185,27 @@ export const OrdersGroup = HttpApiGroup.make('orders')
   );
 
 /** Provider webhooks (ADR-0007): raw body in, signature verified by the adapter. */
-export const WebhooksGroup = HttpApiGroup.make('webhooks').add(
-  HttpApiEndpoint.post('stripe', '/webhooks/stripe')
-    // No payload schema: the signature covers the exact bytes, so the handler reads the raw body itself.
-    .setHeaders(Schema.Struct({ 'stripe-signature': Schema.optional(Schema.String) }))
-    .addSuccess(WebhookAck)
-    .addError(WebhookRejected, { status: 400 })
-    .addError(WebhookProcessingFailed, { status: 500 }),
-);
+export const WebhooksGroup = HttpApiGroup.make('webhooks')
+  .add(
+    HttpApiEndpoint.post('stripe', '/webhooks/stripe')
+      // No payload schema: the signature covers the exact bytes, so the handler reads the raw body itself.
+      .setHeaders(Schema.Struct({ 'stripe-signature': Schema.optional(Schema.String) }))
+      .addSuccess(WebhookAck)
+      .addError(WebhookRejected, { status: 400 })
+      .addError(WebhookProcessingFailed, { status: 500 }),
+  )
+  .add(
+    HttpApiEndpoint.post('printful', '/webhooks/printful')
+      .setHeaders(
+        Schema.Struct({
+          'x-pf-webhook-signature': Schema.optional(Schema.String),
+          'x-pf-webhook-public-key': Schema.optional(Schema.String),
+        }),
+      )
+      .addSuccess(WebhookAck)
+      .addError(ProviderWebhookRejected, { status: 400 })
+      .addError(ProviderWebhookProcessingFailed, { status: 500 }),
+  );
 
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)

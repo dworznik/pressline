@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer } from 'effect';
@@ -46,8 +47,15 @@ const stubFetch: typeof fetch = async (input, init) => {
   }
 };
 
+const FIXTURE_HMAC_KEY = '0123456789abcdef'.repeat(4); // low-entropy on purpose: a fixture, not a secret
 const stubLayer = (token = 'pf_test_token') =>
-  layerPrintful({ token, baseUrl: 'https://printful.test', timeout: '200 millis' }).pipe(
+  layerPrintful({
+    token,
+    baseUrl: 'https://printful.test',
+    timeout: '200 millis',
+    webhookSecret: FIXTURE_HMAC_KEY,
+    webhookPublicKey: 'SbF/9d/uWguI',
+  }).pipe(
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(Layer.succeed(FetchHttpClient.Fetch, stubFetch)),
   );
@@ -265,6 +273,67 @@ describe('Printful v2 adapter', () => {
       expect(new URL(seen.at(-1)!.url).pathname).toBe('/v2/orders/123/confirmation');
       const bad = await run(Effect.flatMap(FulfilmentProvider, (p) => p.getOrder('124')));
       expect(bad.items[0]!.failedPlacement).toMatch(/^front: Product with ID: 71/);
+    });
+  });
+
+  it('lists shipments with carrier and tracking', async () => {
+    const shipments = await run(Effect.flatMap(FulfilmentProvider, (p) => p.listShipments('123')));
+    expect(shipments).toEqual([
+      {
+        id: '1',
+        status: 'shipped',
+        carrier: 'DHL',
+        service: 'DHL Paket',
+        trackingNumber: '00340434161234567890',
+        trackingUrl:
+          'https://www.dhl.com/de-en/home/tracking/tracking-parcel.html?tracking-id=00340434161234567890',
+        shippedAt: '2026-09-12T09:15:00Z',
+      },
+    ]);
+  });
+
+  describe('webhook verification', () => {
+    const body = JSON.stringify({
+      type: 'shipment_sent',
+      occurred_at: '2026-09-12T09:15:05Z',
+      retries: 0,
+      store_id: 10,
+      data: {
+        order: { id: 123, external_id: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b', status: 'partial' },
+        shipment: { id: 1, status: 'shipped' },
+      },
+    });
+    const sign = (secretHex: string) =>
+      createHmac('sha256', Buffer.from(secretHex, 'hex')).update(body).digest('hex');
+    const verify = (signature: string | undefined, publicKey = 'SbF/9d/uWguI') =>
+      Effect.runPromiseExit(
+        Effect.flatMap(FulfilmentProvider, (p) =>
+          p.verifyWebhook(body, { ...(signature ? { signature } : {}), publicKey }),
+        ).pipe(Effect.provide(stubLayer())),
+      );
+
+    it('accepts HMAC-SHA256 over the raw body with the hex-decoded secret and reduces the event', async () => {
+      const exit = await verify(sign(FIXTURE_HMAC_KEY));
+      expect(exit._tag).toBe('Success');
+      if (exit._tag === 'Success') {
+        expect(exit.value).toMatchObject({
+          type: 'shipment_sent',
+          occurredAt: Math.floor(Date.parse('2026-09-12T09:15:05Z') / 1000),
+          providerOrderId: '123',
+          orderExternalId: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+          shipmentId: '1',
+        });
+        expect(exit.value.id).toMatch(/^[0-9a-f]{32}$/);
+        // A retry of the same event derives the same id.
+        const again = await verify(sign(FIXTURE_HMAC_KEY));
+        expect(again._tag === 'Success' && again.value.id).toBe(exit.value.id);
+      }
+    });
+
+    it('rejects a wrong secret, a missing signature and another configuration’s public key', async () => {
+      expect((await verify(sign('00'.repeat(32))))._tag).toBe('Failure');
+      expect((await verify(undefined))._tag).toBe('Failure');
+      expect((await verify(sign(FIXTURE_HMAC_KEY), 'other-config'))._tag).toBe('Failure');
     });
   });
 

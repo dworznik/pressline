@@ -6,7 +6,7 @@ import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effec
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
-import type { ProviderOrder } from '$lib/server/services/fulfilment-provider';
+import type { ProviderOrder, ProviderShipment } from '$lib/server/services/fulfilment-provider';
 import type {
   CheckoutSession,
   CheckoutSessionDetails,
@@ -111,6 +111,20 @@ export interface TestApp {
   readonly providerOrders: () => ReadonlyArray<ProviderOrder>;
   /** Change a provider order's status (simulates Printful moving it). */
   readonly setProviderOrderStatus: (id: string, status: ProviderOrder['status']) => void;
+  /** What the in-memory provider reports as shipments for one of its orders. */
+  readonly setProviderShipments: (id: string, list: ReadonlyArray<ProviderShipment>) => void;
+  /** Deliver a Printful-shaped webhook the in-memory provider will accept (signature `memory:valid` unless overridden). */
+  readonly printfulWebhook: (
+    body: {
+      type: string;
+      occurred_at?: string;
+      data?: {
+        order?: { id: string; external_id?: string; status?: string };
+        shipment?: { id: string; status?: string };
+      };
+    },
+    signature?: string,
+  ) => Promise<{ status: number; body: { outcome?: string; message?: string } }>;
   /** Checkout sessions the in-memory PSP was asked to create. */
   readonly pspSessions: () => Promise<
     ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
@@ -194,6 +208,20 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     bytesServed: (url) => served.get(url) ?? 0,
     providerOrders: provider.providerOrders,
     setProviderOrderStatus: provider.setProviderOrderStatus,
+    setProviderShipments: provider.setProviderShipments,
+    printfulWebhook: async (body, signature = 'memory:valid') => {
+      const res = await fetch('/webhooks/printful', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-pf-webhook-signature': signature },
+        body: JSON.stringify({
+          occurred_at: new Date().toISOString(),
+          retries: 0,
+          store_id: 1,
+          ...body,
+        }),
+      });
+      return { status: res.status, body: (await res.json().catch(() => ({}))) as never };
+    },
     pspSessions: () => Effect.runPromise(psp.sessions),
     pspDown: psp.setDown,
     setPspSession: psp.setSession,

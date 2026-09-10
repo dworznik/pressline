@@ -4,11 +4,18 @@ import { PrintfileSpec } from './spec.js';
 /** Bumped only on a breaking change to the wire protocol; checked at Pressline startup and by `doctor`. */
 export const PROTOCOL_VERSION = '1';
 
-/** Engine-scoped, unguessable Design ID (CONTEXT.md → Design). */
+/**
+ * Engine-scoped, unguessable Design ID (CONTEXT.md → Design). The schema can
+ * only enforce shape (URL-safe, 8–128 chars); entropy is the Engine's
+ * obligation.
+ */
 export const DesignId = Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9_-]{8,128}$/));
 
+/** Kebab-case identifier used for Offer slugs, Engine slugs and variant keys. */
+export const Slug = Schema.String.pipe(Schema.pattern(/^[a-z0-9]+(-[a-z0-9]+)*$/));
+
 /** Offer slug as configured by the Operator (CONTEXT.md → Offer). */
-export const OfferSlug = Schema.String.pipe(Schema.pattern(/^[a-z0-9]+(-[a-z0-9]+)*$/));
+export const OfferSlug = Slug;
 
 export const Aspect = Schema.Struct({
   w: Schema.Int.pipe(Schema.positive()),

@@ -1,50 +1,55 @@
 import { FetchHttpClient } from '@effect/platform';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Schema } from 'effect';
 import rawConfig from '../../../pressline.config';
 import { Config } from './config/schema';
-import { layerSqliteNode } from './db/sqlite-node';
-import { migrate } from './db/migrate';
+import { layerSqliteMigrated } from './db/layer';
 import { makeWebHandler, type WebHandler } from './http/handler';
-import { layerDesignSourceMemory } from './services/design-source';
-import { layerFulfilmentProviderMemory } from './services/fulfilment-provider';
-import { layerPrintful } from './services/printful';
 import { layerMailerConsole, layerMailerNone } from './services/mailer';
-import { layerPspMemory } from './services/psp';
-import { PROTOCOL_VERSION } from './http/api';
+import {
+  layerDesignSourceMemory,
+  layerFulfilmentProviderMemory,
+  layerPspMemory,
+} from './services/memory';
+import { layerPrintful } from './services/printful';
+
+/**
+ * Secrets and platform settings (ADR-0014): validated like any other boundary.
+ * Everything is optional so a fresh deploy boots before secrets are set; the
+ * health endpoint and `doctor` report what is missing.
+ */
+const Env = Schema.Struct({
+  DATABASE_PATH: Schema.optionalWith(Schema.NonEmptyString, { default: () => './pressline.db' }),
+  PRINTFUL_TOKEN: Schema.optional(Schema.NonEmptyString),
+  MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
+    default: () => 'none' as const,
+  }),
+});
 
 /**
  * Production wiring, memoised per isolate (ADR-0012). Platform bindings (D1,
  * secrets) arrive via `event.platform`; the platform tickets swap the Db and
  * provider layers per environment. Until the provider tickets land, the
- * providers are the in-memory ones.
+ * DesignSource and PSP are the in-memory stand-ins.
  */
 let cached: WebHandler | undefined;
 
 export const getWebHandler = (platform: App.Platform | undefined): WebHandler => {
   if (cached) return cached;
-  const env = platform?.env ?? process.env;
-  const dbPath = typeof env['DATABASE_PATH'] === 'string' ? env['DATABASE_PATH'] : './pressline.db';
+  const env = Schema.decodeUnknownSync(Env)(platform?.env ?? process.env, {
+    onExcessProperty: 'ignore',
+  });
 
-  const DbLive = layerSqliteNode(dbPath);
-  // Boot-time migrations: run once while the Db layer is built.
-  const DbMigrated = Layer.effectDiscard(migrate()).pipe(Layer.provide(DbLive));
-
-  // Printful when a token is configured (ADR-0007); otherwise the in-memory
-  // provider so a fresh deploy boots before secrets are set.
-  const printfulToken = typeof env['PRINTFUL_TOKEN'] === 'string' ? env['PRINTFUL_TOKEN'] : '';
-  const ProviderLive = printfulToken
-    ? layerPrintful({ token: printfulToken }).pipe(Layer.provide(FetchHttpClient.layer))
+  const FulfilmentProviderLive = env.PRINTFUL_TOKEN
+    ? layerPrintful({ token: env.PRINTFUL_TOKEN }).pipe(Layer.provide(FetchHttpClient.layer))
     : layerFulfilmentProviderMemory;
-
-  // No real Mailer until ticket #12; `none` by default so nothing about a
-  // Customer reaches the logs, `console` only when an operator opts in locally.
-  const MailerLive = env['MAILER'] === 'console' ? layerMailerConsole : layerMailerNone;
+  // No real Mailer until ticket #12; `none` keeps Customers out of the logs.
+  const MailerLive = env.MAILER === 'console' ? layerMailerConsole : layerMailerNone;
 
   const services = Layer.mergeAll(
     Config.layer(rawConfig),
-    Layer.merge(DbLive, DbMigrated),
-    layerDesignSourceMemory({ protocolVersion: PROTOCOL_VERSION }),
-    ProviderLive,
+    layerSqliteMigrated(env.DATABASE_PATH),
+    layerDesignSourceMemory(),
+    FulfilmentProviderLive,
     layerPspMemory,
     MailerLive,
   ).pipe(Layer.tapErrorCause((c) => Effect.logError('boot failed', c)));

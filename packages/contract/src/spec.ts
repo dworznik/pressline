@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { Effect, Either, Schema } from 'effect';
 
 /**
  * Printfile Spec (CONTEXT.md): what a Printfile must satisfy for one Offer
@@ -30,30 +30,39 @@ export const PrintfileSpec = Schema.Struct({
 });
 export type PrintfileSpec = typeof PrintfileSpec.Type;
 
-const sortedUnique = (xs: ReadonlyArray<string>) => [...new Set(xs)].sort();
+/** The value is not a valid Printfile Spec (e.g. a non-integer dimension). */
+export class InvalidPrintfileSpec extends Schema.TaggedError<InvalidPrintfileSpec>()(
+  'InvalidPrintfileSpec',
+  { message: Schema.String },
+) {}
+
+const validate = Schema.decodeUnknownEither(PrintfileSpec);
 
 /**
  * Canonical JSON: keys sorted, no whitespace, `formats` sorted and
- * de-duplicated, every number an integer. Throws on a non-integer so a
- * rounding disagreement can never produce two hashes for "the same" spec.
+ * de-duplicated, every number an integer. Validates first, so a rounding
+ * disagreement can never produce two hashes for "the same" spec.
  */
-export const canonicalize = (spec: PrintfileSpec): string => {
-  for (const [k, v] of Object.entries(spec)) {
-    if (typeof v === 'number' && !Number.isInteger(v)) {
-      throw new TypeError(`PrintfileSpec.${k} must be an integer, got ${v}`);
-    }
-  }
-  const ordered: Record<string, unknown> = {};
-  for (const key of Object.keys(spec).sort()) {
-    const value = (spec as Record<string, unknown>)[key];
-    ordered[key] = key === 'formats' ? sortedUnique(value as ReadonlyArray<string>) : value;
-  }
-  return JSON.stringify(ordered);
-};
+export const canonicalize = (spec: PrintfileSpec): Either.Either<string, InvalidPrintfileSpec> =>
+  validate(spec).pipe(
+    Either.mapLeft((e) => new InvalidPrintfileSpec({ message: e.message })),
+    Either.map((valid) => {
+      const ordered: Record<string, unknown> = {};
+      for (const key of Object.keys(valid).sort()) {
+        const value = (valid as Record<string, unknown>)[key];
+        ordered[key] = key === 'formats' ? [...new Set(valid.formats)].sort() : value;
+      }
+      return JSON.stringify(ordered);
+    }),
+  );
 
 const hex = (bytes: ArrayBuffer) =>
   Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, '0')).join('');
 
 /** Spec Hash (CONTEXT.md): SHA-256 of the canonical form, lowercase hex. WebCrypto, so it runs on Node and Workers. */
-export const specHash = async (spec: PrintfileSpec): Promise<string> =>
-  hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalize(spec))));
+export const specHash = (spec: PrintfileSpec): Effect.Effect<string, InvalidPrintfileSpec> =>
+  Effect.flatMap(canonicalize(spec), (canonical) =>
+    Effect.promise(async () =>
+      hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical))),
+    ),
+  );

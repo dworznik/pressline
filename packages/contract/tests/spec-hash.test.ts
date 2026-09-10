@@ -1,5 +1,6 @@
+import { Effect, Either } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { canonicalize, specHash, type PrintfileSpec } from '../src/index';
+import { canonicalize, InvalidPrintfileSpec, specHash, type PrintfileSpec } from '../src/index';
 
 /**
  * Published test vectors. The hashes were computed independently with
@@ -39,22 +40,29 @@ const vectors: ReadonlyArray<{ spec: PrintfileSpec; canonical: string; sha256: s
   },
 ];
 
+const hash = (spec: PrintfileSpec) => Effect.runPromise(specHash(spec));
+
 describe('Printfile Spec canonical form and Spec Hash', () => {
   it.each(vectors)('canonicalises with sorted keys and no whitespace', ({ spec, canonical }) => {
-    expect(canonicalize(spec)).toBe(canonical);
+    expect(canonicalize(spec)).toEqual(Either.right(canonical));
   });
 
   it.each(vectors)('hashes to the published SHA-256', async ({ spec, sha256 }) => {
-    expect(await specHash(spec)).toBe(sha256);
+    expect(await hash(spec)).toBe(sha256);
   });
 
   it('is independent of key order and formats order', async () => {
     const a = vectors[1]!.spec;
     const b: PrintfileSpec = { ...a, formats: ['png', 'jpeg'] };
-    expect(await specHash(b)).toBe(vectors[1]!.sha256);
+    expect(await hash(b)).toBe(vectors[1]!.sha256);
   });
 
-  it('rejects non-integer dimensions so both sides cannot disagree on rounding', () => {
-    expect(() => canonicalize({ ...vectors[0]!.spec, width: 1800.5 })).toThrow(/integer/);
+  it('rejects non-integer dimensions with a typed error, so both sides cannot disagree on rounding', () => {
+    const result = canonicalize({ ...vectors[0]!.spec, width: 1800.5 });
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(InvalidPrintfileSpec);
+      expect(result.left.message).toMatch(/width/);
+    }
   });
 });

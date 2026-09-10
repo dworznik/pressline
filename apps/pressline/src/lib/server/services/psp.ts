@@ -1,4 +1,5 @@
-import { Context, Effect, Layer, Schema } from 'effect';
+import { Context, Schema } from 'effect';
+import type { Effect } from 'effect';
 
 /**
  * PSP (CONTEXT.md): takes the Customer's money. Stripe Checkout is the only
@@ -14,5 +15,3 @@ export interface PspService {
 }
 
 export class Psp extends Context.Tag('pressline/Psp')<Psp, PspService>() {}
-
-export const layerPspMemory = Layer.succeed(Psp, { health: () => Effect.void });

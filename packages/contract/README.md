@@ -12,7 +12,7 @@ import {
 } from '@pressline/contract';
 ```
 
-- `PrintfileSpec`, `canonicalize`, `specHash` — the Spec an Engine renders to and the hash both sides agree on (test vectors in `tests/spec-hash.test.ts`).
+- `PrintfileSpec`, `canonicalize` (→ `Either<string, InvalidPrintfileSpec>`), `specHash` (→ `Effect<string, InvalidPrintfileSpec>`) — the Spec an Engine renders to and the hash both sides agree on (test vectors in `tests/spec-hash.test.ts`). Non-Effect code: `await Effect.runPromise(specHash(spec))`.
 - `DesignResponse`, `PrintfileReady` (200), `PrintfileRendering` (202), `PrintfileRejected` (422), `DesignNotFound` (404), `EngineHealth` — wire schemas.
 - `EngineApi` — the protocol as an `HttpApi`; implement it with `HttpApiBuilder` or follow the paths from any stack.
 - `makeEngineClient({ baseUrl, secret })` — Pressline's client; needs an `HttpClient` (`FetchHttpClient.layer`).

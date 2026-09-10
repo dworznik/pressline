@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs';
 import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { FulfilmentProvider, ProviderError } from '$lib/server/services/fulfilment-provider';
+import {
+  FulfilmentProvider,
+  FulfilmentProviderError,
+} from '$lib/server/services/fulfilment-provider';
 import { layerPrintful } from '$lib/server/services/printful';
 
 /**
@@ -52,7 +55,7 @@ describe('Printful v2 adapter', () => {
     expect(product).toEqual({
       id: 71,
       name: 'Unisex Staple T-Shirt | Bella + Canvas 3001',
-      placements: [
+      printMethods: [
         { placement: 'front', technique: 'dtg' },
         { placement: 'back', technique: 'dtg' },
       ],
@@ -91,14 +94,14 @@ describe('Printful v2 adapter', () => {
     });
   });
 
-  it('maps 404 to a non-retryable ProviderError carrying Printful’s message', async () => {
+  it('maps 404 to a non-retryable FulfilmentProviderError carrying Printful’s message', async () => {
     const err = await fail(Effect.flatMap(FulfilmentProvider, (p) => p.getCatalogVariant(999999)));
-    expect(err).toBeInstanceOf(ProviderError);
+    expect(err).toBeInstanceOf(FulfilmentProviderError);
     expect(err).toMatchObject({ retryable: false, status: 404 });
-    expect((err as ProviderError).message).toContain('Catalog variant not found');
+    expect((err as FulfilmentProviderError).message).toContain('Catalog variant not found');
   });
 
-  it('maps 401 to a non-retryable ProviderError', async () => {
+  it('maps 401 to a non-retryable FulfilmentProviderError', async () => {
     const err = await fail(
       Effect.flatMap(FulfilmentProvider, (p) => p.getCatalogProduct(71)),
       'wrong',
@@ -106,7 +109,7 @@ describe('Printful v2 adapter', () => {
     expect(err).toMatchObject({ retryable: false, status: 401 });
   });
 
-  it('maps 429 and 5xx to retryable ProviderErrors', async () => {
+  it('maps 429 and 5xx to retryable FulfilmentProviderErrors', async () => {
     forceStatus = 429;
     const rate = await fail(Effect.flatMap(FulfilmentProvider, (p) => p.getCatalogProduct(71)));
     forceStatus = 503;

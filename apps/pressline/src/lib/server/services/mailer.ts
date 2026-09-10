@@ -1,9 +1,8 @@
-import { Context, Effect, Layer, Ref, Schema } from 'effect';
+import { Context, Effect, Layer, Schema } from 'effect';
 
 /**
  * Mailer (CONTEXT.md): delivers Customer emails. Resend is the shipped
- * implementation (ticket #12); `none` and `console` exist for setup and dev;
- * the memory mailer records sends so HTTP-seam tests can assert on them.
+ * implementation (ticket #12); `none` and `console` exist for setup and dev.
  */
 export class MailerError extends Schema.TaggedError<MailerError>()('MailerError', {
   message: Schema.String,
@@ -22,17 +21,15 @@ export interface MailerService {
 
 export class Mailer extends Context.Tag('pressline/Mailer')<Mailer, MailerService>() {}
 
+/** Sends nothing. The production default until a real Mailer is configured. */
 export const layerMailerNone = Layer.succeed(Mailer, { send: () => Effect.void });
 
+/**
+ * Dev-only stand-in. Logs an opaque delivery event: never the recipient or
+ * the subject (CWE-532), because logs outlive the request and the Recipient
+ * is the only personal data Pressline holds.
+ */
 export const layerMailerConsole = Layer.succeed(Mailer, {
   send: (email) =>
-    Effect.sync(() => console.warn(`[mail] to=${email.to} subject=${email.subject}`)),
+    Effect.sync(() => console.warn(`[mail] delivered 1 message (${email.html.length} bytes html)`)),
 });
-
-/** Memory mailer: `make` returns the layer and a handle to read what was sent. */
-export const makeMailerMemory = Effect.map(Ref.make<ReadonlyArray<Email>>([]), (ref) => ({
-  layer: Layer.succeed(Mailer, {
-    send: (email) => Ref.update(ref, (sent) => [...sent, email]),
-  }),
-  sent: Ref.get(ref),
-}));

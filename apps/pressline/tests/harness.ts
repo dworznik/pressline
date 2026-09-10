@@ -1,31 +1,36 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Effect, Layer } from 'effect';
+import { Clock, Duration, Effect, Layer } from 'effect';
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
-import { migrate } from '$lib/server/db/migrate';
-import { layerSqliteNode } from '$lib/server/db/sqlite-node';
-import { PROTOCOL_VERSION } from '$lib/server/http/api';
+import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler } from '$lib/server/http/handler';
-import { layerDesignSourceMemory } from '$lib/server/services/design-source';
 import {
   emptyCatalog,
+  layerDesignSourceMemory,
+  layerPspMemory,
   makeFulfilmentProviderMemory,
+  makeMailerMemory,
   type MemoryCatalog,
-} from '$lib/server/services/fulfilment-provider';
-import { makeMailerMemory } from '$lib/server/services/mailer';
-import { layerPspMemory } from '$lib/server/services/psp';
+} from '$lib/server/services/memory';
 
 /**
  * Seam 1 (docs/SPEC.md → Testing Decisions): boot the bridge's HTTP surface
- * with in-memory services and a temp SQLite file, then talk to it over HTTP.
- * Tests assert on responses, subsequent reads, and what the fakes received.
+ * with in-memory services, a temp SQLite file and a controllable clock, then
+ * talk to it over HTTP. Tests assert on responses, subsequent reads, and what
+ * the fakes received.
  */
 export const testConfig: typeof PresslineConfigSchema.Encoded = {
   name: 'Test Shop',
   currency: 'EUR',
   engines: [{ slug: 'sample', baseUrl: 'http://engine.test' }],
 };
+
+export interface TestAppOptions {
+  readonly config?: Partial<typeof PresslineConfigSchema.Encoded>;
+  /** Seed for the in-memory fulfilment provider's catalog. */
+  readonly catalog?: MemoryCatalog;
+}
 
 export interface TestApp {
   readonly fetch: (path: string, init?: RequestInit) => Promise<Response>;
@@ -35,35 +40,43 @@ export interface TestApp {
   ) => Promise<{ status: number; body: T }>;
   readonly sentMail: () => Promise<ReadonlyArray<{ to: string; subject: string }>>;
   /** How many calls reached the (in-memory) fulfilment provider. */
-  readonly providerCalls: () => Promise<number>;
+  readonly fulfilmentProviderCalls: () => Promise<number>;
+  /** Move the app's clock forward. */
+  readonly advanceClock: (by: Duration.DurationInput) => void;
   readonly dbPath: string;
   readonly dispose: () => Promise<void>;
 }
 
-export interface TestAppOptions {
-  readonly config?: Partial<typeof PresslineConfigSchema.Encoded>;
-  /** Seed for the in-memory fulfilment provider's catalog. */
-  readonly catalog?: MemoryCatalog;
-}
+/** A clock the test moves by hand; starts at the real time so TTLs are realistic. */
+const makeSettableClock = () => {
+  let now = Date.now();
+  const clock: Clock.Clock = {
+    ...Clock.make(),
+    unsafeCurrentTimeMillis: () => now,
+    unsafeCurrentTimeNanos: () => BigInt(now) * 1_000_000n,
+    currentTimeMillis: Effect.sync(() => now),
+    currentTimeNanos: Effect.sync(() => BigInt(now) * 1_000_000n),
+  };
+  return { clock, advance: (by: Duration.DurationInput) => void (now += Duration.toMillis(by)) };
+};
 
 export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp> => {
-  const overrides = options.config ?? {};
   const dir = mkdtempSync(join(tmpdir(), 'pressline-'));
   const dbPath = join(dir, 'test.db');
   const mailer = await Effect.runPromise(makeMailerMemory);
   const provider = await Effect.runPromise(
     makeFulfilmentProviderMemory(options.catalog ?? emptyCatalog),
   );
+  const { clock, advance } = makeSettableClock();
 
-  const DbLive = layerSqliteNode(dbPath);
   const services = Layer.mergeAll(
-    Config.layer({ ...testConfig, ...overrides }),
-    Layer.merge(DbLive, Layer.effectDiscard(migrate()).pipe(Layer.provide(DbLive))),
-    layerDesignSourceMemory({ protocolVersion: PROTOCOL_VERSION }),
+    Config.layer({ ...testConfig, ...options.config }),
+    layerSqliteMigrated(dbPath),
+    layerDesignSourceMemory(),
     provider.layer,
     layerPspMemory,
     mailer.layer,
-  );
+  ).pipe(Layer.provideMerge(Layer.setClock(clock)));
   const { handler, dispose } = makeWebHandler(services);
   const base = 'http://pressline.test';
 
@@ -75,7 +88,8 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
       return { status: res.status, body: (await res.json()) as never };
     },
     sentMail: () => Effect.runPromise(mailer.sent),
-    providerCalls: () => Effect.runPromise(provider.calls),
+    fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
+    advanceClock: advance,
     dbPath,
     dispose: async () => {
       await dispose();

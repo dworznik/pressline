@@ -1,4 +1,4 @@
-import { AspectRange, OfferSlug } from '@pressline/contract';
+import { AspectRange, OfferSlug, Slug } from '@pressline/contract';
 import { Context, Effect, Layer, ParseResult, Schema } from 'effect';
 
 /**
@@ -6,7 +6,7 @@ import { Context, Effect, Layer, ParseResult, Schema } from 'effect';
  * validated at boot. Secrets are NOT here; they come from the platform env.
  */
 export const EngineConfig = Schema.Struct({
-  slug: Schema.String.pipe(Schema.pattern(/^[a-z0-9]+(-[a-z0-9]+)*$/)),
+  slug: Slug,
   baseUrl: Schema.String.pipe(Schema.pattern(/^https?:\/\//)),
 });
 export type EngineConfig = typeof EngineConfig.Type;
@@ -38,10 +38,9 @@ export const OfferConfig = Schema.Struct({
   /** Aspect (w/h) range this Offer accepts; omitted = any. */
   aspect: Schema.optional(AspectRange),
   /** Variant key → catalog variant. Keys are stable, e.g. `black-m`. */
-  variants: Schema.Record({
-    key: Schema.String.pipe(Schema.pattern(/^[a-z0-9]+(-[a-z0-9]+)*$/)),
-    value: OfferVariantConfig,
-  }).pipe(Schema.filter((v) => Object.keys(v).length > 0 || 'an Offer needs at least one variant')),
+  variants: Schema.Record({ key: Slug, value: OfferVariantConfig }).pipe(
+    Schema.filter((v) => Object.keys(v).length > 0 || 'an Offer needs at least one variant'),
+  ),
 }).pipe(
   Schema.filter((o) =>
     o.aspect === undefined || o.aspect.min <= o.aspect.max

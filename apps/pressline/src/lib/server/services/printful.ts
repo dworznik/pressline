@@ -3,7 +3,7 @@ import type { HttpClientError } from '@effect/platform';
 import { Effect, Layer, Schema } from 'effect';
 import {
   FulfilmentProvider,
-  ProviderError,
+  FulfilmentProviderError,
   type CatalogProduct,
   type CatalogVariant,
   type FulfilmentProviderService,
@@ -13,7 +13,7 @@ import {
 /**
  * Printful API v2 adapter (ADR-0007). The only place Printful's wire shapes
  * appear. Decoding is lenient (only the fields we use are required) so a
- * beta-time field shuffle degrades to a ProviderError, not a crash.
+ * beta-time field shuffle degrades to a FulfilmentProviderError, not a crash.
  */
 export interface PrintfulOptions {
   readonly token: string;
@@ -59,9 +59,11 @@ const ErrorWire = Schema.Struct({
   error: Schema.optional(Schema.Struct({ message: Schema.optional(Schema.String) })),
 });
 
-const toProviderError = (e: HttpClientError.HttpClientError | ProviderError): ProviderError => {
-  if (e instanceof ProviderError) return e;
-  return new ProviderError({ message: `Printful: ${e.message}`, retryable: true });
+const toFulfilmentProviderError = (
+  e: HttpClientError.HttpClientError | FulfilmentProviderError,
+): FulfilmentProviderError => {
+  if (e instanceof FulfilmentProviderError) return e;
+  return new FulfilmentProviderError({ message: `Printful: ${e.message}`, retryable: true });
 };
 
 const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
@@ -75,7 +77,7 @@ const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
     Effect.flatMap((body) => {
       const detail = body.result ?? body.error?.message ?? res.status.toString();
       const retryable = res.status === 429 || res.status >= 500;
-      return new ProviderError({
+      return new FulfilmentProviderError({
         message: `Printful ${res.status}: ${detail}`,
         retryable,
         status: res.status,
@@ -98,7 +100,7 @@ export const makePrintful = (options: PrintfulOptions) =>
             ? HttpClientResponse.schemaBodyJson(schema)(res).pipe(
                 Effect.mapError(
                   (e) =>
-                    new ProviderError({
+                    new FulfilmentProviderError({
                       message: `Printful ${path}: ${e.message}`,
                       retryable: false,
                     }),
@@ -106,7 +108,7 @@ export const makePrintful = (options: PrintfulOptions) =>
               )
             : failStatus(res),
         ),
-        Effect.mapError(toProviderError),
+        Effect.mapError(toFulfilmentProviderError),
         Effect.scoped,
       );
 
@@ -118,7 +120,7 @@ export const makePrintful = (options: PrintfulOptions) =>
           Effect.map(({ data }): CatalogProduct => ({
             id: data.id,
             name: data.name,
-            placements: data.placements.map((p) => ({
+            printMethods: data.placements.map((p) => ({
               placement: p.placement,
               technique: p.technique,
             })),

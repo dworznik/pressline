@@ -52,7 +52,7 @@ const DesignsLive = HttpApiBuilder.group(EngineApi, 'designs', (handlers) =>
           return yield* new PrintfileRejected({ code: 'aspect_mismatch', message: 'square only' });
         renderCalls += 1;
         if (renderCalls === 1) return { status: 'rendering' as const, retryAfterMs: 500 };
-        const hash = yield* Effect.promise(() => specHash(payload));
+        const hash = yield* specHash(payload).pipe(Effect.orDie);
         return {
           status: 'ready' as const,
           url: `https://engine.test/f/${path.designId}/${hash}.png`,
@@ -129,7 +129,7 @@ describe('Engine client over the DesignSource protocol', () => {
       height: 2400,
       contentType: 'image/png',
     });
-    expect((second as { specHash: string }).specHash).toBe(await specHash(spec));
+    expect((second as { specHash: string }).specHash).toBe(await Effect.runPromise(specHash(spec)));
   });
 
   it('surfaces 422 as a typed PrintfileRejected', async () => {

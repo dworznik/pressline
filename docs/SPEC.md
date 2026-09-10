@@ -99,11 +99,11 @@ Pressline is a self-hostable, open-source bridge. An Operator deploys one instan
 
 - One Operator per instance. No tenant concept anywhere.
 - One deployable per platform: a SvelteKit application packaged by the official Cloudflare and Vercel adapters. Storefront and Operator View pages are SvelteKit routes. The Effect `HttpApi` is mounted from the server hook and owns the JSON API, the operator API, the Engine-facing endpoints and the webhook endpoints.
-- Effect throughout: `@effect/platform` for HTTP, `@effect/sql` for persistence and migrations, `Schema` for all contracts and configuration, `Layer` for every external dependency, `Schedule` for polling and reconciliation.
-- Five external interfaces, each with one shipped implementation plus in-memory and (where useful) `none`/`console` implementations: `DesignSource` (HTTP client to an Engine), `FulfilmentProvider` (Printful v2), `PSP` (Stripe Checkout), `Mailer` (Resend), `Db` (SQLite dialect: D1, libSQL, file). `Clock` is injectable for tests.
+- Effect throughout: `@effect/platform` for HTTP, `Schema` for all contracts and configuration, `Layer` for every external dependency, `Schedule` for polling and reconciliation. Persistence is Pressline's own three-method `Db` service (`run`, `all`, `batch`) over each platform's native driver, with an in-house migrator (ADR-0011).
+- Five external interfaces, each with one shipped implementation plus in-memory and (where useful) `none`/`console` implementations: `DesignSource` (HTTP client to an Engine), `FulfilmentProvider` (Printful v2), `PSP` (Stripe Checkout), `Mailer` (Resend), `Db` (SQLite dialect: D1, libSQL, file). Effect's built-in `Clock` is used everywhere time is read, so tests inject a settable one.
 - Effect runtime is built from platform bindings per request and memoised per isolate.
 - Scheduled Reconciliation has a per-platform shim: a Cloudflare cron `scheduled` export and a Vercel cron hitting an operator-token-protected route. The same entry is callable from the CLI.
-- Migrations run at boot on first request per isolate, guarded by `PRAGMA user_version` and a migrations table, safe under concurrent cold starts. No interactive transactions anywhere; every logical write is one `batch`.
+- Migrations run at boot on first request per isolate. Each migration's statements and its `migrations` bookkeeping row go in one `batch`; the row's primary key is the concurrency guard, and a migrator that loses a race re-reads the applied set and carries on (ADR-0012). No interactive transactions anywhere; every logical write is one `batch`.
 - pnpm workspace: applications (pressline, sample-engine, docs), published packages (`@pressline/contract`, `@pressline/render`, `@pressline/cli`), and deploy templates for both platforms pointing at the applications. The bridge is not published as a library.
 - Configuration is a typed file validated by `Schema` at boot (Catalogue, Engines, branding, Withdrawal Notice wording, terms and privacy URLs, currency, Demo Mode, promotion-code flag, operator email); secrets come from platform environment (Printful token, Stripe secret and webhook secret, Resend key, per-Engine shared secrets, operator token, session-signing secret). The Operator View never edits configuration.
 
@@ -118,8 +118,8 @@ Pressline is a self-hostable, open-source bridge. An Operator deploys one instan
 
 Engine-side endpoints, all under a per-Engine base URL, authenticated by a bearer shared secret Pressline sends:
 
-- `GET /designs/{designId}` → `{ id, title?, sellable, previewUrl, aspect: {w,h}, offers?: string[], mockups?: { [offerSlug]: url }, engineRef? }` or 404.
-- `POST /designs/{designId}/printfile` with a Printfile Spec body → `200 { url, sha256, width, height, bytes, contentType, specHash }`, or `202 { retryAfterMs }`, or `422 { code, message }`.
+- `GET /designs/{designId}` → `200 { id, title?, sellable, previewUrl, aspect: {w,h}, offers?: string[], mockups?: { [offerSlug]: url }, engineRef? }` or `404 { _tag: "DesignNotFound", designId }`. Design IDs are URL-safe, 8–128 characters; entropy is the Engine's obligation.
+- `POST /designs/{designId}/printfile` with a Printfile Spec body → `200 { status: "ready", url, sha256, width, height, bytes, contentType, specHash }`, or `202 { status: "rendering", retryAfterMs }`, or `422 { _tag: "PrintfileRejected", code: aspect_mismatch | unsupported_format | design_not_sellable | other, message }`. The exact schemas live in `@pressline/contract`, which is the normative source; the shapes here are a summary.
 - `GET /health` → `{ protocolVersion }`. Checked at startup and by `doctor`; a mismatch is an Alarm and the Engine is disabled.
 
 Pressline-side endpoints an Engine may call without credentials: the public catalogue endpoint (Offers, variants, Printfile Specs) and a helper that returns the Storefront URL for a Design.

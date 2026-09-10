@@ -10,7 +10,7 @@ export const CatalogueLive = HttpApiBuilder.group(PresslineApi, 'catalogue', (ha
       Effect.catchTags({
         CatalogueError: (e) =>
           new CatalogueUnavailable({ message: `Offer "${e.offer}": ${e.message}`, offer: e.offer }),
-        ProviderError: (e) => new CatalogueUnavailable({ message: e.message }),
+        FulfilmentProviderError: (e) => new CatalogueUnavailable({ message: e.message }),
       }),
     ),
   ),

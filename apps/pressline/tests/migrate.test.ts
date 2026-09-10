@@ -19,13 +19,9 @@ describe('boot-time migrations', () => {
     const layer = layerSqliteNode(join(dir, 'a.db'));
     const run = (eff: Effect.Effect<unknown, unknown, Db>) =>
       Effect.runPromise(eff.pipe(Effect.provide(layer)) as Effect.Effect<unknown, never>);
-    await run(migrate());
-    await run(migrate());
+    expect(await run(migrate())).toBe(migrations.length);
+    expect(await run(migrate())).toBe(migrations.length);
     expect(await run(schemaVersion)).toBe(migrations.length);
-    const rows = await run(
-      Effect.flatMap(Db, (db) => db.all<{ n: number }>('SELECT COUNT(*) AS n FROM migrations')),
-    );
-    expect(rows).toEqual([{ n: migrations.length }]);
   });
 
   it('reports schema version 0 on a fresh database, before any migration', async () => {

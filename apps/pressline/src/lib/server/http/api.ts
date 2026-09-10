@@ -38,6 +38,3 @@ export const CatalogueGroup = HttpApiGroup.make('catalogue').add(
 );
 
 export class PresslineApi extends HttpApi.make('pressline').add(HealthGroup).add(CatalogueGroup) {}
-
-/** DesignSource protocol version this bridge speaks; canonical home is @pressline/contract. */
-export { PROTOCOL_VERSION } from '@pressline/contract';

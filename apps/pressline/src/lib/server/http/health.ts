@@ -2,7 +2,8 @@ import { HttpApiBuilder } from '@effect/platform';
 import { Effect } from 'effect';
 import { Config } from '../config/schema';
 import { schemaVersion } from '../db/migrate';
-import { PresslineApi, PROTOCOL_VERSION } from './api';
+import { PROTOCOL_VERSION } from '@pressline/contract';
+import { PresslineApi } from './api';
 
 export const HealthLive = HttpApiBuilder.group(PresslineApi, 'health', (handlers) =>
   handlers.handle('health', () =>

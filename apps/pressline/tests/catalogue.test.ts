@@ -1,6 +1,7 @@
 import { specHash, type CatalogueResponse } from '@pressline/contract';
+import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MemoryCatalog } from '$lib/server/services/fulfilment-provider';
+import type { MemoryCatalog } from '$lib/server/services/memory';
 import { makeTestApp, type TestApp } from './harness';
 
 /** Provider-side catalog the Operator's Offers point at (shapes as the adapter returns them). */
@@ -9,7 +10,7 @@ const catalog: MemoryCatalog = {
     {
       id: 71,
       name: 'Unisex Staple T-Shirt | Bella + Canvas 3001',
-      placements: [
+      printMethods: [
         { placement: 'front', technique: 'dtg' },
         { placement: 'back', technique: 'dtg' },
       ],
@@ -17,7 +18,7 @@ const catalog: MemoryCatalog = {
     {
       id: 1,
       name: 'Enhanced Matte Paper Poster (in)',
-      placements: [{ placement: 'default', technique: 'digital' }],
+      printMethods: [{ placement: 'default', technique: 'digital' }],
     },
   ],
   variants: [
@@ -117,7 +118,7 @@ describe('GET /api/offers (public Catalogue)', () => {
       placement: 'front',
       technique: 'dtg',
     });
-    expect(v.specHash).toBe(await specHash(v.spec));
+    expect(v.specHash).toBe(await Effect.runPromise(specHash(v.spec)));
 
     const poster = body.offers.find((o) => o.slug === 'poster-18x24')!;
     expect(poster.aspect).toEqual({ min: 0.7, max: 0.8 });
@@ -132,11 +133,42 @@ describe('GET /api/offers (public Catalogue)', () => {
   it('serves a cache hit without calling the provider', async () => {
     app = await makeTestApp({ config: { catalogue: { offers } }, catalog });
     await app.json('/api/offers');
-    const after1 = await app.providerCalls();
+    const after1 = await app.fulfilmentProviderCalls();
     expect(after1).toBeGreaterThan(0);
     const { status } = await app.json('/api/offers');
     expect(status).toBe(200);
-    expect(await app.providerCalls()).toBe(after1);
+    expect(await app.fulfilmentProviderCalls()).toBe(after1);
+  });
+
+  it('re-resolves from the provider once the cache TTL has expired', async () => {
+    app = await makeTestApp({ config: { catalogue: { offers } }, catalog });
+    await app.json('/api/offers');
+    const warm = await app.fulfilmentProviderCalls();
+    app.advanceClock('23 hours');
+    await app.json('/api/offers');
+    expect(await app.fulfilmentProviderCalls()).toBe(warm);
+    app.advanceClock('2 hours');
+    const { status } = await app.json('/api/offers');
+    expect(status).toBe(200);
+    expect(await app.fulfilmentProviderCalls()).toBeGreaterThan(warm);
+  });
+
+  it('applies config-side presentation overrides even when the variant is cached', async () => {
+    app = await makeTestApp({ config: { catalogue: { offers } }, catalog });
+    await app.json('/api/offers'); // warm the cache with the provider's colour "Black"
+    await app.dispose();
+    const overridden = {
+      ...offers[0]!,
+      variants: { 'black-m': { catalogVariantId: 4017, label: 'Noir / M', color: 'Noir' } },
+    };
+    // Same database would be ideal; a fresh app with the override shows the read-time merge.
+    app = await makeTestApp({ config: { catalogue: { offers: [overridden] } }, catalog });
+    const { body } = await app.json<CatalogueResponse>('/api/offers');
+    expect(body.offers[0]!.variants[0]).toMatchObject({
+      label: 'Noir / M',
+      color: 'Noir',
+      size: 'M',
+    });
   });
 
   it('returns an empty Catalogue for a fresh instance', async () => {

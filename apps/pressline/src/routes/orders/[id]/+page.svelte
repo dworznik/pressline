@@ -1,14 +1,11 @@
 <script lang="ts">
+  import { formatMoney } from '$lib/money';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const order = $derived(data.order);
   const display = $derived(data.display);
-  const formatter = $derived(
-    new Intl.NumberFormat('en', { style: 'currency', currency: order.currency }),
-  );
-  const money = (amount: number) =>
-    formatter.format(amount / 10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2));
+  const money = (amount: number) => formatMoney(amount, order.currency);
   const steps = ['paid', 'making', 'shipped', 'done'] as const;
   const reached = (step: (typeof steps)[number]) =>
     steps.indexOf(step) <= steps.indexOf(display.step as never);

@@ -14,6 +14,7 @@ import type {
   CheckoutSession,
   CheckoutSessionDetails,
   CheckoutSessionInput,
+  PaymentStatus,
 } from '$lib/server/services/psp';
 import {
   emptyCatalog,
@@ -33,6 +34,7 @@ import {
  */
 /** The Operator's credential in tests (bearer for the CLI, exchanged for a cookie by the view). */
 export const OPERATOR_TOKEN = 'operator-token-for-tests';
+export const CRON_SECRET = 'cron-secret-for-tests';
 
 export const testConfig: typeof PresslineConfigSchema.Encoded = {
   name: 'Test Shop',
@@ -141,6 +143,8 @@ export interface TestApp {
   readonly pspDown: (down: boolean) => void;
   /** What a re-fetch of a PSP session returns from now on (e.g. after the Customer paid). */
   readonly setPspSession: (id: string, patch: Partial<CheckoutSessionDetails>) => void;
+  /** What the PSP reports for a payment intent (refunds, disputes). */
+  readonly setPspPayment: (paymentIntentId: string, status: PaymentStatus) => void;
   /** Deliver a webhook the in-memory PSP will accept (signature `memory:valid` unless overridden). */
   readonly pspWebhook: (
     body: { id: string; type: string; sessionId?: string; created?: number },
@@ -191,6 +195,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     Layer.succeed(OperatorSecrets, {
       token: OPERATOR_TOKEN,
       sessionSecret: 'session-secret-for-tests',
+      cronSecret: CRON_SECRET,
     }),
     Layer.succeed(MailerKind, 'memory'),
     layerSqliteMigrated(dbPath),
@@ -239,6 +244,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     pspSessions: () => Effect.runPromise(psp.sessions),
     pspDown: psp.setDown,
     setPspSession: psp.setSession,
+    setPspPayment: psp.setPayment,
     pspWebhook: async (body, signature = 'memory:valid') => {
       const res = await fetch('/webhooks/stripe', {
         method: 'POST',

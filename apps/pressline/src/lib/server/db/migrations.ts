@@ -202,4 +202,19 @@ export const migrations: ReadonlyArray<Migration> = [
       `ALTER TABLE orders ADD COLUMN preview_url TEXT`,
     ],
   },
+  {
+    version: 10,
+    name: 'reconciliation_runs',
+    statements: [
+      // One row per Reconciliation run: the report the Operator View shows.
+      `CREATE TABLE reconciliation_runs (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         started_at INTEGER NOT NULL,
+         finished_at INTEGER NOT NULL,
+         trigger TEXT NOT NULL,
+         alarm_count INTEGER NOT NULL,
+         report TEXT NOT NULL
+       )`,
+    ],
+  },
 ];

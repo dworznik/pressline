@@ -28,6 +28,7 @@ const Env = Schema.Struct({
   RESEND_API_KEY: Schema.optional(Schema.NonEmptyString),
   OPERATOR_TOKEN: Schema.optional(Schema.NonEmptyString),
   SESSION_SECRET: Schema.optional(Schema.NonEmptyString),
+  CRON_SECRET: Schema.optional(Schema.NonEmptyString),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),
@@ -100,6 +101,7 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   const OperatorSecretsLive = Layer.succeed(OperatorSecrets, {
     token: env.OPERATOR_TOKEN ?? '',
     sessionSecret: env.SESSION_SECRET ?? env.OPERATOR_TOKEN ?? '',
+    ...(env.CRON_SECRET ? { cronSecret: env.CRON_SECRET } : {}),
   });
 
   const services = Layer.mergeAll(

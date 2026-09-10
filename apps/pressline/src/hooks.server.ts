@@ -11,7 +11,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   // Operator View pages need a session cookie (ticket #14); the login page issues it.
   const path = event.url.pathname;
-  if (path.startsWith('/operator') && path !== '/operator/login') {
+  if ((path === '/operator' || path.startsWith('/operator/')) && path !== '/operator/login') {
     const ok = await hasOperatorSession(
       event.cookies.get(SESSION_COOKIE),
       operatorSessionSecret(event.platform),

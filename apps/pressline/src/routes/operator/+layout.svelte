@@ -10,6 +10,7 @@
     <nav>
       <a href={resolve('/operator')}>Health</a>
       <a href={resolve('/operator/orders')}>Orders</a>
+      <a href={resolve('/operator/reconciliation')}>Reconciliation</a>
       <form method="POST" action={resolve('/operator/logout')}>
         <button type="submit">Log out</button>
       </form>

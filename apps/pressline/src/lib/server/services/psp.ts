@@ -90,8 +90,16 @@ export interface PspWebhookStatus {
   readonly detail?: string;
 }
 
+/** What the PSP says about a payment after the fact (refunds and disputes happen outside Pressline). */
+export interface PaymentStatus {
+  readonly refunded: boolean;
+  readonly amountRefunded: number;
+  readonly disputed: boolean;
+}
+
 export interface PspService {
   readonly health: () => Effect.Effect<void, PspError>;
+  readonly getPaymentStatus: (paymentIntentId: string) => Effect.Effect<PaymentStatus, PspError>;
   /** Whether a webhook endpoint pointing at Pressline exists on the PSP account. */
   readonly getWebhookStatus: () => Effect.Effect<PspWebhookStatus, PspError>;
   readonly createCheckoutSession: (
@@ -103,6 +111,8 @@ export interface PspService {
     rawBody: string,
     signature: string | undefined,
   ) => Effect.Effect<PspWebhookEvent, WebhookRejected>;
+  /** Read an already-verified body again (Reconciliation replays stored Inbound Events). */
+  readonly parseWebhook: (rawBody: string) => Effect.Effect<PspWebhookEvent, WebhookRejected>;
 }
 
 export class Psp extends Context.Tag('pressline/Psp')<Psp, PspService>() {}

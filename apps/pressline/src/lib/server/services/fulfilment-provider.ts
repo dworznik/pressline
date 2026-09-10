@@ -195,6 +195,10 @@ export interface FulfilmentProviderService {
     rawBody: string,
     headers: { readonly signature?: string; readonly publicKey?: string },
   ) => Effect.Effect<ProviderWebhookEvent, ProviderWebhookRejected>;
+  /** Read an already-verified body again (Reconciliation replays stored Inbound Events). */
+  readonly parseWebhook: (
+    rawBody: string,
+  ) => Effect.Effect<ProviderWebhookEvent, ProviderWebhookRejected>;
   readonly listShipments: (
     providerOrderId: string,
   ) => Effect.Effect<ReadonlyArray<ProviderShipment>, FulfilmentProviderError>;

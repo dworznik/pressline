@@ -102,7 +102,7 @@ const resolveOrder = (event: ProviderWebhookEvent) =>
       : undefined;
   });
 
-const apply = (
+export const applyPrintfulEvent = (
   event: ProviderWebhookEvent,
 ): Effect.Effect<
   Result,
@@ -182,7 +182,9 @@ export const handlePrintfulWebhook = (
         outcome: `duplicate:${receipt.outcome}${receipt.note ? ':' + receipt.note : ''}`,
       };
     }
-    const outcome = yield* apply(event).pipe(Effect.tapError(() => release('printful', event.id)));
+    const outcome = yield* applyPrintfulEvent(event).pipe(
+      Effect.tapError(() => release('printful', event.id)),
+    );
     yield* settle('printful', event.id, outcome.outcome, outcome.note);
     return {
       received: true as const,

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { formatMoney } from '$lib/money';
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
   const states = [
@@ -52,7 +53,7 @@
         <td>{o.state}</td>
         <td>{o.offer} / {o.variant}</td>
         <td>{o.country}</td>
-        <td>{((o.amountTotal ?? o.retail + o.shipping) / 100).toFixed(2)} {o.currency}</td>
+        <td>{formatMoney(o.amountTotal ?? o.retail + o.shipping, o.currency)}</td>
       </tr>
     {:else}
       <tr><td colspan="6">No orders{data.state ? ` in ${data.state}` : ''}.</td></tr>

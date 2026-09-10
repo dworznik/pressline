@@ -7,6 +7,8 @@ import { SESSION_COOKIE, verifySession } from './session';
 export interface OperatorSecretsValue {
   readonly token: string;
   readonly sessionSecret: string;
+  /** Bearer for the scheduled reconciliation route (Vercel Cron); unset disables the route. */
+  readonly cronSecret?: string;
 }
 export class OperatorSecrets extends Context.Tag('pressline/OperatorSecrets')<
   OperatorSecrets,

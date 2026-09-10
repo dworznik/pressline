@@ -95,7 +95,9 @@ describe('Customer emails', () => {
     expect(sent).toHaveLength(1);
     const mail = sent[0]!;
     expect(mail.to).toBe('anna@example.com');
-    expect(mail.subject).toBe(`Test Shop: order ${orderId.slice(0, 8).toUpperCase()} confirmed`);
+    expect(mail.subject).toBe(
+      `Test Shop: order ${orderId.replaceAll('-', '').slice(-8).toUpperCase()} confirmed`,
+    );
     expect(mail.html).toContain(design.previewUrl);
     expect(mail.html).toContain('right of withdrawal');
     expect(mail.html).toContain('help@shop.test');
@@ -136,6 +138,25 @@ describe('Customer emails', () => {
     expect(sent[1]!.subject).toMatch(/is on its way$/);
     expect(sent[1]!.html).toContain('https://dhl.test/t/0034');
     expect(sent[1]!.text).toContain('DHL');
+  });
+
+  it('still sends the shipped email when a missed webhook lands the Order straight on fulfilled', async () => {
+    app = await boot();
+    const { orderId, providerOrderId } = await placeAndPay(app);
+    app.setProviderOrderStatus(providerOrderId!, 'fulfilled');
+    app.setProviderShipments(providerOrderId!, [
+      { id: '1', status: 'shipped', trackingUrl: 'https://dhl.test/t/1' },
+    ]);
+    await app.printfulWebhook({
+      type: 'order_updated',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId!, external_id: orderId } },
+    });
+    const sent = await app.sentMail();
+    expect(sent.map((m) => m.subject.replace(/order \w+ /, 'order X '))).toEqual([
+      'Test Shop: order X confirmed',
+      'Test Shop: order X is on its way',
+    ]);
   });
 
   it('a Mailer failure is recorded for retry and never blocks the Transition', async () => {

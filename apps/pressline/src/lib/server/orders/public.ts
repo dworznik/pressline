@@ -1,4 +1,6 @@
 import { Effect, Schema } from 'effect';
+import { Config } from '../config/schema';
+import { DesignSource } from '../services/design-source';
 import { findOrder, OrderNotFound } from './orders';
 import { OrderState } from './state';
 
@@ -12,6 +14,11 @@ export const PublicOrder = Schema.Struct({
   state: OrderState,
   offer: Schema.String,
   variant: Schema.String,
+  /** Display names from the Catalogue (fall back to the slugs if the Offer was removed). */
+  offerName: Schema.String,
+  variantLabel: Schema.String,
+  /** The design's Preview, hot-linked from the Engine when it still answers. */
+  previewUrl: Schema.optional(Schema.String),
   currency: Schema.String,
   retail: Schema.Int,
   shipping: Schema.Int,
@@ -31,12 +38,24 @@ export const publicOrder = (id: string, token: string) =>
   Effect.gen(function* () {
     const order = yield* findOrder(id);
     if (order.statusToken !== token) return yield* new OrderNotFound({ id });
+    const config = yield* Config;
+    const offer = config.catalogue.offers.find((o) => o.slug === order.offer);
+    const previewUrl =
+      order.previewUrl ??
+      (yield* Effect.flatMap(DesignSource, (s) => s.getDesign(order.engine, order.designId)).pipe(
+        Effect.map((d) => d.previewUrl),
+        Effect.option,
+        Effect.map((o) => (o._tag === 'Some' ? o.value : undefined)),
+      ));
     const r = order.recipient;
     return {
       id: order.id,
       state: order.state,
       offer: order.offer,
       variant: order.variant,
+      offerName: offer?.name ?? order.offer,
+      variantLabel: offer?.variants[order.variant]?.label ?? order.variant,
+      ...(previewUrl ? { previewUrl } : {}),
       currency: order.currency,
       retail: order.retail,
       shipping: order.shipping,
@@ -54,7 +73,10 @@ export const publicOrder = (id: string, token: string) =>
         ? {
             tracking: {
               ...(order.tracking.carrier ? { carrier: order.tracking.carrier } : {}),
-              ...(order.tracking.url ? { url: order.tracking.url } : {}),
+              // Only web URLs reach the page; the carrier link came from the provider, not from us.
+              ...(order.tracking.url && /^https?:\/\//i.test(order.tracking.url)
+                ? { url: order.tracking.url }
+                : {}),
             },
           }
         : {}),

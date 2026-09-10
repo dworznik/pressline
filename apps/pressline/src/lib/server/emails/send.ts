@@ -98,8 +98,14 @@ const contextFor = (orderId: string) =>
     const config = yield* Config;
     const offer = config.catalogue.offers.find((o) => o.slug === order.offer);
     const variant = offer?.variants[order.variant];
-    const source = yield* DesignSource;
-    const design = yield* source.getDesign(order.engine, order.designId).pipe(Effect.option);
+    // The Preview was captured at checkout; ask the Engine only for Orders from before that column existed.
+    const previewUrl =
+      order.previewUrl ??
+      (yield* Effect.flatMap(DesignSource, (s) => s.getDesign(order.engine, order.designId)).pipe(
+        Effect.map((d) => d.previewUrl),
+        Effect.option,
+        Effect.map((o) => (o._tag === 'Some' ? o.value : undefined)),
+      ));
     const origin = (config.checkout.publicUrl ?? order.publicOrigin ?? '').replace(/\/$/, '');
     const ctx: EmailContext = {
       shopName: config.name,
@@ -107,7 +113,7 @@ const contextFor = (orderId: string) =>
       ...(config.legal.contactEmail ? { contactEmail: config.legal.contactEmail } : {}),
       offerName: offer?.name ?? order.offer,
       variantLabel: variant?.label ?? order.variant,
-      ...(design._tag === 'Some' ? { previewUrl: design.value.previewUrl } : {}),
+      ...(previewUrl ? { previewUrl } : {}),
       statusUrl: `${origin}/orders/${order.id}?t=${encodeURIComponent(order.statusToken)}`,
       currency: order.currency,
     };

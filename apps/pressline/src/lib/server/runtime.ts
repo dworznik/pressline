@@ -65,6 +65,14 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     ? layerStripe({ secretKey: env.STRIPE_SECRET_KEY })
     : layerPspMemory;
   // Resend when a key and a sender are configured; `console` for local runs; else `none`.
+  if (
+    (env.RESEND_API_KEY && !rawConfig.email?.from) ||
+    (!env.RESEND_API_KEY && rawConfig.email?.from)
+  ) {
+    throw new Error(
+      'Mailer misconfigured: RESEND_API_KEY and pressline.config.ts email.from must be set together',
+    );
+  }
   const MailerLive =
     env.RESEND_API_KEY && rawConfig.email?.from
       ? layerResend({

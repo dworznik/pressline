@@ -6,6 +6,7 @@ import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effec
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
+import type { ProviderOrder } from '$lib/server/services/fulfilment-provider';
 import type {
   CheckoutSession,
   CheckoutSessionDetails,
@@ -106,6 +107,10 @@ export interface TestApp {
   readonly engineCalls: () => Promise<number>;
   /** Bytes the hosted-file stub handed to the app for a URL (what a real transfer would have cost). */
   readonly bytesServed: (url: string) => number;
+  /** Orders the in-memory fulfilment provider holds. */
+  readonly providerOrders: () => ReadonlyArray<ProviderOrder>;
+  /** Change a provider order's status (simulates Printful moving it). */
+  readonly setProviderOrderStatus: (id: string, status: ProviderOrder['status']) => void;
   /** Checkout sessions the in-memory PSP was asked to create. */
   readonly pspSessions: () => Promise<
     ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
@@ -187,6 +192,8 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
     engineCalls: () => Effect.runPromise(designSource.calls),
     bytesServed: (url) => served.get(url) ?? 0,
+    providerOrders: provider.providerOrders,
+    setProviderOrderStatus: provider.setProviderOrderStatus,
     pspSessions: () => Effect.runPromise(psp.sessions),
     pspDown: psp.setDown,
     setPspSession: psp.setSession,

@@ -168,6 +168,106 @@ describe('Printful v2 adapter', () => {
     expect(new URL(seen.at(-1)!.url).search).toBe('?currency=EUR');
   });
 
+  describe('orders', () => {
+    it('finds an order by external id, and answers undefined (not an error) when there is none', async () => {
+      const found = await run(
+        Effect.flatMap(FulfilmentProvider, (p) =>
+          p.findOrderByExternalId('0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b'),
+        ),
+      );
+      expect(found).toMatchObject({
+        id: '123',
+        externalId: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        status: 'draft',
+        recipient: { countryCode: 'DE' },
+      });
+      expect(found!.items[0]).toEqual({ catalogVariantId: 4017, quantity: 1 });
+      expect(found!.costs).toEqual({
+        currency: 'EUR',
+        subtotal: 1090,
+        shipping: 479,
+        tax: 298,
+        total: 1867,
+        calculating: false,
+      });
+      expect(new URL(seen.at(-1)!.url).pathname).toBe(
+        '/v2/orders/@0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+      );
+      expect(
+        await run(
+          Effect.flatMap(FulfilmentProvider, (p) => p.findOrderByExternalId('unknown-order-id')),
+        ),
+      ).toBeUndefined();
+    });
+
+    it('creates a draft with the recipient, the catalog variant and the Printfile on the placement', async () => {
+      const draft = await run(
+        Effect.flatMap(FulfilmentProvider, (p) =>
+          p.createOrderDraft({
+            externalId: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+            shippingMethod: 'STANDARD',
+            recipient: {
+              name: 'Anna Example',
+              address1: 'Torstraße 1',
+              address2: 'Hinterhaus',
+              city: 'Berlin',
+              countryCode: 'DE',
+              zip: '10119',
+              email: 'anna@example.com',
+              phone: '+4915112345678',
+            },
+            item: {
+              catalogVariantId: 4017,
+              placement: 'front',
+              technique: 'dtg',
+              printfileUrl: 'https://engine.test/files/heron/front.png',
+              retailPrice: '25.00',
+            },
+            currency: 'EUR',
+          }),
+        ),
+      );
+      expect(draft).toMatchObject({ id: '123', status: 'draft' });
+      const sent = JSON.parse(await seen.at(-1)!.clone().text()) as Record<string, unknown>;
+      expect(sent).toMatchObject({
+        external_id: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        shipping: 'STANDARD',
+        recipient: {
+          name: 'Anna Example',
+          address1: 'Torstraße 1',
+          city: 'Berlin',
+          country_code: 'DE',
+          zip: '10119',
+          email: 'anna@example.com',
+        },
+        order_items: [
+          {
+            source: 'catalog',
+            catalog_variant_id: 4017,
+            quantity: 1,
+            retail_price: '25.00',
+            placements: [
+              {
+                placement: 'front',
+                technique: 'dtg',
+                layers: [{ type: 'file', url: 'https://engine.test/files/heron/front.png' }],
+              },
+            ],
+          },
+        ],
+        retail_costs: { currency: 'EUR' },
+      });
+    });
+
+    it('confirms a draft and surfaces a failed placement with its explanation', async () => {
+      const confirmed = await run(Effect.flatMap(FulfilmentProvider, (p) => p.confirmOrder('123')));
+      expect(confirmed.status).toBe('pending');
+      expect(new URL(seen.at(-1)!.url).pathname).toBe('/v2/orders/123/confirmation');
+      const bad = await run(Effect.flatMap(FulfilmentProvider, (p) => p.getOrder('124')));
+      expect(bad.items[0]!.failedPlacement).toMatch(/^front: Product with ID: 71/);
+    });
+  });
+
   it('maps 404 to a non-retryable FulfilmentProviderError carrying Printful’s message', async () => {
     const err = await fail(Effect.flatMap(FulfilmentProvider, (p) => p.getCatalogVariant(999999)));
     expect(err).toBeInstanceOf(FulfilmentProviderError);

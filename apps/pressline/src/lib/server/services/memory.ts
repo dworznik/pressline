@@ -16,6 +16,8 @@ import {
   type CatalogProduct,
   type CatalogVariant,
   type PlacementPrintArea,
+  type ProviderOrder,
+  type ProviderOrderDraft,
   type ShippingRate,
   type ShippingRateRequest,
   type VariantPrices,
@@ -255,8 +257,14 @@ export const makePspMemory = Effect.gen(function* () {
     setDown: (d: boolean) => void (down = d),
     /** What a later re-fetch of this session returns (e.g. after the Customer paid). */
     setSession: (id: string, patch: Partial<CheckoutSessionDetails>) => {
-      const current = details.get(id);
-      if (current) details.set(id, { ...current, ...patch });
+      const current = details.get(id) ?? {
+        id,
+        status: 'open' as const,
+        paymentStatus: 'unpaid' as const,
+        consentAccepted: false,
+        customer: {},
+      };
+      details.set(id, { ...current, ...patch });
     },
   };
 });
@@ -271,6 +279,19 @@ export interface MemoryCatalog {
   readonly shippingRates?: Readonly<Record<string, ReadonlyArray<ShippingRate>>>;
   /** Operator cost per variant. */
   readonly prices?: Readonly<Record<number, VariantPrices>>;
+  /** How the provider behaves when Pressline submits orders. */
+  readonly orders?: {
+    /** Fail the next N create calls with a retryable error. */
+    readonly createRetryableFailures?: number;
+    /** Reject every create with a non-retryable error (address problem, bad file). */
+    readonly createRejects?: string;
+    /** Fail the next N confirm calls with a retryable error. */
+    readonly confirmRetryableFailures?: number;
+    /** Draft comes back with this country instead of the recipient's (simulates a mismatch). */
+    readonly draftCountryOverride?: string;
+    /** Draft comes back with a failed placement explanation. */
+    readonly placementFailure?: string;
+  };
 }
 
 export const emptyCatalog: MemoryCatalog = { products: [], variants: [], printAreas: {} };
@@ -288,6 +309,9 @@ const notFound = (what: string, id: number) =>
  */
 export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatalog) =>
   Effect.map(Ref.make(0), (calls) => {
+    const providerOrders = new Map<string, ProviderOrder>();
+    let createFailuresLeft = catalog.orders?.createRetryableFailures ?? 0;
+    let confirmFailuresLeft = catalog.orders?.confirmRetryableFailures ?? 0;
     const counted = <A>(what: string, id: number, item: A | undefined) =>
       Ref.update(calls, (n) => n + 1).pipe(
         Effect.flatMap(() => (item ? Effect.succeed(item) : notFound(what, id))),
@@ -309,6 +333,86 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
           ),
         getPlacementPrintAreas: (productId) =>
           counted('catalog product', productId, catalog.printAreas[productId]),
+        findOrderByExternalId: (externalId) =>
+          Ref.update(calls, (n) => n + 1).pipe(
+            Effect.map(() => [...providerOrders.values()].find((o) => o.externalId === externalId)),
+          ),
+        createOrderDraft: (d: ProviderOrderDraft) =>
+          Ref.update(calls, (n) => n + 1).pipe(
+            Effect.flatMap(() => {
+              const cfg = catalog.orders ?? {};
+              if (cfg.createRejects) {
+                return Effect.fail(
+                  new FulfilmentProviderError({
+                    message: cfg.createRejects,
+                    retryable: false,
+                    status: 400,
+                  }),
+                );
+              }
+              if (createFailuresLeft > 0) {
+                createFailuresLeft -= 1;
+                return Effect.fail(
+                  new FulfilmentProviderError({
+                    message: 'provider 503',
+                    retryable: true,
+                    status: 503,
+                  }),
+                );
+              }
+              const id = String(1000 + providerOrders.size);
+              const order: ProviderOrder = {
+                id,
+                externalId: d.externalId,
+                status: 'draft',
+                recipient: {
+                  countryCode: cfg.draftCountryOverride ?? d.recipient.countryCode,
+                  ...(d.recipient.stateCode ? { stateCode: d.recipient.stateCode } : {}),
+                },
+                items: [
+                  {
+                    catalogVariantId: d.item.catalogVariantId,
+                    quantity: 1,
+                    ...(cfg.placementFailure ? { failedPlacement: cfg.placementFailure } : {}),
+                  },
+                ],
+                costs: {
+                  currency: d.currency,
+                  subtotal: 1090,
+                  shipping: 479,
+                  tax: 0,
+                  total: 1569,
+                  calculating: false,
+                },
+              };
+              providerOrders.set(id, order);
+              return Effect.succeed(order);
+            }),
+          ),
+        confirmOrder: (id) =>
+          Ref.update(calls, (n) => n + 1).pipe(
+            Effect.flatMap(() => {
+              const o = providerOrders.get(id);
+              if (!o) return notFound('provider order', Number(id));
+              if (confirmFailuresLeft > 0) {
+                confirmFailuresLeft -= 1;
+                return Effect.fail(
+                  new FulfilmentProviderError({
+                    message: 'provider 503',
+                    retryable: true,
+                    status: 503,
+                  }),
+                );
+              }
+              const confirmed: ProviderOrder = { ...o, status: 'pending' };
+              providerOrders.set(id, confirmed);
+              return Effect.succeed(confirmed);
+            }),
+          ),
+        getOrder: (id) => {
+          const o = providerOrders.get(id);
+          return counted('provider order', Number(id), o);
+        },
         getShippingRates: (req: ShippingRateRequest) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.map(() => catalog.shippingRates?.[req.countryCode] ?? []),
@@ -317,6 +421,13 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
           counted('catalog variant prices', variantId, catalog.prices?.[variantId]),
       }),
       calls: Ref.get(calls),
+      /** Provider-side orders as the in-memory provider holds them. */
+      providerOrders: () => [...providerOrders.values()],
+      /** Move a provider order (simulates Printful's dashboard or production). */
+      setProviderOrderStatus: (id: string, status: ProviderOrder['status']) => {
+        const o = providerOrders.get(id);
+        if (o) providerOrders.set(id, { ...o, status });
+      },
     };
   });
 

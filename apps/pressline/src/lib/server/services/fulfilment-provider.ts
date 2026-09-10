@@ -86,8 +86,80 @@ export interface VariantPrices {
   readonly placementSurcharge: Readonly<Record<string, number>>;
 }
 
+/** Provider order statuses, mapped from Printful's (ADR-0009 maps these onto Order states). */
+export type ProviderOrderStatus =
+  | 'draft'
+  | 'failed'
+  | 'inreview'
+  | 'pending'
+  | 'canceled'
+  | 'onhold'
+  | 'inprocess'
+  | 'partial'
+  | 'fulfilled';
+
+export interface ProviderOrder {
+  readonly id: string;
+  readonly externalId?: string;
+  readonly status: ProviderOrderStatus;
+  readonly recipient: { readonly countryCode: string; readonly stateCode?: string };
+  readonly items: ReadonlyArray<{
+    readonly catalogVariantId: number;
+    readonly quantity: number;
+    /** A placement the provider could not accept (bad file, disjoint design), with its explanation. */
+    readonly failedPlacement?: string;
+  }>;
+  /** The provider's own costs for this order, when calculated. */
+  readonly costs?: {
+    readonly currency: string;
+    readonly subtotal: number;
+    readonly shipping: number;
+    readonly tax: number;
+    readonly total: number;
+    readonly calculating: boolean;
+  };
+  readonly dashboardUrl?: string;
+}
+
+export interface ProviderRecipient {
+  readonly name: string;
+  readonly address1: string;
+  readonly address2?: string;
+  readonly city: string;
+  readonly stateCode?: string;
+  readonly countryCode: string;
+  readonly zip?: string;
+  readonly email: string;
+  readonly phone?: string;
+}
+
+export interface ProviderOrderDraft {
+  /** Pressline Order ID; the provider stores it as the external id. */
+  readonly externalId: string;
+  readonly shippingMethod: string;
+  readonly recipient: ProviderRecipient;
+  readonly item: {
+    readonly catalogVariantId: number;
+    readonly placement: string;
+    readonly technique: string;
+    readonly printfileUrl: string;
+    /** Retail price as a decimal string in `currency`, for the provider's packing slip. */
+    readonly retailPrice?: string;
+  };
+  readonly currency: string;
+}
+
 export interface FulfilmentProviderService {
   readonly health: () => Effect.Effect<void, FulfilmentProviderError>;
+  /** The provider order created for a Pressline Order ID, if any (the idempotency lookup, ADR-0009). */
+  readonly findOrderByExternalId: (
+    externalId: string,
+  ) => Effect.Effect<ProviderOrder | undefined, FulfilmentProviderError>;
+  readonly createOrderDraft: (
+    draft: ProviderOrderDraft,
+  ) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
+  readonly confirmOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
+  readonly getOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
   /** Live shipping options for a destination. Empty when the provider cannot ship there. */
   readonly getShippingRates: (
     req: ShippingRateRequest,

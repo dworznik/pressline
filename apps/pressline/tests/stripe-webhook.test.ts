@@ -90,11 +90,11 @@ describe('POST /webhooks/stripe', () => {
       created: 1_789_080_000,
     });
     expect(status).toBe(200);
-    expect(body.outcome).toBe('applied');
+    expect(body.outcome).toMatch(/^applied:submit=/);
 
     const order = await app.json<PublicOrder>(`/api/orders/${orderId}?t=${token}`);
     expect(order.body).toMatchObject({
-      state: 'paid',
+      state: 'submitted',
       amountTotal: 3479,
       recipient: { firstName: 'Anna', city: 'Berlin', country: 'DE' }, // masked: no street, no email
     });
@@ -105,6 +105,7 @@ describe('POST /webhooks/stripe', () => {
       expect(transitions.value.map((t) => [t.from, t.to, t.cause, t.causeRef])).toEqual([
         [null, 'checkout_open', 'storefront', quoteId],
         ['checkout_open', 'paid', 'stripe_webhook', 'evt_1'],
+        ['paid', 'submitted', 'stripe_webhook', 'evt_1'],
       ]);
     }
   });
@@ -122,7 +123,7 @@ describe('POST /webhooks/stripe', () => {
     expect(again.status).toBe(200);
     expect(again.body.outcome).toMatch(/^duplicate/);
     const transitions = await app.run(listTransitions(orderId));
-    expect(transitions._tag === 'Success' && transitions.value).toHaveLength(2);
+    expect(transitions._tag === 'Success' && transitions.value).toHaveLength(3); // open, paid, submitted
   });
 
   it('refuses a forbidden move: expired arriving after paid changes nothing', async () => {
@@ -130,11 +131,13 @@ describe('POST /webhooks/stripe', () => {
     const { orderId, token, sessionId } = await placeOrder(app);
     app.setPspSession(sessionId, paidSession);
     await app.pspWebhook({ id: 'evt_1', type: 'checkout.session.completed', sessionId });
+    app.setPspSession(sessionId, { status: 'expired' });
+    app.setPspSession(sessionId, { status: 'expired' });
     const late = await app.pspWebhook({ id: 'evt_2', type: 'checkout.session.expired', sessionId });
     expect(late.status).toBe(200);
-    expect(late.body.outcome).toMatch(/^refused:paid->expired/);
+    expect(late.body.outcome).toMatch(/^refused:submitted->expired/);
     const order = await app.json<PublicOrder>(`/api/orders/${orderId}?t=${token}`);
-    expect(order.body.state).toBe('paid');
+    expect(order.body.state).toBe('submitted');
   });
 
   it('checkout.session.expired moves an open Order to expired', async () => {
@@ -146,7 +149,7 @@ describe('POST /webhooks/stripe', () => {
       type: 'checkout.session.expired',
       sessionId,
     });
-    expect(body.outcome).toBe('applied');
+    expect(body.outcome).toMatch(/^applied/);
     const order = await app.json<PublicOrder>(`/api/orders/${orderId}?t=${token}`);
     expect(order.body.state).toBe('expired');
   });
@@ -183,24 +186,54 @@ describe('POST /webhooks/stripe', () => {
       type: 'checkout.session.completed',
       sessionId,
     });
-    expect(real.body.outcome).toBe('applied');
+    expect(real.body.outcome).toMatch(/^applied/);
   });
 
-  it('ignores events about sessions Pressline does not know, and irrelevant event types', async () => {
+  it('records unknown_order for a session Stripe knows but the ledger does not, and ignores other event types', async () => {
     app = await boot();
     app.setPspSession('cs_unknown', { ...paidSession, id: 'cs_unknown' });
-    expect(
-      (
-        await app.pspWebhook({
-          id: 'evt_u',
-          type: 'checkout.session.completed',
-          sessionId: 'cs_unknown',
-        })
-      ).status,
-    ).toBe(500);
+    const unknown = await app.pspWebhook({
+      id: 'evt_u',
+      type: 'checkout.session.completed',
+      sessionId: 'cs_unknown',
+    });
+    expect(unknown.status).toBe(200);
+    expect(unknown.body.outcome).toBe('unknown_order:cs_unknown');
+    // A session Stripe itself has never heard of is not retryable either.
+    const gone = await app.pspWebhook({
+      id: 'evt_g',
+      type: 'checkout.session.completed',
+      sessionId: 'cs_nope',
+    });
+    expect(gone.status).toBe(200);
+    expect(gone.body.outcome).toMatch(/^failed:/);
     expect(
       (await app.pspWebhook({ id: 'evt_o', type: 'payment_intent.created' })).body.outcome,
     ).toMatch(/^ignored/);
+  });
+
+  it('treats a fully discounted session (no_payment_required) as paid', async () => {
+    app = await boot();
+    const { orderId, token, sessionId } = await placeOrder(app);
+    app.setPspSession(sessionId, { ...paidSession, paymentStatus: 'no_payment_required' });
+    await app.pspWebhook({ id: 'evt_free', type: 'checkout.session.completed', sessionId });
+    expect((await app.json<PublicOrder>(`/api/orders/${orderId}?t=${token}`)).body.state).not.toBe(
+      'checkout_open',
+    );
+  });
+
+  it('marks paid but notes a missing Recipient so the Operator can act', async () => {
+    app = await boot();
+    const { sessionId } = await placeOrder(app);
+    const { shipping: _shipping, ...noShipping } = paidSession;
+    app.setPspSession(sessionId, noShipping);
+    const { body } = await app.pspWebhook({
+      id: 'evt_nr',
+      type: 'checkout.session.completed',
+      sessionId,
+    });
+    expect(body.outcome).toMatch(/no_recipient/);
+    expect(body.outcome).toMatch(/submit=submit_failed/);
   });
 
   it('answers 500 (so Stripe retries) when the session cannot be re-fetched, and processes the retry', async () => {
@@ -217,9 +250,9 @@ describe('POST /webhooks/stripe', () => {
       type: 'checkout.session.completed',
       sessionId,
     });
-    expect(retry.body.outcome).toBe('applied');
+    expect(retry.body.outcome).toMatch(/^applied/);
     expect((await app.json<PublicOrder>(`/api/orders/${orderId}?t=${token}`)).body.state).toBe(
-      'paid',
+      'submitted',
     );
   });
 });

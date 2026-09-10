@@ -1,0 +1,69 @@
+{
+  "data": {
+    "id": 123,
+    "external_id": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+    "store_id": 10,
+    "shipping": "STANDARD",
+    "status": "draft",
+    "created_at": "2026-09-11T10:00:00Z",
+    "updated_at": "2026-09-11T10:00:00Z",
+    "recipient": {
+      "name": "Anna Example",
+      "address1": "Torstraße 1",
+      "address2": "Hinterhaus",
+      "city": "Berlin",
+      "state_code": null,
+      "country_code": "DE",
+      "zip": "10119",
+      "email": "anna@example.com",
+      "phone": "+4915112345678"
+    },
+    "costs": {
+      "calculation_status": "done",
+      "currency": "EUR",
+      "subtotal": "10.90",
+      "discount": "0.00",
+      "shipping": "4.79",
+      "digitization": "0.00",
+      "additional_fee": "0.00",
+      "fulfillment_fee": "0.00",
+      "retail_delivery_fee": "0.00",
+      "vat": "2.98",
+      "tax": "0.00",
+      "total": "18.67"
+    },
+    "retail_costs": {
+      "calculation_status": "done",
+      "currency": "EUR",
+      "subtotal": "25.00",
+      "discount": "0.00",
+      "shipping": "4.79",
+      "vat": "0.00",
+      "tax": "0.00",
+      "total": "29.79"
+    },
+    "order_items": [
+      {
+        "id": 1,
+        "type": "order_item",
+        "source": "catalog",
+        "catalog_variant_id": 4017,
+        "quantity": 1,
+        "retail_price": "25.00",
+        "placements": [
+          {
+            "placement": "front",
+            "technique": "dtg",
+            "layers": [{ "type": "file", "url": "https://engine.test/files/heron/front.png" }],
+            "status": "ok",
+            "status_explanation": null
+          }
+        ]
+      }
+    ],
+    "_links": {
+      "self": { "href": "https://api.printful.com/v2/orders/123" },
+      "shipments": { "href": "https://api.printful.com/v2/orders/123/shipments" }
+    }
+  }
+}

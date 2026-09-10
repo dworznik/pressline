@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import { Config } from '../config/schema';
 import { schemaVersion } from '../db/migrate';
 import { PROTOCOL_VERSION } from '@pressline/contract';
+import { Engines } from '../design/engines';
 import { PresslineApi } from './api';
 
 export const HealthLive = HttpApiBuilder.group(PresslineApi, 'health', (handlers) =>
@@ -10,6 +11,7 @@ export const HealthLive = HttpApiBuilder.group(PresslineApi, 'health', (handlers
     Effect.gen(function* () {
       const config = yield* Config;
       const version = yield* schemaVersion.pipe(Effect.orDie);
+      const engines = yield* Effect.flatMap(Engines, (e) => e.all);
       return {
         ok: true as const,
         protocolVersion: PROTOCOL_VERSION,
@@ -18,9 +20,14 @@ export const HealthLive = HttpApiBuilder.group(PresslineApi, 'health', (handlers
         config: {
           name: config.name,
           currency: config.currency,
-          engines: config.engines.map((e) => e.slug),
           offers: config.catalogue.offers.length,
         },
+        engines: engines.map((e) => ({
+          slug: e.slug,
+          enabled: e.enabled,
+          ...(e.protocolVersion !== undefined ? { protocolVersion: e.protocolVersion } : {}),
+          ...(e.reason !== undefined ? { reason: e.reason } : {}),
+        })),
       };
     }),
   ),

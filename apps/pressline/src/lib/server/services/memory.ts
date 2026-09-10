@@ -1,6 +1,15 @@
-import { PROTOCOL_VERSION } from '@pressline/contract';
+import {
+  DesignNotFound,
+  PrintfileRejected,
+  PROTOCOL_VERSION,
+  specHash,
+  type DesignResponse,
+  type PrintfileReady,
+  type PrintfileRendering,
+  type PrintfileSpec,
+} from '@pressline/contract';
 import { Effect, Layer, Ref } from 'effect';
-import { DesignSource } from './design-source';
+import { DesignSource, DesignSourceError, UnknownEngine } from './design-source';
 import {
   FulfilmentProvider,
   FulfilmentProviderError,
@@ -18,10 +27,146 @@ import { Psp } from './psp';
  * changes never touch them.
  */
 
-export const layerDesignSourceMemory = (options: { protocolVersion?: string } = {}) =>
-  Layer.succeed(DesignSource, {
-    health: () => Effect.succeed({ protocolVersion: options.protocolVersion ?? PROTOCOL_VERSION }),
+/** How the in-memory Engine answers ensure-Printfile for one Design. */
+export type MemoryRender =
+  | {
+      readonly kind: 'ready';
+      readonly url: string;
+      readonly bytes?: number;
+      readonly sha256?: string;
+      readonly contentType?: PrintfileReady['contentType'];
+      readonly specHash?: string;
+      readonly width?: number;
+      readonly height?: number;
+    }
+  /** Answer `rendering` this many times, then as `then`. */
+  | {
+      readonly kind: 'rendering';
+      readonly times: number;
+      readonly then: MemoryRender;
+      readonly retryAfterMs?: number;
+    }
+  | {
+      readonly kind: 'rejected';
+      readonly code: PrintfileRejected['code'];
+      readonly message?: string;
+    };
+
+export interface MemoryEngine {
+  readonly protocolVersion?: string;
+  /** Unreachable: every call fails as a transport error. */
+  readonly down?: boolean;
+  readonly designs?: Readonly<Record<string, DesignResponse>>;
+  /** Per Design ID; default answers `ready` with a synthetic URL. */
+  readonly renders?: Readonly<Record<string, MemoryRender>>;
+}
+
+export interface DesignSourceMemoryOptions {
+  readonly protocolVersion?: string;
+  readonly engines?: Readonly<Record<string, MemoryEngine>>;
+}
+
+/**
+ * In-memory Engines: seeded designs and scripted render behaviour, plus a
+ * call counter so tests can assert how often the Engine was asked.
+ */
+export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) =>
+  Effect.gen(function* () {
+    const calls = yield* Ref.make(0);
+    const remaining = new Map<string, number>();
+    const engineOf = (slug: string): Effect.Effect<MemoryEngine, UnknownEngine> => {
+      const e = options.engines?.[slug];
+      return e ? Effect.succeed(e) : Effect.fail(new UnknownEngine({ engine: slug }));
+    };
+    const reachable = (slug: string, e: MemoryEngine) =>
+      e.down
+        ? Effect.fail(
+            new DesignSourceError({
+              engine: slug,
+              message: `engine ${slug} unreachable`,
+              retryable: true,
+            }),
+          )
+        : Effect.void;
+    const answer = (
+      engine: string,
+      designId: string,
+      spec: PrintfileSpec,
+      render: MemoryRender,
+    ): Effect.Effect<PrintfileReady | PrintfileRendering, PrintfileRejected> => {
+      switch (render.kind) {
+        case 'rejected':
+          return Effect.fail(
+            new PrintfileRejected({ code: render.code, message: render.message ?? render.code }),
+          );
+        case 'rendering': {
+          const key = `${engine}/${designId}`;
+          const left = remaining.get(key) ?? render.times;
+          if (left > 0) {
+            remaining.set(key, left - 1);
+            return Effect.succeed({ status: 'rendering', retryAfterMs: render.retryAfterMs ?? 10 });
+          }
+          return answer(engine, designId, spec, render.then);
+        }
+        case 'ready':
+          return specHash(spec).pipe(
+            Effect.orDie,
+            Effect.map((hash): PrintfileReady => ({
+              status: 'ready',
+              url: render.url,
+              sha256: render.sha256 ?? 'a'.repeat(64),
+              width: render.width ?? spec.width,
+              height: render.height ?? spec.height,
+              bytes: render.bytes ?? 1234,
+              contentType: render.contentType ?? 'image/png',
+              specHash: render.specHash ?? hash,
+            })),
+          );
+      }
+    };
+    const layer = Layer.succeed(DesignSource, {
+      health: (slug) =>
+        engineOf(slug).pipe(
+          Effect.tap((e) => reachable(slug, e)),
+          Effect.map((e) => ({
+            protocolVersion: e.protocolVersion ?? options.protocolVersion ?? PROTOCOL_VERSION,
+          })),
+        ),
+      getDesign: (slug, designId) =>
+        engineOf(slug).pipe(
+          Effect.tap((e) => reachable(slug, e)),
+          Effect.tap(() => Ref.update(calls, (n) => n + 1)),
+          Effect.flatMap((e) => {
+            const d = e.designs?.[designId];
+            return d ? Effect.succeed(d) : Effect.fail(new DesignNotFound({ designId }));
+          }),
+        ),
+      ensurePrintfile: (slug, designId, spec) =>
+        engineOf(slug).pipe(
+          Effect.tap((e) => reachable(slug, e)),
+          Effect.tap(() => Ref.update(calls, (n) => n + 1)),
+          Effect.flatMap(
+            (
+              e,
+            ): Effect.Effect<
+              PrintfileReady | PrintfileRendering,
+              DesignNotFound | PrintfileRejected
+            > => {
+              if (!e.designs?.[designId]) return Effect.fail(new DesignNotFound({ designId }));
+              const render: MemoryRender = e.renders?.[designId] ?? {
+                kind: 'ready',
+                url: `https://engine.test/files/${designId}/${spec.placement}.png`,
+              };
+              return answer(slug, designId, spec, render);
+            },
+          ),
+        ),
+    });
+    return { layer, calls: Ref.get(calls) };
   });
+
+export const layerDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) =>
+  Layer.unwrapEffect(Effect.map(makeDesignSourceMemory(options), (m) => m.layer));
 
 export const layerPspMemory = Layer.succeed(Psp, { health: () => Effect.void });
 

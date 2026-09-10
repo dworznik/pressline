@@ -7,10 +7,11 @@ import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler } from '$lib/server/http/handler';
 import {
   emptyCatalog,
-  layerDesignSourceMemory,
   layerPspMemory,
+  makeDesignSourceMemory,
   makeFulfilmentProviderMemory,
   makeMailerMemory,
+  type DesignSourceMemoryOptions,
   type MemoryCatalog,
 } from '$lib/server/services/memory';
 
@@ -32,6 +33,8 @@ export interface TestAppOptions {
   readonly catalog?: MemoryCatalog;
   /** Reuse an existing database (from a previous app's `dbPath`) instead of a fresh temp one. */
   readonly dbPath?: string;
+  /** Seed for the in-memory Engines. Defaults to one healthy, empty Engine `sample`. */
+  readonly engines?: DesignSourceMemoryOptions;
 }
 
 export interface TestApp {
@@ -43,6 +46,8 @@ export interface TestApp {
   readonly sentMail: () => Promise<ReadonlyArray<{ to: string; subject: string }>>;
   /** How many calls reached the (in-memory) fulfilment provider. */
   readonly fulfilmentProviderCalls: () => Promise<number>;
+  /** How many design/printfile calls reached the (in-memory) Engines. */
+  readonly engineCalls: () => Promise<number>;
   /** Move the app's clock forward. */
   readonly advanceClock: (by: Duration.DurationInput) => void;
   readonly dbPath: string;
@@ -71,11 +76,14 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     makeFulfilmentProviderMemory(options.catalog ?? emptyCatalog),
   );
   const { clock, advance } = makeSettableClock();
+  const designSource = await Effect.runPromise(
+    makeDesignSourceMemory(options.engines ?? { engines: { sample: {} } }),
+  );
 
   const services = Layer.mergeAll(
     Config.layer({ ...testConfig, ...options.config }),
     layerSqliteMigrated(dbPath),
-    layerDesignSourceMemory(),
+    designSource.layer,
     provider.layer,
     layerPspMemory,
     mailer.layer,
@@ -92,6 +100,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     },
     sentMail: () => Effect.runPromise(mailer.sent),
     fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
+    engineCalls: () => Effect.runPromise(designSource.calls),
     advanceClock: advance,
     dbPath,
     dispose: async ({ keepDb = false } = {}) => {

@@ -4,12 +4,9 @@ import rawConfig from '../../../pressline.config';
 import { Config } from './config/schema';
 import { layerSqliteMigrated } from './db/layer';
 import { makeWebHandler, type WebHandler } from './http/handler';
+import { layerDesignSourceHttp } from './services/design-source-http';
 import { layerMailerConsole, layerMailerNone } from './services/mailer';
-import {
-  layerDesignSourceMemory,
-  layerFulfilmentProviderMemory,
-  layerPspMemory,
-} from './services/memory';
+import { layerFulfilmentProviderMemory, layerPspMemory } from './services/memory';
 import { layerPrintful } from './services/printful';
 
 /**
@@ -25,6 +22,10 @@ const Env = Schema.Struct({
   }),
 });
 
+/** `ENGINE_SECRET_<SLUG>` with the slug upper-cased and dashes as underscores, e.g. `ENGINE_SECRET_MY_ENGINE`. */
+export const engineSecretVar = (slug: string) =>
+  `ENGINE_SECRET_${slug.toUpperCase().replaceAll('-', '_')}`;
+
 /**
  * Production wiring, memoised per isolate (ADR-0012). Platform bindings (D1,
  * secrets) arrive via `event.platform`; the platform tickets swap the Db and
@@ -35,8 +36,13 @@ let cached: WebHandler | undefined;
 
 export const getWebHandler = (platform: App.Platform | undefined): WebHandler => {
   if (cached) return cached;
-  const env = Schema.decodeUnknownSync(Env)(platform?.env ?? process.env, {
-    onExcessProperty: 'ignore',
+  const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
+  const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' });
+  // Engines without a secret configured are wired with an empty one: the
+  // startup health check then reports them as disabled rather than failing boot.
+  const engines = rawConfig.engines.map((e) => {
+    const secret = rawEnv[engineSecretVar(e.slug)];
+    return { slug: e.slug, baseUrl: e.baseUrl, secret: typeof secret === 'string' ? secret : '' };
   });
 
   const FulfilmentProviderLive = env.PRINTFUL_TOKEN
@@ -48,7 +54,7 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   const services = Layer.mergeAll(
     Config.layer(rawConfig),
     layerSqliteMigrated(env.DATABASE_PATH),
-    layerDesignSourceMemory(),
+    layerDesignSourceHttp(engines).pipe(Layer.provide(FetchHttpClient.layer)),
     FulfilmentProviderLive,
     layerPspMemory,
     MailerLive,

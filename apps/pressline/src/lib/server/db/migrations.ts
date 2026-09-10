@@ -174,4 +174,23 @@ export const migrations: ReadonlyArray<Migration> = [
       `ALTER TABLE order_transitions ADD COLUMN note TEXT`,
     ],
   },
+  {
+    version: 8,
+    name: 'order_emails',
+    statements: [
+      // Every Customer email per Order and kind: sent once, failures kept for retry.
+      `CREATE TABLE order_emails (
+         order_id TEXT NOT NULL REFERENCES orders (id),
+         kind TEXT NOT NULL,
+         sent_at INTEGER,
+         provider_message_id TEXT,
+         attempts INTEGER NOT NULL DEFAULT 0,
+         last_error TEXT,
+         updated_at INTEGER NOT NULL,
+         PRIMARY KEY (order_id, kind)
+       )`,
+      // The public origin the Order was placed on, for links in emails.
+      `ALTER TABLE orders ADD COLUMN public_origin TEXT`,
+    ],
+  },
 ];

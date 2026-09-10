@@ -64,6 +64,8 @@ export const Order = Schema.Struct({
   consentAcceptedAt: Schema.optional(Schema.Int),
   providerOrderId: Schema.optional(Schema.String),
   tracking: Schema.optional(Tracking),
+  /** Origin the Order was placed on (`https://shop.example`), for links in emails. */
+  publicOrigin: Schema.optional(Schema.String),
   createdAt: Schema.Int,
   updatedAt: Schema.Int,
 });
@@ -123,6 +125,7 @@ type Row = {
   consent_accepted_at: number | null;
   provider_order_id: string | null;
   tracking: string | null;
+  public_origin: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -176,6 +179,7 @@ const fromRow = (r: Row): Effect.Effect<Order> =>
       ...(r.consent_accepted_at !== null ? { consentAcceptedAt: r.consent_accepted_at } : {}),
       ...(r.provider_order_id !== null ? { providerOrderId: r.provider_order_id } : {}),
       ...(tracking ? { tracking } : {}),
+      ...(r.public_origin !== null ? { publicOrigin: r.public_origin } : {}),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };
@@ -261,6 +265,7 @@ export interface NewOrder {
   readonly shippingMethod: { id: string; name: string };
   readonly country: string;
   readonly providerCostEstimate: { product: number; shipping: number; currency: string };
+  readonly publicOrigin: string;
 }
 
 /** Create the Order in `checkout_open` with its first Transition, atomically. */
@@ -273,8 +278,8 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
         sql: `INSERT INTO orders (id, state, status_token, engine, design_id, offer_slug, variant_key, spec_hash,
                 printfile_url, printfile_sha256, printfile_content_type, quote_id, currency, retail, shipping,
                 shipping_method, shipping_method_name, country, cost_product, cost_shipping, cost_currency,
-                created_at, updated_at)
-              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                public_origin, created_at, updated_at)
+              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           o.id,
           o.statusToken,
@@ -296,6 +301,7 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
           o.providerCostEstimate.product,
           o.providerCostEstimate.shipping,
           o.providerCostEstimate.currency,
+          o.publicOrigin,
           now,
           now,
         ],

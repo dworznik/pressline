@@ -90,7 +90,7 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
   it('creates a draft with external_id = Order ID, confirms it, and records the provider order id', async () => {
     app = await boot();
     const { orderId, token, ack } = await payFor(app);
-    expect(ack.body.outcome).toBe('applied:submit=submitted');
+    expect(ack.body.outcome).toMatch(/^applied:submit=submitted/);
     expect(await stateOf(app, orderId, token)).toBe('submitted');
     const [po] = app.providerOrders();
     expect(po).toMatchObject({
@@ -111,7 +111,7 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
     app = await boot({ confirmRetryableFailures: 5 }); // more than one handler's retries (1 + 3), fewer than two
     const { orderId, token, sessionId, ack } = await payFor(app);
     expect(ack.status).toBe(200);
-    expect(ack.body.outcome).toBe('applied:submit=retry_later');
+    expect(ack.body.outcome).toMatch(/^applied:submit=retry_later/);
     expect(await stateOf(app, orderId, token)).toBe('paid');
     expect(app.providerOrders()).toHaveLength(1);
     expect(app.providerOrders()[0]!.status).toBe('draft');
@@ -129,7 +129,7 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
       type: 'checkout.session.completed',
       sessionId,
     });
-    expect(redelivered.body.outcome).toBe('applied:already,submit=submitted'); // … but a new delivery retries the submit
+    expect(redelivered.body.outcome).toMatch(/^applied:already,submit=submitted/); // … but a new delivery retries the submit
     expect(await stateOf(app, orderId, token)).toBe('submitted');
     expect(app.providerOrders()).toHaveLength(1);
   });
@@ -137,14 +137,14 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
   it('retries transient failures within the handler and still submits', async () => {
     app = await boot({ createRetryableFailures: 2 });
     const { orderId, token, ack } = await payFor(app);
-    expect(ack.body.outcome).toBe('applied:submit=submitted');
+    expect(ack.body.outcome).toMatch(/^applied:submit=submitted/);
     expect(await stateOf(app, orderId, token)).toBe('submitted');
   });
 
   it('a destination mismatch between draft and Order blocks confirmation → submit_failed', async () => {
     app = await boot({ draftCountryOverride: 'FR' });
     const { orderId, token, ack } = await payFor(app);
-    expect(ack.body.outcome).toBe('applied:submit=submit_failed');
+    expect(ack.body.outcome).toMatch(/^applied:submit=submit_failed/);
     expect(await stateOf(app, orderId, token)).toBe('submit_failed');
     expect(app.providerOrders()[0]!.status).toBe('draft'); // never confirmed
   });
@@ -166,7 +166,7 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
   it('a non-retryable provider rejection → submit_failed', async () => {
     app = await boot({ createRejects: 'Recipient address is invalid' });
     const { orderId, token, ack } = await payFor(app);
-    expect(ack.body.outcome).toBe('applied:submit=submit_failed');
+    expect(ack.body.outcome).toMatch(/^applied:submit=submit_failed/);
     expect(await stateOf(app, orderId, token)).toBe('submit_failed');
     expect(app.providerOrders()).toHaveLength(0);
   });

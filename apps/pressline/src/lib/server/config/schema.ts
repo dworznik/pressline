@@ -115,6 +115,14 @@ export const PresslineConfigSchema = Schema.Struct({
       }),
     },
   ),
+  email: Schema.optionalWith(
+    Schema.Struct({
+      /** Sender, e.g. `Shop Name <orders@shop.example>`; the domain must be verified with the Mailer. */
+      from: Schema.optional(Schema.NonEmptyString),
+      replyTo: Schema.optional(Schema.NonEmptyString),
+    }),
+    { default: () => ({}) },
+  ),
   checkout: Schema.optionalWith(
     Schema.Struct({
       /** Let Stripe Checkout accept promotion codes (ADR-0015: no discount modelling in Pressline). */

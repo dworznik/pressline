@@ -25,7 +25,7 @@ import {
   type ShippingRateRequest,
   type VariantPrices,
 } from './fulfilment-provider';
-import { Mailer, type Email } from './mailer';
+import { Mailer, MailerError, type Email } from './mailer';
 import {
   Psp,
   PspError,
@@ -487,10 +487,17 @@ export const layerFulfilmentProviderMemory = Layer.unwrapEffect(
   Effect.map(makeFulfilmentProviderMemory(), (m) => m.layer),
 );
 
-/** Records sends so tests can read what was sent. */
-export const makeMailerMemory = Effect.map(Ref.make<ReadonlyArray<Email>>([]), (ref) => ({
-  layer: Layer.succeed(Mailer, {
-    send: (email) => Ref.update(ref, (sent) => [...sent, email]),
-  }),
-  sent: Ref.get(ref),
-}));
+/** Records sends so tests can read what was sent; can be switched to fail every send. */
+export const makeMailerMemory = Effect.map(Ref.make<ReadonlyArray<Email>>([]), (ref) => {
+  let down = false;
+  return {
+    layer: Layer.succeed(Mailer, {
+      send: (email) =>
+        down
+          ? Effect.fail(new MailerError({ message: 'mailer unreachable', retryable: true }))
+          : Ref.update(ref, (sent) => [...sent, email]).pipe(Effect.as(undefined)),
+    }),
+    sent: Ref.get(ref),
+    setDown: (d: boolean) => void (down = d),
+  };
+});

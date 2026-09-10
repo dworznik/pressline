@@ -108,7 +108,7 @@ describe('POST /webhooks/printful', () => {
       data: { order: { id: providerOrderId, external_id: orderId, status: 'inprocess' } },
     });
     expect(status).toBe(200);
-    expect(body.outcome).toBe('applied');
+    expect(body.outcome).toMatch(/^applied/);
     expect((await stateOf(app, orderId, token)).state).toBe('in_production');
   });
 
@@ -152,7 +152,7 @@ describe('POST /webhooks/printful', () => {
         shipment: { id: '1', status: 'shipped' },
       },
     });
-    expect(body.outcome).toBe('applied');
+    expect(body.outcome).toMatch(/^applied/);
     const order = await stateOf(app, orderId, token);
     expect(order.state).toBe('shipped');
     expect(order.tracking).toEqual({
@@ -198,7 +198,7 @@ describe('POST /webhooks/printful', () => {
       occurred_at: new Date().toISOString(),
       data: { order: { id: providerOrderId, external_id: orderId } },
     };
-    expect((await app.printfulWebhook(ev)).body.outcome).toBe('applied');
+    expect((await app.printfulWebhook(ev)).body.outcome).toMatch(/^applied/);
     expect((await app.printfulWebhook(ev)).body.outcome).toMatch(/^duplicate:applied/); // Printful's retry
     // A stale "in process" arriving after fulfilment (different occurred_at) is refused: fulfilled is terminal.
     app.setProviderOrderStatus(providerOrderId, 'inprocess');
@@ -245,7 +245,7 @@ describe('POST /webhooks/printful', () => {
       occurred_at: new Date().toISOString(),
       data: { order: { id: providerOrderId, external_id: orderId }, shipment: { id: '7' } },
     });
-    expect(body.outcome).toBe('applied');
+    expect(body.outcome).toMatch(/^applied/);
     expect((await stateOf(app, orderId, token)).state).toBe('shipped');
     const full = await app.run(findOrder(orderId));
     expect(full._tag === 'Success' && full.value.tracking).toEqual({

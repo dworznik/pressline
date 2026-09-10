@@ -50,6 +50,9 @@ importers:
       '@effect/platform':
         specifier: ^0.97.2
         version: 0.97.2(effect@3.22.2)
+      '@pressline/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3

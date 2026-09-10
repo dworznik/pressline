@@ -1,4 +1,5 @@
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from '@effect/platform';
+import { CatalogueResponse } from '@pressline/contract';
 import { Schema } from 'effect';
 
 /**
@@ -15,6 +16,7 @@ export const HealthResponse = Schema.Struct({
     name: Schema.String,
     currency: Schema.String,
     engines: Schema.Array(Schema.String),
+    offers: Schema.Number,
   }),
 });
 export type HealthResponse = typeof HealthResponse.Type;
@@ -23,7 +25,19 @@ export const HealthGroup = HttpApiGroup.make('health').add(
   HttpApiEndpoint.get('health', '/api/health').addSuccess(HealthResponse),
 );
 
-export class PresslineApi extends HttpApi.make('pressline').add(HealthGroup) {}
+/** The Catalogue could not be resolved: misconfiguration or the provider is down. */
+export class CatalogueUnavailable extends Schema.TaggedError<CatalogueUnavailable>()(
+  'CatalogueUnavailable',
+  { message: Schema.String, offer: Schema.optional(Schema.String) },
+) {}
 
-/** DesignSource protocol version this bridge speaks; canonical home is @pressline/contract (#3). */
-export const PROTOCOL_VERSION = '1';
+export const CatalogueGroup = HttpApiGroup.make('catalogue').add(
+  HttpApiEndpoint.get('offers', '/api/offers')
+    .addSuccess(CatalogueResponse)
+    .addError(CatalogueUnavailable, { status: 503 }),
+);
+
+export class PresslineApi extends HttpApi.make('pressline').add(HealthGroup).add(CatalogueGroup) {}
+
+/** DesignSource protocol version this bridge speaks; canonical home is @pressline/contract. */
+export { PROTOCOL_VERSION } from '@pressline/contract';

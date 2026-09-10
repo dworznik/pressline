@@ -14,13 +14,13 @@ describe('GET /api/health', () => {
       ok: true,
       protocolVersion: '1',
       demo: false,
-      config: { name: 'Test Shop', currency: 'EUR', engines: ['sample'] },
+      config: { name: 'Test Shop', currency: 'EUR', engines: ['sample'], offers: 0 },
     });
     expect(body.schemaVersion).toBeGreaterThanOrEqual(1);
   });
 
   it('reflects demo mode from config', async () => {
-    app = await makeTestApp({ demo: true });
+    app = await makeTestApp({ config: { demo: true } });
     const { body } = await app.json<HealthResponse>('/api/health');
     expect(body.demo).toBe(true);
   });

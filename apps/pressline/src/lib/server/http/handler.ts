@@ -7,6 +7,7 @@ import type { FulfilmentProvider } from '../services/fulfilment-provider';
 import type { Mailer } from '../services/mailer';
 import type { Psp } from '../services/psp';
 import { PresslineApi } from './api';
+import { CatalogueLive } from './catalogue';
 import { HealthLive } from './health';
 
 /** Everything the HTTP layer needs from the outside world. */
@@ -20,7 +21,7 @@ export type Services = Config | Db | DesignSource | FulfilmentProvider | Psp | M
 export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) =>
   HttpApiBuilder.toWebHandler(
     Layer.mergeAll(
-      HttpApiBuilder.api(PresslineApi).pipe(Layer.provide(HealthLive)),
+      HttpApiBuilder.api(PresslineApi).pipe(Layer.provide([HealthLive, CatalogueLive])),
       HttpServer.layerContext,
     ).pipe(Layer.provide(services)),
   );

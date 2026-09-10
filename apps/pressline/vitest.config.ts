@@ -10,6 +10,10 @@ export default defineConfig({
     environment: 'node',
   },
   resolve: {
-    alias: { $lib: new URL('./src/lib', import.meta.url).pathname },
+    alias: {
+      $lib: new URL('./src/lib', import.meta.url).pathname,
+      '@pressline/contract': new URL('../../packages/contract/src/index.ts', import.meta.url)
+        .pathname,
+    },
   },
 });

@@ -1,0 +1,14 @@
+{
+  "data": {
+    "id": 1349,
+    "catalog_product_id": 1,
+    "name": "Enhanced Matte Paper Poster (in) (18×24)",
+    "size": "18″×24″",
+    "color": "White",
+    "color_code": null,
+    "image": "https://files.cdn.printful.com/products/1/1349_1527683319.jpg",
+    "placement_dimensions": [
+      { "placement": "default", "height": 24, "width": 18, "orientation": "vertical" }
+    ]
+  }
+}

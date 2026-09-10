@@ -1,0 +1,17 @@
+{
+  "data": [
+    {
+      "placement": "default",
+      "display_name": "Print",
+      "technique": "digital",
+      "print_area_width": 18,
+      "print_area_height": 24,
+      "print_area_type": "simple",
+      "dpi": 150,
+      "mockup_styles": [
+        { "id": 1, "category_name": "Flat", "view_name": "Front", "restricted_to_variants": null }
+      ]
+    }
+  ],
+  "paging": { "total": 1, "offset": 0, "limit": 20 }
+}

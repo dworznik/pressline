@@ -8,7 +8,11 @@ import { layerSqliteNode } from '$lib/server/db/sqlite-node';
 import { PROTOCOL_VERSION } from '$lib/server/http/api';
 import { makeWebHandler } from '$lib/server/http/handler';
 import { layerDesignSourceMemory } from '$lib/server/services/design-source';
-import { layerFulfilmentProviderMemory } from '$lib/server/services/fulfilment-provider';
+import {
+  emptyCatalog,
+  makeFulfilmentProviderMemory,
+  type MemoryCatalog,
+} from '$lib/server/services/fulfilment-provider';
 import { makeMailerMemory } from '$lib/server/services/mailer';
 import { layerPspMemory } from '$lib/server/services/psp';
 
@@ -30,23 +34,33 @@ export interface TestApp {
     init?: RequestInit,
   ) => Promise<{ status: number; body: T }>;
   readonly sentMail: () => Promise<ReadonlyArray<{ to: string; subject: string }>>;
+  /** How many calls reached the (in-memory) fulfilment provider. */
+  readonly providerCalls: () => Promise<number>;
   readonly dbPath: string;
   readonly dispose: () => Promise<void>;
 }
 
-export const makeTestApp = async (
-  overrides: Partial<typeof PresslineConfigSchema.Encoded> = {},
-): Promise<TestApp> => {
+export interface TestAppOptions {
+  readonly config?: Partial<typeof PresslineConfigSchema.Encoded>;
+  /** Seed for the in-memory fulfilment provider's catalog. */
+  readonly catalog?: MemoryCatalog;
+}
+
+export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp> => {
+  const overrides = options.config ?? {};
   const dir = mkdtempSync(join(tmpdir(), 'pressline-'));
   const dbPath = join(dir, 'test.db');
   const mailer = await Effect.runPromise(makeMailerMemory);
+  const provider = await Effect.runPromise(
+    makeFulfilmentProviderMemory(options.catalog ?? emptyCatalog),
+  );
 
   const DbLive = layerSqliteNode(dbPath);
   const services = Layer.mergeAll(
     Config.layer({ ...testConfig, ...overrides }),
     Layer.merge(DbLive, Layer.effectDiscard(migrate()).pipe(Layer.provide(DbLive))),
     layerDesignSourceMemory({ protocolVersion: PROTOCOL_VERSION }),
-    layerFulfilmentProviderMemory,
+    provider.layer,
     layerPspMemory,
     mailer.layer,
   );
@@ -61,6 +75,7 @@ export const makeTestApp = async (
       return { status: res.status, body: (await res.json()) as never };
     },
     sentMail: () => Effect.runPromise(mailer.sent),
+    providerCalls: () => Effect.runPromise(provider.calls),
     dbPath,
     dispose: async () => {
       await dispose();

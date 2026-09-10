@@ -21,4 +21,15 @@ export const migrations: ReadonlyArray<Migration> = [
       `INSERT INTO instance (id, installed_at) VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
     ],
   },
+  {
+    version: 2,
+    name: 'catalogue_cache',
+    statements: [
+      `CREATE TABLE catalogue_cache (
+         key TEXT PRIMARY KEY,
+         value TEXT NOT NULL,
+         expires_at INTEGER NOT NULL
+       )`,
+    ],
+  },
 ];

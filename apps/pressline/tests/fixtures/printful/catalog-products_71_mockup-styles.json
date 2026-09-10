@@ -1,0 +1,39 @@
+{
+  "data": [
+    {
+      "placement": "front",
+      "display_name": "Front print",
+      "technique": "dtg",
+      "print_area_width": 12,
+      "print_area_height": 16,
+      "print_area_type": "simple",
+      "dpi": 150,
+      "mockup_styles": [
+        {
+          "id": 16652,
+          "category_name": "Flat",
+          "view_name": "Front",
+          "restricted_to_variants": null
+        }
+      ]
+    },
+    {
+      "placement": "back",
+      "display_name": "Back print",
+      "technique": "dtg",
+      "print_area_width": 12,
+      "print_area_height": 16,
+      "print_area_type": "simple",
+      "dpi": 150,
+      "mockup_styles": [
+        {
+          "id": 16653,
+          "category_name": "Flat",
+          "view_name": "Back",
+          "restricted_to_variants": null
+        }
+      ]
+    }
+  ],
+  "paging": { "total": 2, "offset": 0, "limit": 20 }
+}

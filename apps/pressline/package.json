@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@effect/platform": "^0.97.2",
+    "@pressline/contract": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "effect": "^3.22.2"
   },

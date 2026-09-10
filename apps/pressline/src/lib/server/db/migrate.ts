@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import { Db, DbError } from './db';
+import { Db } from './db';
 import { migrations, type Migration } from './migrations';
 
 /**
@@ -8,9 +8,11 @@ import { migrations, type Migration } from './migrations';
  *
  * Concurrency guard: `migrations.version` is the primary key and the row is
  * inserted in the SAME batch as the migration's statements. If two cold
- * starts race, the second batch fails on the primary key and rolls back
- * atomically; we then re-read the applied set and continue. No locks, no
- * interactive transactions, works on D1.
+ * starts race, the loser's batch fails (on the first DDL statement or on the
+ * primary key, whichever comes first) and rolls back atomically; we then
+ * re-read the applied set and, if the winner applied it, carry on. Any other
+ * failure surfaces as the original DbError. No locks, no interactive
+ * transactions, works on D1.
  */
 const ensureTable = `CREATE TABLE IF NOT EXISTS migrations (
   version INTEGER PRIMARY KEY,
@@ -36,8 +38,6 @@ const apply = (m: Migration) =>
     ]);
   });
 
-const isRace = (e: DbError) => /UNIQUE|PRIMARY KEY|constraint/i.test(e.message);
-
 export const migrate = (list: ReadonlyArray<Migration> = migrations) =>
   Effect.gen(function* () {
     const db = yield* Db;
@@ -45,17 +45,21 @@ export const migrate = (list: ReadonlyArray<Migration> = migrations) =>
     let done = yield* applied;
     for (const m of [...list].sort((a, b) => a.version - b.version)) {
       if (done.has(m.version)) continue;
-      yield* apply(m).pipe(Effect.catchIf(isRace, () => Effect.void));
+      yield* apply(m).pipe(
+        Effect.catchAll((error) =>
+          // Lost a race? The winner's row is visible now; otherwise it is a real failure.
+          Effect.flatMap(applied, (now) => (now.has(m.version) ? Effect.void : Effect.fail(error))),
+        ),
+      );
       done = yield* applied;
-      if (!done.has(m.version))
-        return yield* new DbError({ message: `migration ${m.version} (${m.name}) did not apply` });
     }
     return done.size;
   });
 
-/** Highest applied migration version, 0 on a fresh database. */
+/** Highest applied migration version, 0 on a fresh database (before any migration has run). */
 export const schemaVersion = Effect.gen(function* () {
   const db = yield* Db;
+  yield* db.run(ensureTable);
   const rows = yield* db.all<{ v: number | null }>('SELECT MAX(version) AS v FROM migrations');
   return rows[0]?.v ?? 0;
 });

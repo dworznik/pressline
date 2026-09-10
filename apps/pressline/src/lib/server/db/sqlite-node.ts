@@ -1,22 +1,27 @@
 import Database from 'better-sqlite3';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, type Scope } from 'effect';
 import { Db, DbError, type DbService, type SqlParam } from './db';
 
 /**
  * Db driver for local development and CI: a SQLite file (or ':memory:') via
  * better-sqlite3. D1 and libSQL drivers arrive with the platform tickets.
  */
-export const makeSqliteNode = (path: string): Effect.Effect<DbService, DbError, never> =>
+export const makeSqliteNode = (path: string): Effect.Effect<DbService, DbError, Scope.Scope> =>
   Effect.gen(function* () {
-    const db = yield* Effect.try({
-      try: () => {
-        const d = new Database(path);
-        d.pragma('journal_mode = WAL');
-        d.pragma('busy_timeout = 5000');
-        return d;
-      },
-      catch: (e) => new DbError({ message: `open ${path}: ${String(e)}` }),
-    });
+    // Scoped: the native handle is closed when the owning layer is released
+    // (the web handler's `dispose()`), so a test can delete its temp database.
+    const db = yield* Effect.acquireRelease(
+      Effect.try({
+        try: () => {
+          const d = new Database(path);
+          d.pragma('journal_mode = WAL');
+          d.pragma('busy_timeout = 5000');
+          return d;
+        },
+        catch: (e) => new DbError({ message: `open ${path}: ${String(e)}` }),
+      }),
+      (d) => Effect.sync(() => d.close()),
+    );
 
     const fail = (sql: string) => (e: unknown) => new DbError({ message: String(e), sql });
     const params = (p?: ReadonlyArray<SqlParam>) => (p ?? []) as SqlParam[];
@@ -44,4 +49,4 @@ export const makeSqliteNode = (path: string): Effect.Effect<DbService, DbError, 
     } satisfies DbService;
   });
 
-export const layerSqliteNode = (path: string) => Layer.effect(Db, makeSqliteNode(path));
+export const layerSqliteNode = (path: string) => Layer.scoped(Db, makeSqliteNode(path));

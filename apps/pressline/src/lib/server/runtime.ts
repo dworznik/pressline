@@ -8,7 +8,7 @@ import { makeWebHandler, type WebHandler } from './http/handler';
 import { layerDesignSourceMemory } from './services/design-source';
 import { layerFulfilmentProviderMemory } from './services/fulfilment-provider';
 import { layerPrintful } from './services/printful';
-import { layerMailerConsole } from './services/mailer';
+import { layerMailerConsole, layerMailerNone } from './services/mailer';
 import { layerPspMemory } from './services/psp';
 import { PROTOCOL_VERSION } from './http/api';
 
@@ -36,13 +36,17 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     ? layerPrintful({ token: printfulToken }).pipe(Layer.provide(FetchHttpClient.layer))
     : layerFulfilmentProviderMemory;
 
+  // No real Mailer until ticket #12; `none` by default so nothing about a
+  // Customer reaches the logs, `console` only when an operator opts in locally.
+  const MailerLive = env['MAILER'] === 'console' ? layerMailerConsole : layerMailerNone;
+
   const services = Layer.mergeAll(
     Config.layer(rawConfig),
     Layer.merge(DbLive, DbMigrated),
     layerDesignSourceMemory({ protocolVersion: PROTOCOL_VERSION }),
     ProviderLive,
     layerPspMemory,
-    layerMailerConsole,
+    MailerLive,
   ).pipe(Layer.tapErrorCause((c) => Effect.logError('boot failed', c)));
 
   cached = makeWebHandler(services);

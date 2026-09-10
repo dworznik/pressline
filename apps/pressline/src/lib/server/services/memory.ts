@@ -21,14 +21,14 @@ import { Mailer, type Email } from './mailer';
 import { Psp } from './psp';
 
 /**
- * In-memory implementations of every external service. Used by the HTTP-seam
- * test harness and as boot-time stand-ins before an Operator has configured
- * the real providers. Kept apart from the production modules so test-double
- * changes never touch them.
+ * In-memory implementations of every external service. The test harness
+ * uses all of them; production boot uses the provider and PSP stand-ins until
+ * an Operator has configured the real ones. Kept apart from the production
+ * modules so test-double changes never touch them.
  */
 
 /** How the in-memory Engine answers ensure-Printfile for one Design. */
-export type MemoryRender =
+export type MemoryPrintfileAnswer =
   | {
       readonly kind: 'ready';
       readonly url: string;
@@ -43,7 +43,7 @@ export type MemoryRender =
   | {
       readonly kind: 'rendering';
       readonly times: number;
-      readonly then: MemoryRender;
+      readonly then: MemoryPrintfileAnswer;
       readonly retryAfterMs?: number;
     }
   | {
@@ -58,7 +58,7 @@ export interface MemoryEngine {
   readonly down?: boolean;
   readonly designs?: Readonly<Record<string, DesignResponse>>;
   /** Per Design ID; default answers `ready` with a synthetic URL. */
-  readonly renders?: Readonly<Record<string, MemoryRender>>;
+  readonly printfiles?: Readonly<Record<string, MemoryPrintfileAnswer>>;
 }
 
 export interface DesignSourceMemoryOptions {
@@ -92,7 +92,7 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
       engine: string,
       designId: string,
       spec: PrintfileSpec,
-      render: MemoryRender,
+      render: MemoryPrintfileAnswer,
     ): Effect.Effect<PrintfileReady | PrintfileRendering, PrintfileRejected> => {
       switch (render.kind) {
         case 'rejected':
@@ -153,11 +153,11 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
               DesignNotFound | PrintfileRejected
             > => {
               if (!e.designs?.[designId]) return Effect.fail(new DesignNotFound({ designId }));
-              const render: MemoryRender = e.renders?.[designId] ?? {
+              const answerFor: MemoryPrintfileAnswer = e.printfiles?.[designId] ?? {
                 kind: 'ready',
                 url: `https://engine.test/files/${designId}/${spec.placement}.png`,
               };
-              return answer(slug, designId, spec, render);
+              return answer(slug, designId, spec, answerFor);
             },
           ),
         ),

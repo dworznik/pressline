@@ -37,7 +37,7 @@ describe('GET /api/health', () => {
     app = await makeTestApp({ engines: { engines: { sample: { down: true } } } });
     const { status, body } = await app.json<HealthResponse>('/api/health');
     expect(status).toBe(200);
-    expect(body.engines[0]).toMatchObject({ slug: 'sample', enabled: false });
+    expect(body.engines[0]).toMatchObject({ slug: 'sample', enabled: false, transient: true });
     expect(body.engines[0]!.reason).toMatch(/unreachable/);
   });
 

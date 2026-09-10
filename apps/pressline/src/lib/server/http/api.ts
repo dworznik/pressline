@@ -7,6 +7,8 @@ import {
   Slug,
 } from '@pressline/contract';
 import { Schema } from 'effect';
+import { EngineUnavailable } from '../design/design';
+import { EngineStatus } from '../design/engines';
 import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
 
 /**
@@ -24,14 +26,7 @@ export const HealthResponse = Schema.Struct({
     currency: Schema.String,
     offers: Schema.Number,
   }),
-  engines: Schema.Array(
-    Schema.Struct({
-      slug: Schema.String,
-      enabled: Schema.Boolean,
-      protocolVersion: Schema.optional(Schema.String),
-      reason: Schema.optional(Schema.String),
-    }),
-  ),
+  engines: Schema.Array(EngineStatus),
 });
 export type HealthResponse = typeof HealthResponse.Type;
 
@@ -50,12 +45,6 @@ export const CatalogueGroup = HttpApiGroup.make('catalogue').add(
     .addSuccess(CatalogueResponse)
     .addError(CatalogueUnavailable, { status: 503 }),
 );
-
-/** The configured Engine is disabled: protocol mismatch or unreachable at startup. */
-export class EngineUnavailableError extends Schema.TaggedError<EngineUnavailableError>()(
-  'EngineUnavailable',
-  { engine: Schema.String, reason: Schema.String },
-) {}
 
 /** The Engine could not be reached for this request. */
 export class EngineError extends Schema.TaggedError<EngineError>()('EngineError', {
@@ -80,7 +69,7 @@ export const DesignsGroup = HttpApiGroup.make('designs').add(
     .setPath(DesignPath)
     .addSuccess(DesignPage)
     .addError(DesignNotFound, { status: 404 })
-    .addError(EngineUnavailableError, { status: 503 })
+    .addError(EngineUnavailable, { status: 503 })
     .addError(EngineError, { status: 502 })
     .addError(CatalogueUnavailable, { status: 503 }),
 );
@@ -106,7 +95,7 @@ export const PrintfilesGroup = HttpApiGroup.make('printfiles')
       .addSuccess(PrintfilePreparingState, { status: 202 })
       .addError(PrintfileUnavailable, { status: 422 })
       .addError(DesignNotFound, { status: 404 })
-      .addError(EngineUnavailableError, { status: 503 })
+      .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })
       .addError(CatalogueUnavailable, { status: 503 }),
   )
@@ -119,7 +108,7 @@ export const PrintfilesGroup = HttpApiGroup.make('printfiles')
       .addSuccess(PrintfilePreparingState, { status: 202 })
       .addError(PrintfileUnavailable, { status: 422 })
       .addError(DesignNotFound, { status: 404 })
-      .addError(EngineUnavailableError, { status: 503 })
+      .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })
       .addError(CatalogueUnavailable, { status: 503 }),
   );

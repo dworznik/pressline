@@ -46,7 +46,7 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   });
 
   const FulfilmentProviderLive = env.PRINTFUL_TOKEN
-    ? layerPrintful({ token: env.PRINTFUL_TOKEN }).pipe(Layer.provide(FetchHttpClient.layer))
+    ? layerPrintful({ token: env.PRINTFUL_TOKEN })
     : layerFulfilmentProviderMemory;
   // No real Mailer until ticket #12; `none` keeps Customers out of the logs.
   const MailerLive = env.MAILER === 'console' ? layerMailerConsole : layerMailerNone;
@@ -54,13 +54,15 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   const services = Layer.mergeAll(
     Config.layer(rawConfig),
     layerSqliteMigrated(env.DATABASE_PATH),
-    layerDesignSourceHttp(engines).pipe(Layer.provide(FetchHttpClient.layer)),
+    layerDesignSourceHttp(engines),
     FulfilmentProviderLive,
     layerPspMemory,
     MailerLive,
-    // Outbound HTTP for Printfile validation (ranged header reads).
-    FetchHttpClient.layer,
-  ).pipe(Layer.tapErrorCause((c) => Effect.logError('boot failed', c)));
+  ).pipe(
+    // One outbound HTTP client for the Engine client, Printful and Printfile validation.
+    Layer.provideMerge(FetchHttpClient.layer),
+    Layer.tapErrorCause((c) => Effect.logError('boot failed', c)),
+  );
 
   cached = makeWebHandler(services);
   return cached;

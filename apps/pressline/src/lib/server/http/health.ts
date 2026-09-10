@@ -22,12 +22,7 @@ export const HealthLive = HttpApiBuilder.group(PresslineApi, 'health', (handlers
           currency: config.currency,
           offers: config.catalogue.offers.length,
         },
-        engines: engines.map((e) => ({
-          slug: e.slug,
-          enabled: e.enabled,
-          ...(e.protocolVersion !== undefined ? { protocolVersion: e.protocolVersion } : {}),
-          ...(e.reason !== undefined ? { reason: e.reason } : {}),
-        })),
+        engines,
       };
     }),
   ),

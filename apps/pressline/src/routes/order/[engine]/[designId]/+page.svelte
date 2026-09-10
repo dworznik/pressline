@@ -25,6 +25,19 @@
   let variantKey = $state<string | undefined>(undefined);
   let printfile = $state<State>({ kind: 'idle' });
   let attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => () => clearTimeout(timer)); // stop polling when the page goes away
+
+  // Narrow guards for the two bodies this island reads; the server validated
+  // them with Schema already, this only protects against a wrong deploy pairing.
+  const isReady = (b: unknown): b is { printfile: Printfile } =>
+    typeof b === 'object' && b !== null && 'printfile' in b;
+  const isPreparing = (b: unknown): b is { retryAfterMs: number } =>
+    typeof b === 'object' &&
+    b !== null &&
+    typeof (b as { retryAfterMs?: unknown }).retryAfterMs === 'number';
+  const hasMessage = (b: unknown): b is { message: string } =>
+    typeof b === 'object' && b !== null && typeof (b as { message?: unknown }).message === 'string';
 
   const offer = $derived(offers.find((o) => o.slug === offerSlug));
   const base = $derived(`/api/designs/${data.page.engine}/${design.id}/printfile`);
@@ -37,15 +50,13 @@
 
   const apply = async (res: Response, mine: number) => {
     if (mine !== attempt) return;
-    if (res.status === 200) {
-      const body = (await res.json()) as { printfile: Printfile };
+    const body: unknown = await res.json().catch(() => undefined);
+    if (res.status === 200 && isReady(body)) {
       printfile = { kind: 'ready', printfile: body.printfile };
-    } else if (res.status === 202) {
-      const body = (await res.json()) as { retryAfterMs: number };
+    } else if (res.status === 202 && isPreparing(body)) {
       printfile = { kind: 'preparing', retryAfterMs: body.retryAfterMs };
-      setTimeout(() => void poll(mine), Math.max(250, body.retryAfterMs));
-    } else if (res.status === 422) {
-      const body = (await res.json()) as { message: string };
+      timer = setTimeout(() => void poll(mine), Math.max(250, body.retryAfterMs));
+    } else if (res.status === 422 && hasMessage(body)) {
       printfile = { kind: 'unavailable', message: body.message };
     } else {
       printfile = { kind: 'error', message: 'The design app did not answer. Please try again.' };

@@ -51,17 +51,29 @@ export interface HostedFile {
 
 /** Serves the harness's hosted files with Range support; anything else is 404. */
 const makeHostedFetch =
-  (files: Readonly<Record<string, HostedFile>>): typeof fetch =>
+  (files: Readonly<Record<string, HostedFile>>, served: Map<string, number>): typeof fetch =>
   async (input, init) => {
     const req = new Request(input, init);
     const file = files[req.url];
     if (!file) return new Response('not found', { status: 404 });
     if (file.status) return new Response('', { status: file.status });
+    // Stream in 16 KiB chunks and count every chunk handed out: a reader that
+    // stops early (the header validator) is observable as bytes not served.
+    const stream = (bytes: Uint8Array) =>
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          const offset = served.get(req.url) ?? 0;
+          if (offset >= bytes.length) return controller.close();
+          const chunk = bytes.slice(offset, offset + 16 * 1024);
+          served.set(req.url, offset + chunk.length);
+          controller.enqueue(chunk);
+        },
+      });
     const range = /^bytes=(\d+)-(\d+)$/.exec(req.headers.get('range') ?? '');
     if (range && !file.ignoreRange) {
       const start = Number(range[1]);
       const end = Math.min(Number(range[2]), file.bytes.length - 1);
-      return new Response(file.bytes.slice(start, end + 1).buffer as ArrayBuffer, {
+      return new Response(stream(file.bytes.slice(start, end + 1)), {
         status: 206,
         headers: {
           'content-type': file.contentType,
@@ -70,7 +82,7 @@ const makeHostedFetch =
         },
       });
     }
-    return new Response(file.bytes.slice().buffer as ArrayBuffer, {
+    return new Response(stream(file.bytes), {
       status: 200,
       headers: { 'content-type': file.contentType, 'content-length': String(file.bytes.length) },
     });
@@ -87,6 +99,8 @@ export interface TestApp {
   readonly fulfilmentProviderCalls: () => Promise<number>;
   /** How many design/printfile calls reached the (in-memory) Engines. */
   readonly engineCalls: () => Promise<number>;
+  /** Bytes the hosted-file stub handed to the app for a URL (what a real transfer would have cost). */
+  readonly bytesServed: (url: string) => number;
   /** Move the app's clock forward. */
   readonly advanceClock: (by: Duration.DurationInput) => void;
   /** Run an Effect against the app's services (for probing below the HTTP seam when debugging). */
@@ -121,6 +135,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     makeFulfilmentProviderMemory(options.catalog ?? emptyCatalog),
   );
   const { clock, advance } = makeSettableClock();
+  const served = new Map<string, number>();
   const designSource = await Effect.runPromise(
     makeDesignSourceMemory(options.engines ?? { engines: { sample: {} } }),
   );
@@ -133,7 +148,9 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     layerPspMemory,
     mailer.layer,
     FetchHttpClient.layer.pipe(
-      Layer.provide(Layer.succeed(FetchHttpClient.Fetch, makeHostedFetch(options.files ?? {}))),
+      Layer.provide(
+        Layer.succeed(FetchHttpClient.Fetch, makeHostedFetch(options.files ?? {}, served)),
+      ),
     ),
   ).pipe(Layer.provideMerge(Layer.setClock(clock)));
   const { handler, dispose } = makeWebHandler(services);
@@ -150,6 +167,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     sentMail: () => Effect.runPromise(mailer.sent),
     fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
     engineCalls: () => Effect.runPromise(designSource.calls),
+    bytesServed: (url) => served.get(url) ?? 0,
     advanceClock: advance,
     run: (eff) => runtime.runPromiseExit(eff),
     dbPath,

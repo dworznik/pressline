@@ -90,9 +90,10 @@ const readPrefix = (stream: Stream.Stream<Uint8Array, unknown>, limit: number) =
       new Uint8Array(0),
       (acc) => acc.length < limit,
       (acc, chunk) => {
-        const next = new Uint8Array(acc.length + chunk.length);
+        const take = Math.min(chunk.length, limit - acc.length);
+        const next = new Uint8Array(acc.length + take);
         next.set(acc);
-        next.set(chunk, acc.length);
+        next.set(chunk.subarray(0, take), acc.length);
         return next;
       },
     ),

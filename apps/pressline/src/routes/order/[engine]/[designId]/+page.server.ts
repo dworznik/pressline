@@ -1,6 +1,9 @@
 import { error } from '@sveltejs/kit';
-import type { DesignPage } from '$lib/server/http/api';
+import { Schema } from 'effect';
+import { DesignPage } from '$lib/server/http/api';
 import type { PageServerLoad } from './$types';
+
+const decodePage = Schema.decodeUnknownSync(DesignPage);
 
 /**
  * Storefront design page (ticket #5). The data comes from the JSON API the
@@ -11,11 +14,9 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, fetch }) => {
   const res = await fetch(`/api/designs/${params.engine}/${params.designId}`);
   if (res.status === 404) error(404, 'We could not find that design.');
-  if (res.status === 503) {
-    const body = (await res.json().catch(() => ({}))) as { reason?: string; message?: string };
-    error(503, body.reason ?? body.message ?? 'This shop is temporarily unavailable.');
-  }
+  // Operators see the reason on /api/health; Customers get a plain message.
+  if (res.status === 503)
+    error(503, 'This shop is temporarily unavailable. Please try again soon.');
   if (!res.ok) error(502, 'The design app did not answer. Please try again in a moment.');
-  const page = (await res.json()) as DesignPage;
-  return { page };
+  return { page: decodePage(await res.json()) };
 };

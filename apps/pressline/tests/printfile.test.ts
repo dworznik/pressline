@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PrintfileState } from '$lib/server/printfile/ensure';
 import { parseImageHeader } from '$lib/server/printfile/validate';
-import type { MemoryRender } from '$lib/server/services/memory';
+import type { MemoryPrintfileAnswer } from '$lib/server/services/memory';
 import { catalog, offers } from './fixtures/catalogue';
 import { jpeg, png } from './fixtures/images';
 import { makeTestApp, type HostedFile, type TestApp } from './harness';
@@ -31,13 +31,15 @@ const withdrawn: DesignResponse = { ...design, id: 'design-withdrawn', sellable:
 const square: DesignResponse = { ...design, id: 'design-square-01', aspect: { w: 1, h: 1 } };
 const URL_OK = 'https://engine.test/files/heron/front.png';
 
-const ready = (over: Partial<Extract<MemoryRender, { kind: 'ready' }>> = {}): MemoryRender => ({
+const ready = (
+  over: Partial<Extract<MemoryPrintfileAnswer, { kind: 'ready' }>> = {},
+): MemoryPrintfileAnswer => ({
   kind: 'ready',
   url: URL_OK,
   ...over,
 });
 
-const boot = (render: MemoryRender, files: Record<string, HostedFile>, waitMs = 300) =>
+const boot = (render: MemoryPrintfileAnswer, files: Record<string, HostedFile>, waitMs = 1000) =>
   makeTestApp({
     config: { catalogue: { offers }, printfile: { waitMs } },
     catalog,
@@ -45,7 +47,7 @@ const boot = (render: MemoryRender, files: Record<string, HostedFile>, waitMs = 
       engines: {
         sample: {
           designs: { [design.id]: design, [withdrawn.id]: withdrawn, [square.id]: square },
-          renders: { [design.id]: render },
+          printfiles: { [design.id]: render },
         },
       },
     },
@@ -106,19 +108,26 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
     app = await boot({ kind: 'rendering', times: 100, retryAfterMs: 50, then: ready() }, {}, 60);
     const { status, body } = await ensure(app);
     expect(status).toBe(202);
-    expect(body).toEqual({ status: 'preparing', retryAfterMs: 50 });
+    expect(body).toEqual({ status: 'preparing', retryAfterMs: 250 }); // floored
     const poll = await app.json<PrintfileState>(
       `/api/designs/sample/${design.id}/printfile?offer=tee-black-front&variant=black-m`,
     );
     expect(poll.status).toBe(202);
   });
 
-  it('422s with rejected when the Engine cannot satisfy the Spec', async () => {
+  it('422s with rejected when the Engine cannot satisfy the Spec, and hides that Offer for the Design from then on', async () => {
     app = await boot({ kind: 'rejected', code: 'aspect_mismatch', message: 'square only' }, {});
     const { status, body } = await ensure(app);
     expect(status).toBe(422);
     expect(body).toMatchObject({ reason: 'rejected' });
     expect(body.message).toMatch(/aspect_mismatch/);
+
+    const page = await app.json<{ offers: { slug: string }[] }>(`/api/designs/sample/${design.id}`);
+    expect(page.body.offers.map((o) => o.slug)).not.toContain('tee-black-front');
+    const calls = await app.engineCalls();
+    const again = await ensure(app);
+    expect(again.body).toMatchObject({ reason: 'not_eligible' });
+    expect(await app.engineCalls()).toBe(calls + 1); // the design lookup only; the Engine is not asked to render again
   });
 
   it('422s for a design that is not sellable, and for an Offer the design is not eligible for', async () => {
@@ -131,7 +140,7 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
   });
 
   describe('header validation (each failure class)', () => {
-    const cases: Array<[string, MemoryRender, HostedFile | undefined, RegExp]> = [
+    const cases: Array<[string, MemoryPrintfileAnswer, HostedFile | undefined, RegExp]> = [
       ['spec_hash', ready({ specHash: 'b'.repeat(64) }), teeFile(), /spec_hash/],
       [
         'format (declared type not accepted)',
@@ -147,6 +156,12 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
       ],
       ['status', ready(), { ...teeFile(), status: 500 }, /status/],
       ['content_type', ready(), { ...teeFile(), contentType: 'text/html' }, /content_type/],
+      [
+        'content_type (another image type)',
+        ready(),
+        { ...teeFile(), contentType: 'image/jpeg' },
+        /content_type/,
+      ],
       ['content_length', ready({ bytes: 999 }), teeFile(), /content_length/],
       [
         'header',
@@ -186,7 +201,7 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
           engines: {
             sample: {
               designs: { [posterDesign.id]: posterDesign },
-              renders: { [posterDesign.id]: ready({ url: posterUrl, bytes: 7000 }) },
+              printfiles: { [posterDesign.id]: ready({ url: posterUrl, bytes: 7000 }) },
             },
           },
         },
@@ -206,7 +221,7 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
           engines: {
             sample: {
               designs: { [posterDesign.id]: posterDesign },
-              renders: {
+              printfiles: {
                 [posterDesign.id]: ready({ url: jpgUrl, bytes: 7000, contentType: 'image/jpeg' }),
               },
             },

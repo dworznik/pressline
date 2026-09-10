@@ -24,23 +24,21 @@ export interface EngineEndpoint {
  * `DesignSourceError`. A decode failure is not retryable: the Engine is
  * speaking a different shape, and retrying will not change that.
  */
-const asTransportError = (engine: string, e: unknown): DesignSourceError => {
-  const tag = (e as { _tag?: string })?._tag;
-  const message = e instanceof Error ? e.message : String(e);
-  return new DesignSourceError({
+type ClientFailure = { readonly _tag: string; readonly message?: string };
+
+/** A decode failure is not retryable: the Engine speaks a different shape, and retrying will not change that. */
+const asTransportError = (engine: string, e: ClientFailure): DesignSourceError =>
+  new DesignSourceError({
     engine,
-    message: `engine ${engine}: ${message}`,
-    retryable: tag !== 'HttpApiDecodeError' && tag !== 'ParseError',
+    message: `engine ${engine}: ${e.message ?? e._tag}`,
+    retryable: e._tag !== 'HttpApiDecodeError' && e._tag !== 'ParseError',
   });
-};
 
 /** Keep the protocol's own errors typed; fold everything else into `DesignSourceError`. */
 const protocolOrTransport =
   (engine: string) =>
-  (e: unknown): Effect.Effect<never, DesignNotFound | PrintfileRejected | DesignSourceError> =>
-    e instanceof DesignNotFound || e instanceof PrintfileRejected
-      ? Effect.fail(e)
-      : Effect.fail(asTransportError(engine, e));
+  <E extends ClientFailure>(e: E) =>
+    e instanceof DesignNotFound || e instanceof PrintfileRejected ? e : asTransportError(engine, e);
 
 export const makeDesignSourceHttp = (engines: ReadonlyArray<EngineEndpoint>) =>
   Effect.gen(function* () {
@@ -68,25 +66,23 @@ export const makeDesignSourceHttp = (engines: ReadonlyArray<EngineEndpoint>) =>
       health: (engine) =>
         Effect.gen(function* () {
           const c = yield* client(engine);
-          return yield* c.health.health().pipe(Effect.catchAll(protocolOrTransport(engine)));
-        })
-          .pipe(Effect.catchTag('DesignNotFound', (e) => asTransportError(engine, e)))
-          .pipe(Effect.catchTag('PrintfileRejected', (e) => asTransportError(engine, e))),
+          return yield* c.health.health().pipe(Effect.mapError((e) => asTransportError(engine, e)));
+        }),
 
       getDesign: (engine, designId) =>
         Effect.gen(function* () {
           const c = yield* client(engine);
           return yield* c.designs
             .getDesign({ path: { designId } })
-            .pipe(Effect.catchAll(protocolOrTransport(engine)));
-        }).pipe(Effect.catchTag('PrintfileRejected', (e) => asTransportError(engine, e))),
+            .pipe(Effect.mapError(protocolOrTransport(engine)));
+        }),
 
       ensurePrintfile: (engine, designId, spec) =>
         Effect.gen(function* () {
           const c = yield* client(engine);
           return yield* c.designs
             .ensurePrintfile({ path: { designId }, payload: spec })
-            .pipe(Effect.catchAll(protocolOrTransport(engine)));
+            .pipe(Effect.mapError(protocolOrTransport(engine)));
         }),
     };
     return service;

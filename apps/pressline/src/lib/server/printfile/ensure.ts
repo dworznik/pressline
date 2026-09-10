@@ -1,5 +1,5 @@
 import type { CatalogueVariant, PrintfileReady } from '@pressline/contract';
-import { Clock, Effect, Schema } from 'effect';
+import { Clock, Duration, Effect, Option, Schema } from 'effect';
 import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { loadDesign } from '../design/design';
@@ -29,6 +29,11 @@ export type StoredPrintfile = typeof StoredPrintfile.Type;
 export type PrintfileState =
   | { readonly status: 'ready'; readonly printfile: StoredPrintfile }
   | { readonly status: 'preparing'; readonly retryAfterMs: number };
+
+/** Engines may ask for faster polling, but the bridge never hammers them. */
+export const MIN_RETRY_AFTER_MS = 250;
+/** Wall-clock cap on one ensure call beyond the configured wait: one Engine round trip plus the validation fetch. */
+export const GRACE_MS = 15_000;
 
 export interface EnsureRequest {
   readonly engine: string;
@@ -76,14 +81,12 @@ const store = (req: EnsureRequest, ready: PrintfileReady) =>
     const now = yield* Clock.currentTimeMillis;
     yield* db.run(
       `INSERT OR REPLACE INTO printfiles
-         (engine, design_id, spec_hash, offer_slug, variant_key, url, sha256, width, height, bytes, content_type, validated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (engine, design_id, spec_hash, url, sha256, width, height, bytes, content_type, validated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.engine,
         req.designId,
         ready.specHash,
-        req.offer,
-        req.variant,
         ready.url,
         ready.sha256,
         ready.width,
@@ -92,6 +95,17 @@ const store = (req: EnsureRequest, ready: PrintfileReady) =>
         ready.contentType,
         now,
       ],
+    );
+  }).pipe(Effect.orDie);
+
+const recordRejection = (req: EnsureRequest, code: string, message: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    yield* db.run(
+      `INSERT OR REPLACE INTO printfile_rejections (engine, design_id, offer_slug, code, message, rejected_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [req.engine, req.designId, req.offer, code, message, now],
     );
   }).pipe(Effect.orDie);
 
@@ -130,26 +144,42 @@ export const ensurePrintfile = (req: EnsureRequest) =>
     const budgetMs = req.wait ? config.printfile.waitMs : 0;
     const startedAt = yield* Clock.currentTimeMillis;
 
-    while (true) {
-      const answer = yield* source.ensurePrintfile(req.engine, req.designId, variant.spec);
-      if (answer.status === 'ready') {
-        yield* validatePrintfile(answer, variant.spec, variant.specHash);
-        yield* store(req, answer);
-        return { status: 'ready', printfile: answer } satisfies PrintfileState;
+    const loop = Effect.gen(function* () {
+      while (true) {
+        const answer = yield* source.ensurePrintfile(req.engine, req.designId, variant.spec);
+        if (answer.status === 'ready') {
+          yield* validatePrintfile(answer, variant.spec, variant.specHash);
+          yield* store(req, answer);
+          return { status: 'ready', printfile: answer } satisfies PrintfileState;
+        }
+        const retryAfterMs = Math.max(MIN_RETRY_AFTER_MS, answer.retryAfterMs);
+        const elapsed = (yield* Clock.currentTimeMillis) - startedAt;
+        if (elapsed + retryAfterMs > budgetMs) {
+          return { status: 'preparing', retryAfterMs } satisfies PrintfileState;
+        }
+        yield* Effect.sleep(retryAfterMs);
       }
-      const elapsed = (yield* Clock.currentTimeMillis) - startedAt;
-      if (elapsed + answer.retryAfterMs > budgetMs) {
-        return { status: 'preparing', retryAfterMs: answer.retryAfterMs } satisfies PrintfileState;
-      }
-      yield* Effect.sleep(answer.retryAfterMs);
-    }
+    });
+    // Sleeps are bounded by the budget; the Engine call and the validation
+    // fetch are bounded here, so wall time never exceeds budget + GRACE_MS.
+    const outcome = yield* loop.pipe(Effect.timeoutOption(Duration.millis(budgetMs + GRACE_MS)));
+    return Option.getOrElse(
+      outcome,
+      () => ({ status: 'preparing', retryAfterMs: 1000 }) satisfies PrintfileState,
+    );
   }).pipe(
+    Effect.catchTag('PrintfileRejected', (e) =>
+      recordRejection(req, e.code, e.message).pipe(
+        Effect.flatMap(
+          () =>
+            new PrintfileUnavailable({
+              reason: 'rejected',
+              message: `This design cannot be printed on this product (${e.code}: ${e.message}).`,
+            }),
+        ),
+      ),
+    ),
     Effect.catchTags({
-      PrintfileRejected: (e) =>
-        new PrintfileUnavailable({
-          reason: 'rejected',
-          message: `This design cannot be printed on this product (${e.code}: ${e.message}).`,
-        }),
       PrintfileInvalid: (e) =>
         new PrintfileUnavailable({
           reason: 'invalid',

@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DesignNotFound,
   EngineApi,
+  InsecureEngineBaseUrl,
+  isSecureEngineBaseUrl,
   makeEngineClient,
   PrintfileRejected,
   PROTOCOL_VERSION,
@@ -91,7 +93,7 @@ const withClient = <A, E>(
 ) =>
   run(
     Effect.gen(function* () {
-      const client = yield* makeEngineClient({ baseUrl: 'http://engine.test', secret: 's3cret' });
+      const client = yield* makeEngineClient({ baseUrl: 'https://engine.test', secret: 's3cret' });
       return yield* f(client);
     }).pipe(Effect.provide(ClientLayer)),
   );
@@ -108,7 +110,7 @@ describe('Engine client over the DesignSource protocol', () => {
   it('surfaces 404 as a typed DesignNotFound', async () => {
     const exit = await run(
       Effect.gen(function* () {
-        const c = yield* makeEngineClient({ baseUrl: 'http://engine.test', secret: 's' });
+        const c = yield* makeEngineClient({ baseUrl: 'https://engine.test', secret: 's' });
         return yield* c.designs.getDesign({ path: { designId: 'missing-000' } });
       }).pipe(Effect.provide(ClientLayer), Effect.flip),
     );
@@ -135,7 +137,7 @@ describe('Engine client over the DesignSource protocol', () => {
   it('surfaces 422 as a typed PrintfileRejected', async () => {
     const err = await run(
       Effect.gen(function* () {
-        const c = yield* makeEngineClient({ baseUrl: 'http://engine.test', secret: 's' });
+        const c = yield* makeEngineClient({ baseUrl: 'https://engine.test', secret: 's' });
         return yield* c.designs.ensurePrintfile({
           path: { designId: 'square-00001' },
           payload: spec,
@@ -144,6 +146,18 @@ describe('Engine client over the DesignSource protocol', () => {
     );
     expect(err).toBeInstanceOf(PrintfileRejected);
     expect((err as PrintfileRejected).code).toBe('aspect_mismatch');
+  });
+
+  it('refuses to send the shared secret over plain http to a non-loopback host', async () => {
+    const err = await run(
+      makeEngineClient({ baseUrl: 'http://engine.example', secret: 's' }).pipe(
+        Effect.flip,
+        Effect.provide(ClientLayer),
+      ),
+    );
+    expect(err).toBeInstanceOf(InsecureEngineBaseUrl);
+    expect(isSecureEngineBaseUrl('http://localhost:5174')).toBe(true);
+    expect(isSecureEngineBaseUrl('http://127.0.0.1:5174')).toBe(true);
   });
 
   it('reports the protocol version from /health', async () => {

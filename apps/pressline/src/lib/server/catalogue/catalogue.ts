@@ -51,16 +51,19 @@ export const deriveSpec = (
   const dims = variant.placementDimensions.find((d) => d.placement === offer.placement);
   const widthIn = dims?.widthIn ?? area.printAreaWidthIn;
   const heightIn = dims?.heightIn ?? area.printAreaHeightIn;
-  if (!(widthIn > 0 && heightIn > 0 && area.dpi > 0)) {
+  const width = Math.round(widthIn * area.dpi);
+  const height = Math.round(heightIn * area.dpi);
+  const positiveInt = (n: number) => Number.isSafeInteger(n) && n > 0;
+  if (!positiveInt(width) || !positiveInt(height) || !positiveInt(area.dpi)) {
     return new CatalogueError({
       offer: offer.slug,
-      message: `provider returned no print dimensions for placement "${offer.placement}" on variant ${variant.id}`,
+      message: `provider returned invalid print dimensions (${widthIn}in × ${heightIn}in at ${area.dpi} dpi) for placement "${offer.placement}" on variant ${variant.id}`,
     });
   }
   const alpha = alphaFor(offer.technique);
   return Effect.succeed({
-    width: Math.round(widthIn * area.dpi),
-    height: Math.round(heightIn * area.dpi),
+    width,
+    height,
     dpi: area.dpi,
     formats: alpha === 'forbidden' ? ['png', 'jpeg'] : ['png'],
     colorSpace: 'srgb',
@@ -81,8 +84,9 @@ const CachedVariant = Schema.Struct({
 type CachedVariant = typeof CachedVariant.Type;
 const CachedVariantJson = Schema.parseJson(CachedVariant);
 
+/** Everything the cached value was derived from; a config change to any of it is a miss. */
 const cacheKey = (offer: OfferConfig, catalogVariantId: number) =>
-  `variant:${catalogVariantId}:${offer.placement}:${offer.technique}`;
+  `product:${offer.catalogProductId}:variant:${catalogVariantId}:${offer.placement}:${offer.technique}`;
 
 // A broken cache table is infrastructure, not a domain error, hence orDie.
 const readCache = (key: string) =>

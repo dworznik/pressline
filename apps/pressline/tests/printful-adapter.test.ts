@@ -14,6 +14,7 @@ import { layerPrintful } from '$lib/server/services/printful';
  */
 const seen: Request[] = [];
 let forceStatus: number | undefined;
+let hang = false;
 const fixture = (name: string) =>
   JSON.parse(readFileSync(new URL(`./fixtures/printful/${name}`, import.meta.url), 'utf8'));
 
@@ -21,6 +22,7 @@ const stubFetch: typeof fetch = async (input, init) => {
   const req = new Request(input, init);
   seen.push(req);
   const key = new URL(req.url).pathname.replace(/^\/v2\//, '').replaceAll('/', '_');
+  if (hang) return new Promise<Response>(() => {});
   if (forceStatus)
     return Response.json({ code: forceStatus, result: 'forced' }, { status: forceStatus });
   if (req.headers.get('authorization') !== 'Bearer pf_test_token') {
@@ -39,7 +41,7 @@ const stubFetch: typeof fetch = async (input, init) => {
 };
 
 const stubLayer = (token = 'pf_test_token') =>
-  layerPrintful({ token, baseUrl: 'https://printful.test' }).pipe(
+  layerPrintful({ token, baseUrl: 'https://printful.test', timeout: '200 millis' }).pipe(
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(Layer.succeed(FetchHttpClient.Fetch, stubFetch)),
   );
@@ -107,6 +109,15 @@ describe('Printful v2 adapter', () => {
       'wrong',
     );
     expect(err).toMatchObject({ retryable: false, status: 401 });
+  });
+
+  it('bounds a stalled request and reports it as retryable', async () => {
+    hang = true;
+    const err = await fail(Effect.flatMap(FulfilmentProvider, (p) => p.getCatalogProduct(71)));
+    hang = false;
+    expect(err).toBeInstanceOf(FulfilmentProviderError);
+    expect(err).toMatchObject({ retryable: true });
+    expect((err as FulfilmentProviderError).message).toMatch(/no response within/);
   });
 
   it('maps 429 and 5xx to retryable FulfilmentProviderErrors', async () => {

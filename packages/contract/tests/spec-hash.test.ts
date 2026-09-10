@@ -57,6 +57,18 @@ describe('Printfile Spec canonical form and Spec Hash', () => {
     expect(await hash(b)).toBe(vectors[1]!.sha256);
   });
 
+  it('requires png in formats whenever alpha is required or allowed', () => {
+    const base = vectors[0]!.spec;
+    for (const alpha of ['required', 'allowed'] as const) {
+      const bad = canonicalize({ ...base, alpha, formats: ['jpeg'] });
+      expect(Either.isLeft(bad) && bad.left.message).toMatch(/must include "png"/);
+      expect(Either.isRight(canonicalize({ ...base, alpha, formats: ['jpeg', 'png'] }))).toBe(true);
+    }
+    expect(Either.isRight(canonicalize({ ...base, alpha: 'forbidden', formats: ['jpeg'] }))).toBe(
+      true,
+    );
+  });
+
   it('rejects non-integer dimensions with a typed error, so both sides cannot disagree on rounding', () => {
     const result = canonicalize({ ...vectors[0]!.spec, width: 1800.5 });
     expect(Either.isLeft(result)).toBe(true);

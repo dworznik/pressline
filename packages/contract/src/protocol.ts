@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { PrintfileSpec } from './spec.js';
+import { PrintfileSpec, SpecHash } from './spec.js';
 
 /** Bumped only on a breaking change to the wire protocol; checked at Pressline startup and by `doctor`. */
 export const PROTOCOL_VERSION = '1';
@@ -50,13 +50,13 @@ export class DesignNotFound extends Schema.TaggedError<DesignNotFound>()('Design
 export const PrintfileReady = Schema.Struct({
   status: Schema.Literal('ready'),
   url: Schema.String,
-  sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/)),
+  sha256: SpecHash,
   width: Schema.Int.pipe(Schema.positive()),
   height: Schema.Int.pipe(Schema.positive()),
   bytes: Schema.Int.pipe(Schema.positive()),
   contentType: Schema.Literal('image/png', 'image/jpeg'),
   /** Echo of the Spec Hash the Engine rendered for; Pressline verifies it matches. */
-  specHash: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/)),
+  specHash: SpecHash,
 });
 export type PrintfileReady = typeof PrintfileReady.Type;
 
@@ -95,7 +95,7 @@ export type Money = typeof Money.Type;
 export const AspectRange = Schema.Struct({
   min: Schema.Number.pipe(Schema.positive()),
   max: Schema.Number.pipe(Schema.positive()),
-});
+}).pipe(Schema.filter((r) => r.min <= r.max || 'aspect min must be <= max'));
 export type AspectRange = typeof AspectRange.Type;
 
 export const CatalogueVariant = Schema.Struct({
@@ -106,7 +106,7 @@ export const CatalogueVariant = Schema.Struct({
   size: Schema.optional(Schema.String),
   imageUrl: Schema.optional(Schema.String),
   spec: PrintfileSpec,
-  specHash: Schema.String,
+  specHash: SpecHash,
 });
 export type CatalogueVariant = typeof CatalogueVariant.Type;
 

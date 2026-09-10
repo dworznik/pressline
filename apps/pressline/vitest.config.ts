@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 // Seam 1: the HTTP surface of the bridge with in-memory layers (docs/SPEC.md →
@@ -11,7 +12,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      $lib: new URL('./src/lib', import.meta.url).pathname,
+      $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
       '@pressline/contract': new URL('../../packages/contract/src/index.ts', import.meta.url)
         .pathname,
     },

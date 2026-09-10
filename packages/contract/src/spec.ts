@@ -27,8 +27,18 @@ export const PrintfileSpec = Schema.Struct({
   placement: Schema.NonEmptyString,
   /** Provider print technique, e.g. `dtg`, `digital`, `embroidery`. */
   technique: Schema.NonEmptyString,
-});
+}).pipe(
+  Schema.filter((spec) =>
+    spec.alpha === 'forbidden' || spec.formats.includes('png')
+      ? true
+      : 'formats must include "png" when alpha is required or allowed',
+  ),
+);
 export type PrintfileSpec = typeof PrintfileSpec.Type;
+
+/** Lowercase hex SHA-256, as produced by `specHash` and expected wherever a Spec Hash travels. */
+export const SpecHash = Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/));
+export type SpecHash = typeof SpecHash.Type;
 
 /** The value is not a valid Printfile Spec (e.g. a non-integer dimension). */
 export class InvalidPrintfileSpec extends Schema.TaggedError<InvalidPrintfileSpec>()(

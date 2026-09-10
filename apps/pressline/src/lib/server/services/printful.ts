@@ -1,6 +1,7 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform';
 import type { HttpClientError } from '@effect/platform';
-import { Effect, Layer, Schema } from 'effect';
+
+import { Duration, Effect, Layer, Schema } from 'effect';
 import {
   FulfilmentProvider,
   FulfilmentProviderError,
@@ -18,7 +19,11 @@ import {
 export interface PrintfulOptions {
   readonly token: string;
   readonly baseUrl?: string;
+  /** Bound on one request including body decoding; a stall is a retryable error. */
+  readonly timeout?: Duration.DurationInput;
 }
+
+export const DEFAULT_TIMEOUT: Duration.DurationInput = '15 seconds';
 
 const Envelope = <A, I>(data: Schema.Schema<A, I>) => Schema.Struct({ data });
 
@@ -93,6 +98,7 @@ export const makePrintful = (options: PrintfulOptions) =>
       HttpClient.mapRequest(HttpClientRequest.prependUrl(base)),
     );
 
+    const timeout = options.timeout ?? DEFAULT_TIMEOUT;
     const get = <A, I>(path: string, schema: Schema.Schema<A, I>) =>
       client.get(path).pipe(
         Effect.flatMap((res) =>
@@ -110,6 +116,15 @@ export const makePrintful = (options: PrintfulOptions) =>
         ),
         Effect.mapError(toFulfilmentProviderError),
         Effect.scoped,
+        // Bounds the request and the body decode together; a stall is retryable.
+        Effect.timeoutFail({
+          duration: timeout,
+          onTimeout: () =>
+            new FulfilmentProviderError({
+              message: `Printful ${path}: no response within ${Duration.format(timeout)}`,
+              retryable: true,
+            }),
+        }),
       );
 
     const service: FulfilmentProviderService = {

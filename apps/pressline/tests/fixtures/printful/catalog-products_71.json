@@ -1,0 +1,14 @@
+{
+  "data": {
+    "id": 71,
+    "type": "T-SHIRT",
+    "name": "Unisex Staple T-Shirt | Bella + Canvas 3001",
+    "brand": "Bella + Canvas",
+    "model": "3001",
+    "techniques": [{ "key": "dtg", "display_name": "DTG printing", "is_default": true }],
+    "placements": [
+      { "placement": "front", "technique": "dtg", "layers": [{ "type": "file" }] },
+      { "placement": "back", "technique": "dtg", "layers": [{ "type": "file" }] }
+    ]
+  }
+}

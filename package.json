@@ -1,5 +1,5 @@
 {
-  "name": "pressline",
+  "name": "pressline-monorepo",
   "private": true,
   "version": "0.0.0",
   "description": "Self-hostable bridge from an image-generating app to print-on-demand products (Printful + Stripe)",

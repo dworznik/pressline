@@ -1,0 +1,13 @@
+{
+  "data": {
+    "id": 1,
+    "type": "POSTER",
+    "name": "Enhanced Matte Paper Poster (in)",
+    "brand": null,
+    "model": "Poster",
+    "techniques": [{ "key": "digital", "display_name": "Digital printing", "is_default": true }],
+    "placements": [
+      { "placement": "default", "technique": "digital", "layers": [{ "type": "file" }] }
+    ]
+  }
+}

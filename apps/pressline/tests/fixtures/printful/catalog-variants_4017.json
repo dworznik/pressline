@@ -1,0 +1,15 @@
+{
+  "data": {
+    "id": 4017,
+    "catalog_product_id": 71,
+    "name": "Unisex Staple T-Shirt | Bella + Canvas 3001 (Black / M)",
+    "size": "M",
+    "color": "Black",
+    "color_code": "#0b0b0b",
+    "image": "https://files.cdn.printful.com/products/71/4017_1581412541.jpg",
+    "placement_dimensions": [
+      { "placement": "front", "height": 16, "width": 12, "orientation": "any" },
+      { "placement": "back", "height": 16, "width": 12, "orientation": "any" }
+    ]
+  }
+}

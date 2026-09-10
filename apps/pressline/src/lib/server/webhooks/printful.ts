@@ -64,7 +64,7 @@ const recordTransition = (order: Order, to: OrderState, ref: string, patch: Orde
   transition(order.id, to, 'printful_webhook', ref, patch).pipe(
     Effect.flatMap(() =>
       // Shipped email (ticket #12): once, never blocking.
-      to === 'shipped'
+      to === 'shipped' || to === 'fulfilled'
         ? sendOrderEmail(order.id, 'shipped').pipe(
             Effect.map((mailed) => result('applied', `email=${mailed}`)),
           )

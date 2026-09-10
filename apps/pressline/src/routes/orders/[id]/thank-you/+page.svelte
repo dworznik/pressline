@@ -1,8 +1,12 @@
 <script lang="ts">
+  import { resolve } from '$app/paths';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const order = $derived(data.order);
+  const statusHref = $derived(
+    `${resolve('/orders/[id]', { id: data.order.id })}?t=${encodeURIComponent(data.token)}`,
+  );
   // Stripe redirects here as soon as payment succeeds; the webhook that marks
   // the Order paid may land a moment later, so "still confirming" is normal.
   const tone = $derived(
@@ -34,8 +38,11 @@
     <h1>This order was cancelled</h1>
     <p>If you were charged, the refund will arrive on the same payment method.</p>
   {/if}
-  <p class="ref">Order reference: <code>{order.id}</code></p>
-  <!-- The order-status page (ticket #13) is linked from here and from the emails. -->
+  <p class="ref">Order reference: <code>{data.reference}</code></p>
+  <p>
+    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+    <a href={statusHref}>Track this order</a>
+  </p>
 </main>
 
 <style>

@@ -93,6 +93,7 @@ export const startCheckout = (req: CheckoutRequest, origin: string) =>
         country: quote.country,
         providerCostEstimate: quote.providerCostEstimate,
         publicOrigin: base,
+        previewUrl: page.design.previewUrl,
       },
       quote.id,
     );

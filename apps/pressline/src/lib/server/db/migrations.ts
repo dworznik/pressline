@@ -193,4 +193,13 @@ export const migrations: ReadonlyArray<Migration> = [
       `ALTER TABLE orders ADD COLUMN public_origin TEXT`,
     ],
   },
+  {
+    version: 9,
+    name: 'order_preview_url',
+    statements: [
+      // The design's Preview URL at checkout time (immutable, ADR-0003), so emails
+      // and the status page do not depend on the Engine answering later.
+      `ALTER TABLE orders ADD COLUMN preview_url TEXT`,
+    ],
+  },
 ];

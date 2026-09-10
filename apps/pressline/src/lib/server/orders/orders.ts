@@ -1,5 +1,6 @@
 import { Clock, Effect, Schema } from 'effect';
 import { Db } from '../db/db';
+import { statusToken } from './ids';
 import { canTransition, Cause, OrderState, TERMINAL } from './state';
 
 /**
@@ -66,6 +67,8 @@ export const Order = Schema.Struct({
   tracking: Schema.optional(Tracking),
   /** Origin the Order was placed on (`https://shop.example`), for links in emails. */
   publicOrigin: Schema.optional(Schema.String),
+  /** The design's Preview as hot-linked at checkout (ADR-0003). */
+  previewUrl: Schema.optional(Schema.String),
   createdAt: Schema.Int,
   updatedAt: Schema.Int,
 });
@@ -126,6 +129,7 @@ type Row = {
   provider_order_id: string | null;
   tracking: string | null;
   public_origin: string | null;
+  preview_url: string | null;
   created_at: number;
   updated_at: number;
 };
@@ -180,6 +184,7 @@ const fromRow = (r: Row): Effect.Effect<Order> =>
       ...(r.provider_order_id !== null ? { providerOrderId: r.provider_order_id } : {}),
       ...(tracking ? { tracking } : {}),
       ...(r.public_origin !== null ? { publicOrigin: r.public_origin } : {}),
+      ...(r.preview_url !== null ? { previewUrl: r.preview_url } : {}),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };
@@ -266,6 +271,7 @@ export interface NewOrder {
   readonly country: string;
   readonly providerCostEstimate: { product: number; shipping: number; currency: string };
   readonly publicOrigin: string;
+  readonly previewUrl?: string;
 }
 
 /** Create the Order in `checkout_open` with its first Transition, atomically. */
@@ -278,8 +284,8 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
         sql: `INSERT INTO orders (id, state, status_token, engine, design_id, offer_slug, variant_key, spec_hash,
                 printfile_url, printfile_sha256, printfile_content_type, quote_id, currency, retail, shipping,
                 shipping_method, shipping_method_name, country, cost_product, cost_shipping, cost_currency,
-                public_origin, created_at, updated_at)
-              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                public_origin, preview_url, created_at, updated_at)
+              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           o.id,
           o.statusToken,
@@ -302,6 +308,7 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
           o.providerCostEstimate.shipping,
           o.providerCostEstimate.currency,
           o.publicOrigin,
+          o.previewUrl ?? null,
           now,
           now,
         ],
@@ -324,6 +331,20 @@ export const attachSession = (orderId: string, sessionId: string, sessionExpires
       [sessionId, sessionExpiresAt, now, orderId],
     );
   }).pipe(Effect.orDie);
+
+/** Issue a new status token (an operator action, ticket #17): old links stop working, the Order ID stays. */
+export const rotateStatusToken = (orderId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    const token = statusToken();
+    const changed = yield* db.run(
+      'UPDATE orders SET status_token = ?, updated_at = ? WHERE id = ?',
+      [token, now, orderId],
+    );
+    if (changed !== 1) return yield* new OrderNotFound({ id: orderId });
+    return token;
+  }).pipe(Effect.catchTag('DbError', (e) => Effect.die(e)));
 
 /** Record the provider's order id as soon as a draft exists, so a re-run finds it even before confirmation. */
 export const attachProviderOrder = (orderId: string, providerOrderId: string) =>

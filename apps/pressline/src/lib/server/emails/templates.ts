@@ -1,3 +1,4 @@
+import { orderReference } from '../orders/ids';
 import type { Order } from '../orders/orders';
 import type { Email } from '../services/mailer';
 
@@ -36,7 +37,7 @@ const shell = (title: string, body: string, ctx: EmailContext) => `<!doctype htm
   <p style="color: #666; font-size: 0.9rem; margin-top: 2rem;">${esc(ctx.shopName)}${ctx.contactEmail ? ` · <a href="mailto:${esc(ctx.contactEmail)}">${esc(ctx.contactEmail)}</a>` : ''}</p>
 </body></html>`;
 
-const ref = (order: Order) => order.id.slice(0, 8).toUpperCase();
+const ref = (order: Order) => orderReference(order.id);
 
 export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
   const to = order.recipient?.email ?? '';
@@ -47,8 +48,8 @@ export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
     `Total paid: ${money(total, ctx.currency)} (incl. shipping${order.amountTax ? ' and tax' : ''})`,
   ];
   const contact = ctx.contactEmail
-    ? `Need to change the size or address? Reply within 30 minutes or write to ${ctx.contactEmail}.`
-    : 'Need to change the size or address? Reply to this email within 30 minutes.';
+    ? `Need to change the size or address? Write to ${ctx.contactEmail} straight away; production starts soon.`
+    : 'Need to change the size or address? Reply to this email straight away; production starts soon.';
   const html = shell(
     `Thanks, ${esc(order.recipient?.name?.split(/\s+/)[0] ?? 'there')}!`,
     `

@@ -10,6 +10,10 @@ export const uuidv7 = (now: number = Date.now()): string => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
+/** Customer-facing reference: the random tail of the UUIDv7 (the head is a timestamp shared by every Order in the same minute). */
+export const orderReference = (orderId: string) =>
+  orderId.replaceAll('-', '').slice(-8).toUpperCase();
+
 /** Random per-order status token (URL-safe, 128 bits); rotatable without changing the Order ID. */
 export const statusToken = (): string => {
   const bytes = new Uint8Array(16);

@@ -34,6 +34,12 @@ Pressline: a self-hostable bridge from an image-generating app (an Engine) to pr
 - `pnpm verify` runs format, lint, typecheck, ADR check, tests, build; CI runs the same steps.
 - `pnpm adr:check` guards ADR numbering and frontmatter; new ADRs take the next number.
 
+### Branches
+
+- `main` is the only long-lived branch. Everything else is a short-lived branch merged by PR.
+- Name: `<type>/<issue>-<slug>`, e.g. `feat/5-storefront-design-page`, `chore/2-monorepo-skeleton`. `type` is one of the commit-msg types (`feat fix docs test refactor chore ci build perf adr`); `issue` is the GitHub ticket number; slug is short kebab-case. No ticket → drop the number (`chore/bump-effect`). Never `feature/`.
+- The `pre-push` hook warns (never blocks) on a non-conforming name; `dependabot/*` is exempt.
+
 ### Test seams (see `docs/SPEC.md` → Testing Decisions)
 
 HTTP surface of the bridge with in-memory layers; adapter contract tests on recorded fixtures; render helper by PNG headers; DesignSource conformance suite. Do not add module-level tests of the ledger.

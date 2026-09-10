@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# Warn-only branch-name check. Convention (see CLAUDE.md → Branches):
+#   <type>/<issue>-<slug>   e.g. feat/5-storefront-design-page
+#   <type>/<slug>           when there is no ticket, e.g. chore/bump-effect
+# type ∈ feat fix docs test refactor chore ci build perf adr. main and
+# dependabot/* are exempt. Never blocks a push.
+branch="$(git symbolic-ref --short HEAD 2>/dev/null)" || exit 0
+case "$branch" in
+  main|dependabot/*) exit 0 ;;
+esac
+if ! printf '%s' "$branch" | grep -Eq '^(feat|fix|docs|test|refactor|chore|ci|build|perf|adr)/([0-9]+-)?[a-z0-9]+(-[a-z0-9]+)*$'; then
+  echo "pre-push: branch '$branch' does not follow <type>/<issue>-<slug> (see CLAUDE.md → Branches). Pushing anyway." >&2
+fi
+exit 0

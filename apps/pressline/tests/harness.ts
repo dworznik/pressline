@@ -6,6 +6,8 @@ import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effec
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
+import { MailerKind } from '$lib/server/http/operator';
+import { OperatorSecrets } from '$lib/server/operator/auth';
 import type { ProviderOrder, ProviderShipment } from '$lib/server/services/fulfilment-provider';
 import type { Email } from '$lib/server/services/mailer';
 import type {
@@ -29,6 +31,9 @@ import {
  * talk to it over HTTP. Tests assert on responses, subsequent reads, and what
  * the fakes received.
  */
+/** The Operator's credential in tests (bearer for the CLI, exchanged for a cookie by the view). */
+export const OPERATOR_TOKEN = 'operator-token-for-tests';
+
 export const testConfig: typeof PresslineConfigSchema.Encoded = {
   name: 'Test Shop',
   currency: 'EUR',
@@ -183,6 +188,11 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
 
   const services = Layer.mergeAll(
     Config.layer({ ...testConfig, ...options.config }),
+    Layer.succeed(OperatorSecrets, {
+      token: OPERATOR_TOKEN,
+      sessionSecret: 'session-secret-for-tests',
+    }),
+    Layer.succeed(MailerKind, 'memory'),
     layerSqliteMigrated(dbPath),
     designSource.layer,
     provider.layer,

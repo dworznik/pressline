@@ -77,7 +77,9 @@ export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
 export const shippedEmail = (order: Order, ctx: EmailContext): Email => {
   const to = order.recipient?.email ?? '';
   const subject = `${ctx.shopName}: order ${ref(order)} is on its way`;
-  const t = order.tracking;
+  const raw = order.tracking;
+  // Only web URLs are linked; the carrier link came from the provider.
+  const t = raw && raw.url && !/^https?:\/\//i.test(raw.url) ? { ...raw, url: undefined } : raw;
   const trackingLine = t?.url
     ? `Track your parcel${t.carrier ? ` with ${t.carrier}` : ''}: ${t.url}`
     : t?.number

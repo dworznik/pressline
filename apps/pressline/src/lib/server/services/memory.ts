@@ -204,6 +204,8 @@ export const makePspMemory = Effect.gen(function* () {
   let down = false;
   const layer = Layer.succeed(Psp, {
     health: () => Effect.void,
+    getWebhookStatus: () =>
+      Effect.succeed({ configured: true, url: 'https://pressline.test/webhooks/stripe' }),
     createCheckoutSession: (input) =>
       down
         ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
@@ -325,6 +327,8 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
     return {
       layer: Layer.succeed(FulfilmentProvider, {
         health: () => Effect.void,
+        getWebhookStatus: () =>
+          Effect.succeed({ configured: true, url: 'https://pressline.test/webhooks/printful' }),
         getCatalogProduct: (id) =>
           counted(
             'catalog product',

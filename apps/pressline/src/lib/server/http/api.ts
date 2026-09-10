@@ -13,6 +13,8 @@ import { CheckoutRequest, CheckoutStarted, CheckoutUnavailable } from '../checko
 import { OrderNotFound } from '../orders/orders';
 import { PublicOrder } from '../orders/public';
 import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
+import { OperatorAuth, Unauthorized } from '../operator/auth';
+import { InstanceHealth, OrderDetail, OrderList, OrderListQuery } from '../operator/read';
 import { ProviderWebhookRejected } from '../services/fulfilment-provider';
 import { WebhookRejected } from '../services/psp';
 import { ProviderWebhookProcessingFailed } from '../webhooks/printful';
@@ -207,6 +209,34 @@ export const WebhooksGroup = HttpApiGroup.make('webhooks')
       .addError(ProviderWebhookProcessingFailed, { status: 500 }),
   );
 
+/** A session for the Operator View, issued against the bearer token. */
+export const OperatorSession = Schema.Struct({
+  /** Cookie value (`<expiresAt>.<hmac>`); the browser stores it HttpOnly. */
+  cookie: Schema.String,
+  expiresAt: Schema.Int,
+});
+
+/** Operator read API (ticket #14, ADR-0014): bearer token or session cookie; read-only. */
+export const OperatorGroup = HttpApiGroup.make('operator')
+  .add(
+    HttpApiEndpoint.post('session', '/api/operator/session')
+      .addSuccess(OperatorSession)
+      .addError(Unauthorized, { status: 401 }),
+  )
+  .add(HttpApiEndpoint.get('health', '/api/operator/health').addSuccess(InstanceHealth))
+  .add(
+    HttpApiEndpoint.get('orders', '/api/operator/orders')
+      .setUrlParams(OrderListQuery)
+      .addSuccess(OrderList),
+  )
+  .add(
+    HttpApiEndpoint.get('order', '/api/operator/orders/:id')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(OrderDetail)
+      .addError(OrderNotFound, { status: 404 }),
+  )
+  .middleware(OperatorAuth);
+
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)
   .add(CatalogueGroup)
@@ -214,4 +244,5 @@ export class PresslineApi extends HttpApi.make('pressline')
   .add(PrintfilesGroup)
   .add(QuotesGroup)
   .add(OrdersGroup)
-  .add(WebhooksGroup) {}
+  .add(WebhooksGroup)
+  .add(OperatorGroup) {}

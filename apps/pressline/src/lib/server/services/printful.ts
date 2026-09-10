@@ -382,6 +382,38 @@ export const makePrintful = (options: PrintfulOptions) =>
     const service: FulfilmentProviderService = {
       health: () => get('/v2/catalog-products?limit=1', Schema.Unknown).pipe(Effect.asVoid),
 
+      getWebhookStatus: () =>
+        get(
+          '/v2/webhooks',
+          Envelope(
+            Schema.Struct({
+              default_url: Schema.optional(Schema.NullOr(Schema.String)),
+              events: Schema.optional(
+                Schema.Array(
+                  Schema.Struct({
+                    type: Schema.String,
+                    url: Schema.optional(Schema.NullOr(Schema.String)),
+                  }),
+                ),
+              ),
+            }),
+          ),
+        ).pipe(
+          Effect.map(({ data }) => {
+            const url = data.default_url ?? data.events?.find((e) => e.url)?.url ?? undefined;
+            const configured = !!url && /\/webhooks\/printful$/.test(url);
+            return {
+              configured,
+              ...(url ? { url } : {}),
+              ...(configured ? {} : { detail: url ? 'points elsewhere' : 'no configuration' }),
+            };
+          }),
+          Effect.catchIf(
+            (e) => e.status === 404,
+            () => Effect.succeed({ configured: false, detail: 'no configuration' }),
+          ),
+        ),
+
       verifyWebhook: (rawBody, headers) =>
         Effect.gen(function* () {
           if (!options.webhookSecret) {

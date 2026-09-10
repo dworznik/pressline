@@ -180,8 +180,16 @@ export class ProviderWebhookRejected extends Schema.TaggedError<ProviderWebhookR
   { message: Schema.String },
 ) {}
 
+export interface WebhookStatus {
+  readonly configured: boolean;
+  readonly url?: string;
+  readonly detail?: string;
+}
+
 export interface FulfilmentProviderService {
   readonly health: () => Effect.Effect<void, FulfilmentProviderError>;
+  /** Whether a webhook configuration exists on the provider account, and where it points. */
+  readonly getWebhookStatus: () => Effect.Effect<WebhookStatus, FulfilmentProviderError>;
   /** Verify a raw webhook body against the provider's signature headers. */
   readonly verifyWebhook: (
     rawBody: string,

@@ -100,6 +100,21 @@ export const makeStripe = (options: StripeOptions) =>
     const service: PspService = {
       health: () => call(() => stripe.balance.retrieve()).pipe(Effect.asVoid),
 
+      getWebhookStatus: () =>
+        call(() => stripe.webhookEndpoints.list({ limit: 100 })).pipe(
+          Effect.map((list) => {
+            const mine = list.data.find(
+              (w) => /\/webhooks\/stripe$/.test(w.url) && w.status === 'enabled',
+            );
+            return mine
+              ? { configured: true, url: mine.url }
+              : {
+                  configured: false,
+                  detail: `no enabled endpoint ending in /webhooks/stripe (${list.data.length} endpoints)`,
+                };
+          }),
+        ),
+
       createCheckoutSession: (input: CheckoutSessionInput) =>
         call(() =>
           stripe.checkout.sessions.create({

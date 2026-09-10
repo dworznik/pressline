@@ -84,8 +84,16 @@ export class WebhookRejected extends Schema.TaggedError<WebhookRejected>()('Webh
   message: Schema.String,
 }) {}
 
+export interface PspWebhookStatus {
+  readonly configured: boolean;
+  readonly url?: string;
+  readonly detail?: string;
+}
+
 export interface PspService {
   readonly health: () => Effect.Effect<void, PspError>;
+  /** Whether a webhook endpoint pointing at Pressline exists on the PSP account. */
+  readonly getWebhookStatus: () => Effect.Effect<PspWebhookStatus, PspError>;
   readonly createCheckoutSession: (
     input: CheckoutSessionInput,
   ) => Effect.Effect<CheckoutSession, PspError>;

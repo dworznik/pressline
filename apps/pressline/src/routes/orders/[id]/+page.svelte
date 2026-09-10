@@ -5,7 +5,7 @@
   const order = $derived(data.order);
   const display = $derived(data.display);
   const formatter = $derived(
-    new Intl.NumberFormat(undefined, { style: 'currency', currency: order.currency }),
+    new Intl.NumberFormat('en', { style: 'currency', currency: order.currency }),
   );
   const money = (amount: number) =>
     formatter.format(amount / 10 ** (formatter.resolvedOptions().maximumFractionDigits ?? 2));
@@ -18,7 +18,7 @@
   <title>Order {data.reference} · {display.label}</title>
 </svelte:head>
 
-<main class="status" data-state={order.state} data-step={display.step}>
+<main class="status" data-step={display.step}>
   <header>
     <p class="ref">Order <code>{data.reference}</code></p>
     <h1>{display.label}</h1>
@@ -55,7 +55,7 @@
   {#if order.tracking?.url}
     <p class="tracking">
       <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-      <a href={order.tracking.url} rel="noopener"
+      <a href={order.tracking.url} rel="noopener noreferrer"
         >Track your parcel{order.tracking.carrier ? ` with ${order.tracking.carrier}` : ''}</a
       >
     </p>

@@ -217,15 +217,21 @@ export const findOrderByProviderOrder = (providerOrderId: string) =>
     return rows[0] ? yield* fromRow(rows[0]) : undefined;
   });
 
-export const listOrders = (options: { state?: OrderState; limit?: number } = {}) =>
+export const listOrders = (options: { state?: OrderState; limit?: number; before?: string } = {}) =>
   Effect.gen(function* () {
     const db = yield* Db;
-    const rows = options.state
-      ? yield* db.all<Row>(`${SELECT} WHERE state = ? ORDER BY id DESC LIMIT ?`, [
-          options.state,
-          options.limit ?? 100,
-        ])
-      : yield* db.all<Row>(`${SELECT} ORDER BY id DESC LIMIT ?`, [options.limit ?? 100]);
+    const where: string[] = [];
+    const params: (string | number)[] = [];
+    if (options.state) {
+      where.push('state = ?');
+      params.push(options.state);
+    }
+    if (options.before) {
+      where.push('id < ?'); // UUIDv7 sorts by creation time
+      params.push(options.before);
+    }
+    const sql = `${SELECT}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
+    const rows = yield* db.all<Row>(sql, [...params, options.limit ?? 100]);
     return yield* Effect.forEach(rows, fromRow);
   }).pipe(Effect.orDie);
 

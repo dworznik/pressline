@@ -1,4 +1,5 @@
 import { Effect, Schema } from 'effect';
+import { timingSafeEqual } from '../security';
 import { Config } from '../config/schema';
 import { DesignSource } from '../services/design-source';
 import { findOrder, OrderNotFound } from './orders';
@@ -37,7 +38,7 @@ export type PublicOrder = typeof PublicOrder.Type;
 export const publicOrder = (id: string, token: string) =>
   Effect.gen(function* () {
     const order = yield* findOrder(id);
-    if (order.statusToken !== token) return yield* new OrderNotFound({ id });
+    if (!timingSafeEqual(order.statusToken, token)) return yield* new OrderNotFound({ id });
     const config = yield* Config;
     const offer = config.catalogue.offers.find((o) => o.slug === order.offer);
     const previewUrl =

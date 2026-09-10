@@ -2,6 +2,8 @@ import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer, Schema } from 'effect';
 import rawConfig from '../../../pressline.config';
 import { Config } from './config/schema';
+import { MailerKind } from './http/operator';
+import { OperatorSecrets } from './operator/auth';
 import { layerSqliteMigrated } from './db/layer';
 import { makeWebHandler, type WebHandler } from './http/handler';
 import { layerDesignSourceHttp } from './services/design-source-http';
@@ -24,6 +26,8 @@ const Env = Schema.Struct({
   STRIPE_SECRET_KEY: Schema.optional(Schema.NonEmptyString),
   STRIPE_WEBHOOK_SECRET: Schema.optional(Schema.NonEmptyString),
   RESEND_API_KEY: Schema.optional(Schema.NonEmptyString),
+  OPERATOR_TOKEN: Schema.optional(Schema.NonEmptyString),
+  SESSION_SECRET: Schema.optional(Schema.NonEmptyString),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),
@@ -40,6 +44,13 @@ export const engineSecretVar = (slug: string) =>
  * DesignSource and PSP are the in-memory stand-ins.
  */
 let cached: WebHandler | undefined;
+
+/** The cookie-signing secret, for the SvelteKit guard (same source as the runtime). */
+export const operatorSessionSecret = (platform: App.Platform | undefined): string => {
+  const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
+  const s = rawEnv['SESSION_SECRET'] ?? rawEnv['OPERATOR_TOKEN'];
+  return typeof s === 'string' ? s : '';
+};
 
 export const getWebHandler = (platform: App.Platform | undefined): WebHandler => {
   if (cached) return cached;
@@ -84,8 +95,17 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
         ? layerMailerConsole
         : layerMailerNone;
 
+  const mailerKind = env.RESEND_API_KEY ? 'resend' : env.MAILER === 'console' ? 'console' : 'none';
+  // Without OPERATOR_TOKEN the operator API refuses everything (an empty token never matches).
+  const OperatorSecretsLive = Layer.succeed(OperatorSecrets, {
+    token: env.OPERATOR_TOKEN ?? '',
+    sessionSecret: env.SESSION_SECRET ?? env.OPERATOR_TOKEN ?? '',
+  });
+
   const services = Layer.mergeAll(
     Config.layer(rawConfig),
+    OperatorSecretsLive,
+    Layer.succeed(MailerKind, mailerKind),
     layerSqliteMigrated(env.DATABASE_PATH),
     layerDesignSourceHttp(engines),
     FulfilmentProviderLive,

@@ -12,13 +12,23 @@ import { CatalogueLive } from './catalogue';
 import { DesignsLive } from './designs';
 import { HealthLive } from './health';
 import { PrintfilesLive } from './printfiles';
+import { OperatorAuthLive, type OperatorSecrets } from '../operator/auth';
+import { OperatorLive, type MailerKind } from './operator';
 import { OrdersLive } from './orders';
 import { QuotesLive } from './quotes';
 import { WebhooksLive } from './webhooks';
 
 /** Everything the HTTP layer needs from the outside world. */
 export type Services =
-  Config | Db | DesignSource | FulfilmentProvider | Psp | Mailer | HttpClient.HttpClient;
+  | Config
+  | Db
+  | DesignSource
+  | FulfilmentProvider
+  | Psp
+  | Mailer
+  | HttpClient.HttpClient
+  | OperatorSecrets
+  | MailerKind;
 
 /**
  * Build the web-standard `(Request) => Promise<Response>` for the whole API
@@ -37,8 +47,9 @@ export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) =>
           QuotesLive,
           OrdersLive,
           WebhooksLive,
+          OperatorLive,
         ]),
-        Layer.provide(EnginesLive),
+        Layer.provide([EnginesLive, OperatorAuthLive]),
       ),
       HttpServer.layerContext,
     ).pipe(Layer.provide(services)),

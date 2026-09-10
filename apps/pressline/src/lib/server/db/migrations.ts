@@ -32,4 +32,27 @@ export const migrations: ReadonlyArray<Migration> = [
        )`,
     ],
   },
+  {
+    version: 3,
+    name: 'printfiles',
+    statements: [
+      // A validated Printfile per (Engine, Design, Spec Hash): the Storefront
+      // and checkout reuse it; the bytes stay at the Engine's URL (ADR-0003).
+      `CREATE TABLE printfiles (
+         engine TEXT NOT NULL,
+         design_id TEXT NOT NULL,
+         spec_hash TEXT NOT NULL,
+         offer_slug TEXT NOT NULL,
+         variant_key TEXT NOT NULL,
+         url TEXT NOT NULL,
+         sha256 TEXT NOT NULL,
+         width INTEGER NOT NULL,
+         height INTEGER NOT NULL,
+         bytes INTEGER NOT NULL,
+         content_type TEXT NOT NULL,
+         validated_at INTEGER NOT NULL,
+         PRIMARY KEY (engine, design_id, spec_hash)
+       )`,
+    ],
+  },
 ];

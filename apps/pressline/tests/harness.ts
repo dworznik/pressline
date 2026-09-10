@@ -1,10 +1,11 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { Clock, Duration, Effect, Layer } from 'effect';
+import { FetchHttpClient } from '@effect/platform';
+import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effect';
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
-import { makeWebHandler } from '$lib/server/http/handler';
+import { makeWebHandler, type Services } from '$lib/server/http/handler';
 import {
   emptyCatalog,
   layerPspMemory,
@@ -35,7 +36,45 @@ export interface TestAppOptions {
   readonly dbPath?: string;
   /** Seed for the in-memory Engines. Defaults to one healthy, empty Engine `sample`. */
   readonly engines?: DesignSourceMemoryOptions;
+  /** Files the Engine "hosts": what a ranged GET of a Printfile URL returns. */
+  readonly files?: Readonly<Record<string, HostedFile>>;
 }
+
+export interface HostedFile {
+  readonly bytes: Uint8Array;
+  readonly contentType: string;
+  /** Answer with this status instead of serving the file. */
+  readonly status?: number;
+  /** Ignore Range and answer 200 with the whole body. */
+  readonly ignoreRange?: boolean;
+}
+
+/** Serves the harness's hosted files with Range support; anything else is 404. */
+const makeHostedFetch =
+  (files: Readonly<Record<string, HostedFile>>): typeof fetch =>
+  async (input, init) => {
+    const req = new Request(input, init);
+    const file = files[req.url];
+    if (!file) return new Response('not found', { status: 404 });
+    if (file.status) return new Response('', { status: file.status });
+    const range = /^bytes=(\d+)-(\d+)$/.exec(req.headers.get('range') ?? '');
+    if (range && !file.ignoreRange) {
+      const start = Number(range[1]);
+      const end = Math.min(Number(range[2]), file.bytes.length - 1);
+      return new Response(file.bytes.slice(start, end + 1).buffer as ArrayBuffer, {
+        status: 206,
+        headers: {
+          'content-type': file.contentType,
+          'content-range': `bytes ${start}-${end}/${file.bytes.length}`,
+          'content-length': String(end - start + 1),
+        },
+      });
+    }
+    return new Response(file.bytes.slice().buffer as ArrayBuffer, {
+      status: 200,
+      headers: { 'content-type': file.contentType, 'content-length': String(file.bytes.length) },
+    });
+  };
 
 export interface TestApp {
   readonly fetch: (path: string, init?: RequestInit) => Promise<Response>;
@@ -50,22 +89,28 @@ export interface TestApp {
   readonly engineCalls: () => Promise<number>;
   /** Move the app's clock forward. */
   readonly advanceClock: (by: Duration.DurationInput) => void;
+  /** Run an Effect against the app's services (for probing below the HTTP seam when debugging). */
+  readonly run: <A, E>(eff: Effect.Effect<A, E, Services>) => Promise<Exit.Exit<A, unknown>>;
   readonly dbPath: string;
   /** Release the app. `keepDb` leaves the database on disk for a successor app. */
   readonly dispose: (options?: { keepDb?: boolean }) => Promise<void>;
 }
 
-/** A clock the test moves by hand; starts at the real time so TTLs are realistic. */
+/** Real time plus an offset the test moves by hand, so timeouts and poll loops still see time pass. */
 const makeSettableClock = () => {
-  let now = Date.now();
+  let offset = 0;
+  const now = () => Date.now() + offset;
+  const base = Clock.make();
   const clock: Clock.Clock = {
-    ...Clock.make(),
-    unsafeCurrentTimeMillis: () => now,
-    unsafeCurrentTimeNanos: () => BigInt(now) * 1_000_000n,
-    currentTimeMillis: Effect.sync(() => now),
-    currentTimeNanos: Effect.sync(() => BigInt(now) * 1_000_000n),
+    [Clock.ClockTypeId]: Clock.ClockTypeId,
+    // Real sleeps (timeouts, poll intervals); only "what time is it" is settable.
+    sleep: (duration) => base.sleep(duration),
+    unsafeCurrentTimeMillis: now,
+    unsafeCurrentTimeNanos: () => BigInt(now()) * 1_000_000n,
+    currentTimeMillis: Effect.sync(now),
+    currentTimeNanos: Effect.sync(() => BigInt(now()) * 1_000_000n),
   };
-  return { clock, advance: (by: Duration.DurationInput) => void (now += Duration.toMillis(by)) };
+  return { clock, advance: (by: Duration.DurationInput) => void (offset += Duration.toMillis(by)) };
 };
 
 export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp> => {
@@ -87,8 +132,12 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     provider.layer,
     layerPspMemory,
     mailer.layer,
+    FetchHttpClient.layer.pipe(
+      Layer.provide(Layer.succeed(FetchHttpClient.Fetch, makeHostedFetch(options.files ?? {}))),
+    ),
   ).pipe(Layer.provideMerge(Layer.setClock(clock)));
   const { handler, dispose } = makeWebHandler(services);
+  const runtime = ManagedRuntime.make(services);
   const base = 'http://pressline.test';
 
   const fetch = (path: string, init?: RequestInit) => handler(new Request(base + path, init));
@@ -102,8 +151,10 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
     engineCalls: () => Effect.runPromise(designSource.calls),
     advanceClock: advance,
+    run: (eff) => runtime.runPromiseExit(eff),
     dbPath,
     dispose: async ({ keepDb = false } = {}) => {
+      await runtime.dispose();
       await dispose();
       if (!keepDb) rmSync(dir, { recursive: true, force: true });
     },

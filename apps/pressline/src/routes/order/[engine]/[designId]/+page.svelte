@@ -9,6 +9,76 @@
       amount / 100,
     ),
   );
+
+  // Selection → ensure-Printfile (ticket #6): POST waits within the server's
+  // bound; on 202 the page polls GET until ready. Nothing here decides prices
+  // or eligibility: the server already did.
+  type Printfile = { url: string; width: number; height: number };
+  type State =
+    | { kind: 'idle' }
+    | { kind: 'preparing'; retryAfterMs: number }
+    | { kind: 'ready'; printfile: Printfile }
+    | { kind: 'unavailable'; message: string }
+    | { kind: 'error'; message: string };
+
+  let offerSlug = $state<string | undefined>(undefined);
+  let variantKey = $state<string | undefined>(undefined);
+  let printfile = $state<State>({ kind: 'idle' });
+  let attempt = 0;
+
+  const offer = $derived(offers.find((o) => o.slug === offerSlug));
+  const base = $derived(`/api/designs/${data.page.engine}/${design.id}/printfile`);
+
+  const choose = (slug: string, key: string) => {
+    offerSlug = slug;
+    variantKey = key;
+    void ensure();
+  };
+
+  const apply = async (res: Response, mine: number) => {
+    if (mine !== attempt) return;
+    if (res.status === 200) {
+      const body = (await res.json()) as { printfile: Printfile };
+      printfile = { kind: 'ready', printfile: body.printfile };
+    } else if (res.status === 202) {
+      const body = (await res.json()) as { retryAfterMs: number };
+      printfile = { kind: 'preparing', retryAfterMs: body.retryAfterMs };
+      setTimeout(() => void poll(mine), Math.max(250, body.retryAfterMs));
+    } else if (res.status === 422) {
+      const body = (await res.json()) as { message: string };
+      printfile = { kind: 'unavailable', message: body.message };
+    } else {
+      printfile = { kind: 'error', message: 'The design app did not answer. Please try again.' };
+    }
+  };
+
+  const ensure = async () => {
+    if (!offerSlug || !variantKey) return;
+    const mine = ++attempt;
+    printfile = { kind: 'preparing', retryAfterMs: 0 };
+    try {
+      const res = await fetch(base, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ offer: offerSlug, variant: variantKey }),
+      });
+      await apply(res, mine);
+    } catch {
+      if (mine === attempt)
+        printfile = { kind: 'error', message: 'Network error. Please try again.' };
+    }
+  };
+
+  const poll = async (mine: number) => {
+    if (mine !== attempt || !offerSlug || !variantKey) return;
+    try {
+      const res = await fetch(`${base}?offer=${offerSlug}&variant=${variantKey}`);
+      await apply(res, mine);
+    } catch {
+      if (mine === attempt)
+        printfile = { kind: 'error', message: 'Network error. Please try again.' };
+    }
+  };
 </script>
 
 <svelte:head>
@@ -29,20 +99,47 @@
       <p class="notice" data-state="no-offers">No products currently fit this design's shape.</p>
     {:else}
       <ul class="offers" data-state="offers">
-        {#each offers as offer (offer.slug)}
-          <li class="offer">
-            <h2>{offer.name}</h2>
+        {#each offers as o (o.slug)}
+          <li class="offer" class:selected={o.slug === offerSlug}>
+            <h2>{o.name}</h2>
             <p class="price">
-              {money(offer.retailPrice.amount)} <small>excl. shipping and tax</small>
+              {money(o.retailPrice.amount)} <small>excl. shipping and tax</small>
             </p>
             <p class="variants">
-              {#each offer.variants as variant (variant.key)}
-                <span class="variant">{variant.label}</span>
+              {#each o.variants as v (v.key)}
+                <button
+                  type="button"
+                  class="variant"
+                  class:selected={o.slug === offerSlug && v.key === variantKey}
+                  onclick={() => choose(o.slug, v.key)}
+                >
+                  {v.label}
+                </button>
               {/each}
             </p>
           </li>
         {/each}
       </ul>
+
+      {#if offer && variantKey}
+        <div class="printfile" data-printfile={printfile.kind}>
+          {#if printfile.kind === 'preparing'}
+            <p>Preparing your print file… this can take a moment.</p>
+          {:else if printfile.kind === 'ready'}
+            <p>
+              Your print file is ready ({printfile.printfile.width}×{printfile.printfile.height}).
+            </p>
+            <!-- Continue to quote/checkout arrives with tickets #7 and #8. -->
+            <button type="button" class="continue" disabled>Continue</button>
+          {:else if printfile.kind === 'unavailable'}
+            <p class="notice">{printfile.message}</p>
+          {:else if printfile.kind === 'error'}
+            <p class="notice">
+              {printfile.message} <button type="button" onclick={() => void ensure()}>Retry</button>
+            </p>
+          {/if}
+        </div>
+      {/if}
     {/if}
   </section>
 </main>
@@ -77,16 +174,35 @@
     border-radius: 0.5rem;
     padding: 1rem;
   }
+  .offer.selected {
+    border-color: #333;
+  }
   .variant {
-    display: inline-block;
     margin-right: 0.5rem;
-    padding: 0.2rem 0.5rem;
+    padding: 0.2rem 0.6rem;
     border: 1px solid #ccc;
     border-radius: 999px;
+    background: white;
+    cursor: pointer;
+  }
+  .variant.selected {
+    background: #333;
+    color: white;
+    border-color: #333;
   }
   .notice {
     padding: 1rem;
     background: #fff4e5;
     border-radius: 0.5rem;
+  }
+  .printfile {
+    margin-top: 1rem;
+  }
+  .continue {
+    padding: 0.6rem 1.2rem;
+    border-radius: 0.5rem;
+    border: none;
+    background: #333;
+    color: white;
   }
 </style>

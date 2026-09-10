@@ -7,6 +7,7 @@ import {
   Slug,
 } from '@pressline/contract';
 import { Schema } from 'effect';
+import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
 
 /**
  * The Effect HttpApi: JSON API, operator API, Engine-facing endpoints and
@@ -84,7 +85,47 @@ export const DesignsGroup = HttpApiGroup.make('designs').add(
     .addError(CatalogueUnavailable, { status: 503 }),
 );
 
+/** Ensure-Printfile answers (ticket #6, ADR-0005). */
+export const PrintfileReadyState = Schema.Struct({
+  status: Schema.Literal('ready'),
+  printfile: StoredPrintfile,
+});
+export const PrintfilePreparingState = Schema.Struct({
+  status: Schema.Literal('preparing'),
+  retryAfterMs: Schema.Int,
+});
+export const PrintfileSelection = Schema.Struct({ offer: Slug, variant: Slug });
+
+export const PrintfilesGroup = HttpApiGroup.make('printfiles')
+  .add(
+    // Ask the Engine, waiting up to the configured bound for a rendering one.
+    HttpApiEndpoint.post('ensure', '/api/designs/:engine/:designId/printfile')
+      .setPath(DesignPath)
+      .setPayload(PrintfileSelection)
+      .addSuccess(PrintfileReadyState, { status: 200 })
+      .addSuccess(PrintfilePreparingState, { status: 202 })
+      .addError(PrintfileUnavailable, { status: 422 })
+      .addError(DesignNotFound, { status: 404 })
+      .addError(EngineUnavailableError, { status: 503 })
+      .addError(EngineError, { status: 502 })
+      .addError(CatalogueUnavailable, { status: 503 }),
+  )
+  .add(
+    // Same answer without waiting; what the Storefront's preparing page polls.
+    HttpApiEndpoint.get('status', '/api/designs/:engine/:designId/printfile')
+      .setPath(DesignPath)
+      .setUrlParams(PrintfileSelection)
+      .addSuccess(PrintfileReadyState, { status: 200 })
+      .addSuccess(PrintfilePreparingState, { status: 202 })
+      .addError(PrintfileUnavailable, { status: 422 })
+      .addError(DesignNotFound, { status: 404 })
+      .addError(EngineUnavailableError, { status: 503 })
+      .addError(EngineError, { status: 502 })
+      .addError(CatalogueUnavailable, { status: 503 }),
+  );
+
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)
   .add(CatalogueGroup)
-  .add(DesignsGroup) {}
+  .add(DesignsGroup)
+  .add(PrintfilesGroup) {}

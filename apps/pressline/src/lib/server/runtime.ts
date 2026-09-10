@@ -58,6 +58,8 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     FulfilmentProviderLive,
     layerPspMemory,
     MailerLive,
+    // Outbound HTTP for Printfile validation (ranged header reads).
+    FetchHttpClient.layer,
   ).pipe(Layer.tapErrorCause((c) => Effect.logError('boot failed', c)));
 
   cached = makeWebHandler(services);

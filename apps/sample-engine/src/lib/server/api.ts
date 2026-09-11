@@ -15,10 +15,11 @@ import {
 import { Effect, Layer } from 'effect';
 import { ensurePrintfile, loadDesign, type Design, type Engine } from './designs.js';
 
+/** Constant time over the longer input, so neither the match nor the length shows in timing. */
 const timingSafeEqual = (a: string, b: string) => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const n = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < n; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   return diff === 0;
 };
 

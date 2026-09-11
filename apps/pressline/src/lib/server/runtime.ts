@@ -5,7 +5,7 @@ import { assertDemoSafe } from './config/demo';
 import { Config } from './config/schema';
 import { InstanceFacts } from './operator/instance';
 import { OperatorSecrets } from './operator/auth';
-import { layerSqliteMigrated } from './db/layer';
+import { layerDbForPlatform } from './db/layer';
 import { makeWebHandler, type WebHandler } from './http/handler';
 import { layerDesignSourceHttp } from './services/design-source-http';
 import { layerMailerConsole, layerMailerNone } from './services/mailer';
@@ -22,7 +22,10 @@ import { e2eConfig } from './e2e/config';
  * health endpoint and `doctor` report what is missing.
  */
 const Env = Schema.Struct({
-  DATABASE_PATH: Schema.optionalWith(Schema.NonEmptyString, { default: () => './pressline.db' }),
+  /** SQLite file for the Node deployable; Cloudflare binds D1, Vercel sets TURSO_DATABASE_URL (ADR-0008). */
+  DATABASE_PATH: Schema.optional(Schema.NonEmptyString),
+  TURSO_DATABASE_URL: Schema.optional(Schema.NonEmptyString),
+  TURSO_AUTH_TOKEN: Schema.optional(Schema.NonEmptyString),
   PRINTFUL_TOKEN: Schema.optional(Schema.NonEmptyString),
   PRINTFUL_WEBHOOK_SECRET: Schema.optional(Schema.NonEmptyString),
   PRINTFUL_WEBHOOK_PUBLIC_KEY: Schema.optional(Schema.NonEmptyString),
@@ -76,6 +79,7 @@ export const getWebHandler = (platform: App.Platform | undefined): Promise<WebHa
 const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebHandler> => {
   const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
   const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' });
+  const DbLive = await layerDbForPlatform(rawEnv, platform);
   assertDemoSafe(rawConfig.demo ?? false, env.STRIPE_SECRET_KEY);
   // Engines without a secret configured are wired with an empty one: the
   // startup health check then reports them as disabled rather than failing boot.
@@ -149,7 +153,7 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
         Config.layer(effectiveConfig()),
         OperatorSecretsLive,
         InstanceFactsLive,
-        layerSqliteMigrated(env.DATABASE_PATH),
+        DbLive,
         e2eServices,
       ),
     );
@@ -159,7 +163,7 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
     Config.layer(rawConfig),
     OperatorSecretsLive,
     InstanceFactsLive,
-    layerSqliteMigrated(env.DATABASE_PATH),
+    DbLive,
     layerDesignSourceHttp(engines),
     FulfilmentProviderLive,
     PspLive,

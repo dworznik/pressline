@@ -1,0 +1,31 @@
+# Deploy Pressline to Cloudflare Workers (ticket #23, ADR-0012).
+#
+#   pnpm install && PRESSLINE_ADAPTER=cloudflare pnpm --filter pressline build
+#   wrangler d1 create pressline && wrangler deploy -c deploy/cloudflare/wrangler.toml
+#   wrangler secret put PRINTFUL_TOKEN   (and STRIPE_SECRET_KEY, OPERATOR_TOKEN, SESSION_SECRET,
+#                                        ENGINE_SECRET_<SLUG>, RESEND_API_KEY; the webhook secrets
+#                                        come from `pressline webhooks register` afterwards)
+#
+# Migrations run at the first request per isolate (ADR-0012); nothing to run by hand.
+name = "pressline"
+main = "worker.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+assets = { directory = "../../apps/pressline/.svelte-kit/cloudflare", binding = "ASSETS" }
+
+[vars]
+MAILER = "none"
+
+# The ledger (ADR-0008). Bind the database you created as `DB`.
+[[d1_databases]]
+binding = "DB"
+database_name = "pressline"
+database_id = "<paste the id from `wrangler d1 create pressline`>"
+
+# Nightly Reconciliation (docs/operator/reconciliation.md): the `scheduled`
+# export in worker.ts calls the cron route in-process; no CRON_SECRET needed.
+[triggers]
+crons = ["17 3 * * *"]
+
+[observability]
+enabled = true

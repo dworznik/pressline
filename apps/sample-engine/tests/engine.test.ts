@@ -147,3 +147,38 @@ describe('sample Engine', () => {
     expect(missing.status).toBe(404);
   });
 });
+
+describe('the /files route', () => {
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    delete process.env['FILES_DIR'];
+    delete process.env['ENGINE_SECRET'];
+  });
+
+  it('serves previews and printfiles with Range, hides metadata and sources, and refuses traversal', async () => {
+    const { engine } = boot();
+    process.env['FILES_DIR'] = dir;
+    process.env['ENGINE_SECRET'] = SECRET;
+    const design = await finalise(engine, { template: { text: 'Files' } });
+    const { GET } = await import('../src/routes/files/[...path]/+server');
+    const get = (path: string, headers: Record<string, string> = {}) =>
+      GET({
+        params: { path },
+        platform: undefined,
+        request: new Request(`https://engine.test/files/${path}`, { headers }),
+      } as never);
+    const full = await get(`previews/${design.id}.png`);
+    expect(full.status).toBe(200);
+    expect(full.headers.get('cache-control')).toContain('immutable');
+    const ranged = await get(`previews/${design.id}.png`, { range: 'bytes=0-15' });
+    expect(ranged.status).toBe(206);
+    expect((await ranged.arrayBuffer()).byteLength).toBe(16);
+    expect(ranged.headers.get('content-range')).toMatch(/^bytes 0-15\/\d+$/);
+    expect((await get(`previews/${design.id}.png`, { range: 'bytes=999999999-' })).status).toBe(
+      416,
+    );
+    await expect(get(`designs/${design.id}.json`)).rejects.toMatchObject({ status: 404 });
+    await expect(get('../package.json')).rejects.toMatchObject({ status: 404 });
+    await expect(get('previews/../../package.json')).rejects.toMatchObject({ status: 404 });
+  });
+});

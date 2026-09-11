@@ -135,7 +135,9 @@ export const ensurePrintfile = async (
     bytes: png.length,
     contentType: 'image/png',
   };
-  const next: Design = { ...design, printfiles: { ...design.printfiles, [hash]: file } };
+  // Re-read before writing: another request may have added a Printfile meanwhile.
+  const latest = (await loadDesign(engine.store, design.id)) ?? design;
+  const next: Design = { ...latest, printfiles: { ...latest.printfiles, [hash]: file } };
   await updateDesign(engine.store, next);
   return { ready: { status: 'ready', specHash: hash, ...file }, design: next };
 };
@@ -188,18 +190,28 @@ export const finalise = async (
   // Pre-render for every Offer and variant Pressline sells, so checkout never waits (SPEC story 2).
   const catalogue = await engine.catalogue().catch(() => undefined);
   if (catalogue) {
+    // Eligibility is written after every Offer, so a failure half-way leaves a
+    // truthful list rather than "eligible for everything".
     const eligible: string[] = [];
+    design = { ...design, offers: [] };
+    await updateDesign(engine.store, design);
     for (const offer of catalogue.offers) {
       let ok = true;
       for (const variant of offer.variants) {
-        const result = await ensurePrintfile(engine, design, variant.spec);
+        const result = await ensurePrintfile(engine, design, variant.spec).catch((e: unknown) => ({
+          rejected: 'other' as const,
+          message: e instanceof Error ? e.message : String(e),
+        }));
         if ('ready' in result) design = result.design;
         else ok = false;
       }
       if (ok) eligible.push(offer.slug);
+      design = {
+        ...((await loadDesign(engine.store, design.id)) ?? design),
+        offers: [...eligible],
+      };
+      await updateDesign(engine.store, design);
     }
-    design = { ...design, offers: eligible };
-    await updateDesign(engine.store, design);
   }
   return design;
 };

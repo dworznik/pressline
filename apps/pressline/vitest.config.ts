@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 // Testing Decisions). Tests boot the Effect web handler directly; SvelteKit is
 // not involved, so no Svelte plugin is needed here.
 export default defineConfig({
-  define: { __PRESSLINE_E2E__: 'false' },
+  define: { __PRESSLINE_E2E__: 'false', __PRESSLINE_ADAPTER__: "'node'" },
   test: {
     name: 'pressline',
     include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],

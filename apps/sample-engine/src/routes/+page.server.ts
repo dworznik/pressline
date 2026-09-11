@@ -40,7 +40,12 @@ export const actions: Actions = {
       .generate(prompt)
       .catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
     if ('error' in image) return fail(502, { message: `Could not generate: ${image.error}` });
-    const design = await finalise(engine, { raster: image.bytes, title: prompt.slice(0, 40) });
+    const design = await finalise(engine, {
+      raster: image.bytes,
+      title: prompt.slice(0, 40),
+    }).catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+    if ('error' in design)
+      return fail(502, { message: `Could not prepare the image: ${design.error}` });
     redirect(303, `/d/${design.id}`);
   },
 };

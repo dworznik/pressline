@@ -1,12 +1,12 @@
-import adapter from '@sveltejs/adapter-auto';
+import { pickAdapter } from './adapter.js';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 /** @type {import('@sveltejs/kit').Config} */
 export default {
   preprocess: vitePreprocess(),
   kit: {
-    // adapter-auto picks Cloudflare or Vercel from the environment; deploy/ has the manifests.
-    adapter: adapter(),
+    // PRESSLINE_ADAPTER picks cloudflare / vercel / node; deploy/ has the manifests.
+    adapter: pickAdapter(),
     // Workspace packages from source, so dev and tests need no prior build.
     alias: {
       '@pressline/contract': '../../packages/contract/src/index.ts',

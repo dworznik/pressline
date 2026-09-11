@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path';
 import { FetchHttpClient } from '@effect/platform';
 import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effect';
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
-import { layerSqliteMigrated } from '$lib/server/db/layer';
+import { layerDbMigrated } from '$lib/server/db/layer';
+import { layerSqliteNode } from '$lib/server/db/sqlite-node';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
 import { InstanceFacts } from '$lib/server/operator/instance';
 import { OperatorSecrets } from '$lib/server/operator/auth';
@@ -164,7 +165,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
         cron: true,
       },
     }),
-    layerSqliteMigrated(dbPath),
+    layerDbMigrated(layerSqliteNode(dbPath)),
     designSource.layer,
     options.config?.demo ? demoFulfilmentProvider(provider.layer) : provider.layer,
     psp.layer,

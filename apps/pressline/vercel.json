@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "sveltekit",
+  "buildCommand": "PRESSLINE_ADAPTER=vercel pnpm build",
+  "crons": [
+    {
+      "path": "/api/cron/reconcile",
+      "schedule": "17 3 * * *"
+    }
+  ]
+}

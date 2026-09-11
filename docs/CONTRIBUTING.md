@@ -7,6 +7,7 @@ Read `CONTEXT.md` for vocabulary and `docs/adr/` for the decisions you must not 
 ```
 pnpm install     # wires git hooks
 pnpm verify      # format · lint · typecheck · adr · test · build
+pnpm e2e         # Playwright Storefront e2e (needs `pnpm exec playwright install chromium` once); CI runs it as its own job
 ```
 
 Branches: `<type>/<issue>-<slug>` (see `CLAUDE.md`). Commits: `type(scope): summary`.

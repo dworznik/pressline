@@ -7,7 +7,7 @@ import { getWebHandler, isDemo, operatorSessionSecret } from '$lib/server/runtim
 // HttpApi; everything else is a SvelteKit route (Storefront, Operator View).
 export const handle: Handle = async ({ event, resolve }) => {
   if (isApiPath(event.url.pathname)) {
-    return getWebHandler(event.platform).handler(event.request);
+    return (await getWebHandler(event.platform)).handler(event.request);
   }
   // Operator View pages need a session cookie (ticket #14); the login page issues it.
   const path = event.url.pathname;

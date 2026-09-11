@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig } from '@playwright/test';
 
 /**
@@ -12,14 +14,13 @@ export default defineConfig({
   reporter: process.env['CI'] ? 'github' : 'list',
   use: { baseURL: 'http://localhost:4173', trace: 'retain-on-failure' },
   webServer: {
-    // A fresh ledger per run: the seeded PSP hands out the same session ids every time.
-    command:
-      'rm -f .svelte-kit/e2e.db && pnpm build && pnpm exec vite preview --port 4173 --strictPort',
+    command: 'pnpm build && pnpm exec vite preview --port 4173 --strictPort',
     url: 'http://localhost:4173/',
     reuseExistingServer: !process.env['CI'],
     env: {
       PRESSLINE_E2E: '1',
-      DATABASE_PATH: '.svelte-kit/e2e.db',
+      // A fresh ledger per run: the seeded PSP hands out the same session ids every time.
+      DATABASE_PATH: join(tmpdir(), `pressline-e2e-${Date.now()}.db`),
       OPERATOR_TOKEN: 'e2e-operator-token',
     },
     timeout: 180_000,

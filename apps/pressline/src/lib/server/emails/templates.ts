@@ -12,6 +12,8 @@ export interface EmailContext {
   readonly logoUrl?: string;
   readonly accent: string;
   readonly accentText: string;
+  readonly termsUrl?: string;
+  readonly privacyUrl?: string;
   readonly withdrawalNotice: string;
   readonly contactEmail?: string;
   readonly offerName: string;
@@ -42,10 +44,14 @@ const shell = (title: string, body: string, ctx: EmailContext) => `<!doctype htm
   }</p>
   <h1 style="font-size: 1.4rem;">${esc(title)}</h1>
   ${body}
-  <p style="color: #666; font-size: 0.9rem; margin-top: 2rem;">${esc(ctx.shopName)}${ctx.contactEmail ? ` · <a href="mailto:${esc(ctx.contactEmail)}">${esc(ctx.contactEmail)}</a>` : ''}</p>
+  <p style="color: #666; font-size: 0.9rem; margin-top: 2rem;">${esc(ctx.shopName)}${ctx.contactEmail ? ` · <a href="mailto:${esc(ctx.contactEmail)}">${esc(ctx.contactEmail)}</a>` : ''}${ctx.termsUrl ? ` · <a href="${esc(ctx.termsUrl)}">Terms</a>` : ''}${ctx.privacyUrl ? ` · <a href="${esc(ctx.privacyUrl)}">Privacy</a>` : ''}</p>
 </body></html>`;
 
 const ref = (order: Order) => orderReference(order.id);
+
+/** The one call to action, in the Operator's colours. */
+const button = (ctx: EmailContext) =>
+  `display: inline-block; padding: 0.6rem 1.2rem; border-radius: 6px; background: ${esc(ctx.accent)}; color: ${esc(ctx.accentText)}; text-decoration: none;`;
 
 export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
   const to = order.recipient?.email ?? '';
@@ -64,7 +70,7 @@ export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
     <p>We have your order <strong>${esc(ref(order))}</strong> and are sending it to print.</p>
     ${ctx.previewUrl ? `<p><img src="${esc(ctx.previewUrl)}" alt="Your design" style="max-width: 100%; border-radius: 6px;"></p>` : ''}
     <p>${esc(lines[0]!)}<br>${esc(lines[1]!)}</p>
-    <p><a href="${esc(ctx.statusUrl)}">Track this order</a></p>
+    <p><a href="${esc(ctx.statusUrl)}" style="${button(ctx)}">Track this order</a></p>
     <p>${esc(contact)}</p>
     <p style="font-size: 0.9rem; color: #555; border-top: 1px solid #ddd; padding-top: 0.75rem;">${esc(ctx.withdrawalNotice)}</p>`,
     ctx,
@@ -98,7 +104,7 @@ export const shippedEmail = (order: Order, ctx: EmailContext): Email => {
     `
     <p>Order <strong>${esc(ref(order))}</strong> (${esc(ctx.offerName)} · ${esc(ctx.variantLabel)}) has left the print house.</p>
     <p>${t?.url ? `<a href="${esc(t.url)}">${esc(trackingLine)}</a>` : esc(trackingLine)}</p>
-    <p><a href="${esc(ctx.statusUrl)}">Order status</a></p>`,
+    <p><a href="${esc(ctx.statusUrl)}" style="${button(ctx)}">Order status</a></p>`,
     ctx,
   );
   const text = [

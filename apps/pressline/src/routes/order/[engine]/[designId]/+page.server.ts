@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { Schema } from 'effect';
+import { copy } from '$lib/copy';
 import { DesignPage } from '$lib/server/http/api';
 import type { PageServerLoad } from './$types';
 
@@ -13,11 +14,10 @@ const decodePage = Schema.decodeUnknownSync(DesignPage);
  */
 export const load: PageServerLoad = async ({ params, fetch, url }) => {
   const res = await fetch(`/api/designs/${params.engine}/${params.designId}`);
-  if (res.status === 404) error(404, 'We could not find that design.');
+  if (res.status === 404) error(404, copy.design.notFound);
   // Operators see the reason on /api/health; Customers get a plain message.
-  if (res.status === 503)
-    error(503, 'This shop is temporarily unavailable. Please try again soon.');
-  if (!res.ok) error(502, 'The design app did not answer. Please try again in a moment.');
+  if (res.status === 503) error(503, copy.design.unavailable);
+  if (!res.ok) error(502, copy.design.engineDown);
   return {
     page: decodePage(await res.json()),
     cancelled: url.searchParams.get('cancelled') === '1',

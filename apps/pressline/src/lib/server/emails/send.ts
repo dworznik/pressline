@@ -112,6 +112,8 @@ const contextFor = (orderId: string) =>
       ...(config.branding.logoUrl ? { logoUrl: config.branding.logoUrl } : {}),
       accent: config.branding.accent,
       accentText: config.branding.accentText,
+      ...(config.legal.termsUrl ? { termsUrl: config.legal.termsUrl } : {}),
+      ...(config.legal.privacyUrl ? { privacyUrl: config.legal.privacyUrl } : {}),
       withdrawalNotice: config.legal.withdrawalNotice,
       ...(config.legal.contactEmail ? { contactEmail: config.legal.contactEmail } : {}),
       offerName: offer?.name ?? order.offer,

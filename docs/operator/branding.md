@@ -15,7 +15,7 @@ legal: { termsUrl, privacyUrl, contactEmail }, // footer links on every Storefro
 ## What the Customer sees on the product
 
 - If the Engine returns `mockups[offerSlug]` for a design, that image is shown as is (hot-linked, never stored) with the caption "Mockup from the design app".
-- Otherwise the design's Preview is laid over the variant's `imageUrl` (your product photo, or Printful's) with the Placement's proportions and an "illustrative" caption. Placement and size are approximate: it is not a print proof.
+- Otherwise the design's Preview is laid over the variant's `imageUrl` (your product photo, or Printful's): the Preview keeps the Printfile Spec's proportions and sits centred on the upper part of the photo (a fixed position in v1, tuned for a front print), with an "illustrative" caption. It is not a print proof.
 - Without a product photo the Preview is shown alone.
 
 Copy is English only in v1; every string lives in one module for a later localisation.

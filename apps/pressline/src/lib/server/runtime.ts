@@ -14,7 +14,7 @@ import { demoFulfilmentProvider } from './services/demo';
 import { layerFulfilmentProviderMemory, layerPspMemory } from './services/memory';
 import { layerPrintful } from './services/printful';
 import { layerStripe } from './services/stripe';
-import { e2eConfig, e2eServices } from './e2e/seed';
+import { e2eConfig } from './e2e/config';
 
 /**
  * Secrets and platform settings (ADR-0014): validated like any other boundary.
@@ -32,8 +32,6 @@ const Env = Schema.Struct({
   OPERATOR_TOKEN: Schema.optional(Schema.NonEmptyString),
   SESSION_SECRET: Schema.optional(Schema.NonEmptyString),
   CRON_SECRET: Schema.optional(Schema.NonEmptyString),
-  /** Playwright run: memory services seeded from `e2e/seed.ts`. Never set this on a real deployment. */
-  PRESSLINE_E2E: Schema.optional(Schema.Literal('1')),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),
@@ -49,9 +47,10 @@ export const engineSecretVar = (slug: string) =>
  * provider layers per environment. Until the provider tickets land, the
  * DesignSource and PSP are the in-memory stand-ins.
  */
-let cached: WebHandler | undefined;
+let cached: Promise<WebHandler> | undefined;
 
-const isE2E = () => process.env['PRESSLINE_E2E'] === '1';
+/** Decided when the bundle was built (vite.config.ts `define`), never by the runtime environment. */
+const isE2E = () => __PRESSLINE_E2E__;
 /** The config this process runs with: the Operator's file, or the e2e seed's when Playwright drives it. */
 const effectiveConfig = () => (isE2E() ? { ...rawConfig, ...e2eConfig } : rawConfig);
 
@@ -68,8 +67,13 @@ export const operatorSessionSecret = (platform: App.Platform | undefined): strin
   return typeof s === 'string' ? s : '';
 };
 
-export const getWebHandler = (platform: App.Platform | undefined): WebHandler => {
+export const getWebHandler = (platform: App.Platform | undefined): Promise<WebHandler> => {
   if (cached) return cached;
+  cached = buildWebHandler(platform);
+  return cached;
+};
+
+const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebHandler> => {
   const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
   const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' });
   assertDemoSafe(rawConfig.demo ?? false, env.STRIPE_SECRET_KEY);
@@ -124,21 +128,37 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     ...(env.CRON_SECRET ? { cronSecret: env.CRON_SECRET } : {}),
   });
 
+  const InstanceFactsLive = Layer.succeed(InstanceFacts, {
+    mailer: mailerKind,
+    secrets: {
+      printful: !!env.PRINTFUL_TOKEN,
+      stripe: !!env.STRIPE_SECRET_KEY,
+      stripeWebhook: !!env.STRIPE_WEBHOOK_SECRET,
+      printfulWebhook: !!env.PRINTFUL_WEBHOOK_SECRET,
+      resend: !!env.RESEND_API_KEY,
+      sessionSecret: !!env.SESSION_SECRET,
+      cron: !!env.CRON_SECRET,
+    },
+  });
+
+  if (isE2E()) {
+    // Only reachable in a Playwright build: the seed module is not in any other bundle.
+    const { e2eServices } = await import('./e2e/seed');
+    return makeWebHandler(
+      Layer.mergeAll(
+        Config.layer(effectiveConfig()),
+        OperatorSecretsLive,
+        InstanceFactsLive,
+        layerSqliteMigrated(env.DATABASE_PATH),
+        e2eServices,
+      ),
+    );
+  }
+
   const services = Layer.mergeAll(
     Config.layer(rawConfig),
     OperatorSecretsLive,
-    Layer.succeed(InstanceFacts, {
-      mailer: mailerKind,
-      secrets: {
-        printful: !!env.PRINTFUL_TOKEN,
-        stripe: !!env.STRIPE_SECRET_KEY,
-        stripeWebhook: !!env.STRIPE_WEBHOOK_SECRET,
-        printfulWebhook: !!env.PRINTFUL_WEBHOOK_SECRET,
-        resend: !!env.RESEND_API_KEY,
-        sessionSecret: !!env.SESSION_SECRET,
-        cron: !!env.CRON_SECRET,
-      },
-    }),
+    InstanceFactsLive,
     layerSqliteMigrated(env.DATABASE_PATH),
     layerDesignSourceHttp(engines),
     FulfilmentProviderLive,
@@ -150,27 +170,5 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     Layer.tapErrorCause((c) => Effect.logError('boot failed', c)),
   );
 
-  cached = makeWebHandler(
-    env.PRESSLINE_E2E === '1'
-      ? Layer.mergeAll(
-          Config.layer(effectiveConfig()),
-          OperatorSecretsLive,
-          Layer.succeed(InstanceFacts, {
-            mailer: 'none',
-            secrets: {
-              printful: false,
-              stripe: false,
-              stripeWebhook: false,
-              printfulWebhook: false,
-              resend: false,
-              sessionSecret: false,
-              cron: false,
-            },
-          }),
-          layerSqliteMigrated(env.DATABASE_PATH),
-          e2eServices,
-        )
-      : services,
-  );
-  return cached;
+  return makeWebHandler(services);
 };

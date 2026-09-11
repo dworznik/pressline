@@ -1,6 +1,16 @@
 <script lang="ts">
-  // Storefront root. Real pages arrive with ticket #5 (design page).
+  import { copy } from '$lib/copy';
 </script>
 
-<h1>Pressline</h1>
-<p>This instance is running. Storefront pages are served under <code>/order/…</code>.</p>
+<main class="home">
+  <h1>{copy.home.title}</h1>
+  <p>{copy.home.text}</p>
+</main>
+
+<style>
+  .home {
+    max-width: 40rem;
+    margin: 3rem auto;
+    padding: 0 1rem;
+  }
+</style>

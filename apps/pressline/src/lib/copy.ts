@@ -4,7 +4,14 @@
  * `server/emails/templates.ts` because they render on the server with escaping.
  */
 export const copy = {
+  home: {
+    title: 'Pressline',
+    text: 'This instance is running. Storefront pages are served under /order/…',
+  },
   design: {
+    notFound: 'We could not find that design.',
+    unavailable: 'This shop is temporarily unavailable. Please try again soon.',
+    engineDown: 'The design app did not answer. Please try again in a moment.',
     fallbackTitle: 'Your design',
     tabTitle: (title: string) => `${title} · Order a print`,
     demoBanner: (testCard: string) =>
@@ -57,6 +64,8 @@ export const copy = {
     track: 'Track this order',
   },
   status: {
+    notFound: 'We could not find that order.',
+    tryAgain: 'Please try again in a moment.',
     order: 'Order',
     steps: { paid: 'Confirmed', making: 'Being made', shipped: 'Shipped', done: 'Done' },
     trackParcel: (carrier?: string) => `Track your parcel${carrier ? ` with ${carrier}` : ''}`,

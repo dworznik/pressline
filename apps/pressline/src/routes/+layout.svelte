@@ -14,7 +14,11 @@
   {#if b.logoUrl}<link rel="icon" href={b.logoUrl} />{/if}
 </svelte:head>
 
-<div class="shell" style="--accent: {b.accent}; --accent-text: {b.accentText};">
+<div
+  class="shell"
+  class:storefront
+  style={storefront ? `--accent: ${b.accent}; --accent-text: ${b.accentText};` : ''}
+>
   {#if storefront}
     <header class="brand" data-brand>
       {#if b.logoUrl}
@@ -44,7 +48,7 @@
     font-family: system-ui, sans-serif;
     color: #222;
   }
-  :global(a) {
+  .storefront :global(a) {
     color: var(--accent);
   }
   .brand {

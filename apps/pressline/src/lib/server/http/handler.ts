@@ -36,26 +36,30 @@ export type Services =
  * from a layer of services. The same function serves production (hooks.server)
  * and the HTTP-seam test harness with in-memory services.
  */
-export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) =>
-  HttpApiBuilder.toWebHandler(
+export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) => {
+  const api = HttpApiBuilder.api(PresslineApi).pipe(
+    Layer.provide([
+      HealthLive,
+      CatalogueLive,
+      DesignsLive,
+      PrintfilesLive,
+      QuotesLive,
+      OrdersLive,
+      WebhooksLive,
+      OperatorLive,
+      CronLive,
+    ]),
+    Layer.provide([EnginesLive, OperatorAuthLive]),
+  );
+  return HttpApiBuilder.toWebHandler(
     Layer.mergeAll(
-      HttpApiBuilder.api(PresslineApi).pipe(
-        Layer.provide([
-          HealthLive,
-          CatalogueLive,
-          DesignsLive,
-          PrintfilesLive,
-          QuotesLive,
-          OrdersLive,
-          WebhooksLive,
-          OperatorLive,
-          CronLive,
-        ]),
-        Layer.provide([EnginesLive, OperatorAuthLive]),
-      ),
+      api,
+      // The API describes itself (ticket #26); the docs site publishes a build-time copy.
+      HttpApiBuilder.middlewareOpenApi({ path: '/api/openapi.json' }).pipe(Layer.provide(api)),
       HttpServer.layerContext,
     ).pipe(Layer.provide(services)),
   );
+};
 
 export type WebHandler = ReturnType<typeof makeWebHandler>;
 

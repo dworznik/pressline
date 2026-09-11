@@ -1,0 +1,21 @@
+---
+title: Orders and reconciliation
+description: The ledger, the Operator View, the CLI actions, and the nightly truth pass.
+---
+
+Every Order is a row plus append-only **Transitions**, each with a **Cause** (`storefront`, `stripe_webhook`, `printful_webhook`, `cli`, `reconciliation`). States: `checkout_open → paid → submitted → in_production → shipped → fulfilled`, with `submit_failed`, `on_hold`, `expired`, `cancelled` and `refunded` where they belong.
+
+The **Operator View** (`/operator`, log in with the operator token) is read-only: health, orders, one order's Transitions, Inbound Events and emails, the last Reconciliation report. Actions are the CLI's:
+
+```sh
+pressline orders list --state submit_failed
+pressline orders show <id>
+pressline orders resubmit <id>
+pressline orders fix-address <id> --name … --address1 … --city … --country DE --email …
+pressline orders cancel <id>                # cancels at Printful while it still can; never refunds
+pressline orders create --engine sample --design <id> --offer … --variant … --paid-outside --name … …
+pressline orders purge --older-than 90     # strips personal data from finished orders
+pressline reconcile [--dry-run]
+```
+
+**Reconciliation** runs nightly (and on demand): stale checkouts verified at Stripe, stuck `paid` orders resubmitted, provider status caught up, refunds and disputes recorded, unprocessed webhooks replayed, failed emails retried, Engines re-checked, the Catalogue refreshed. Every repair is a Transition with Cause `reconciliation`; Alarms are emailed to `email.operator` only when there are any. Details: [reconciliation](https://github.com/dworznik/pressline/blob/main/docs/operator/reconciliation.md).

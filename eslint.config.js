@@ -22,6 +22,7 @@ export default ts.config(
       '**/.svelte-kit/',
       '**/.wrangler/',
       '**/.vercel/',
+      '**/.astro/',
       '**/coverage/',
       'pnpm-lock.yaml',
     ],
@@ -92,7 +93,7 @@ export default ts.config(
     },
   },
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'apps/*/scripts/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
 );

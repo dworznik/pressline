@@ -10,10 +10,11 @@ Self-hostable, open-source bridge from an image-generating app to physical print
 ```
 apps/pressline        the bridge (SvelteKit + Effect), deployable to Cloudflare or Vercel
 apps/sample-engine    reference Engine implementing DesignSource
-apps/docs             pressline.dev
+apps/docs             pressline.dev (Astro Starlight)
 packages/contract     @pressline/contract — DesignSource schemas, Printfile Spec, Spec Hash
 packages/render       @pressline/render — printfile preparation helper for Engines
 packages/cli          @pressline/cli — operator CLI
+packages/conformance  @pressline/conformance — DesignSource conformance suite
 deploy/               one-click templates for Cloudflare and Vercel
 ```
 

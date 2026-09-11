@@ -1,0 +1,23 @@
+{
+  "name": "pressline-docs",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "pressline.dev: operator guide, Engine developer guide, print preparation reference, contributor guide, CLI reference, OpenAPI",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "pnpm --filter pressline openapi && astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.0",
+    "astro": "^7.3.2",
+    "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.6",
+    "pressline": "workspace:*",
+    "typescript": "^5.9.0"
+  }
+}

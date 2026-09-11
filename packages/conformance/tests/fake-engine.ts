@@ -31,6 +31,10 @@ export interface FakeEngineOptions {
   readonly acceptsAnything?: boolean;
   readonly protocolVersion?: string;
   readonly previewStatus?: number;
+  /** Answer /designs/:id with a different Design ID. */
+  readonly wrongId?: boolean;
+  /** Ignore Range and serve whole files with 200. */
+  readonly ignoresRange?: boolean;
 }
 
 const pngHeader = (width: number, height: number) => {
@@ -56,7 +60,7 @@ export const fakeEngine = (o: FakeEngineOptions) => {
     handlers
       .handle('getDesign', ({ path }) =>
         path.designId === o.design.id
-          ? Effect.succeed(o.design)
+          ? Effect.succeed(o.wrongId ? { ...o.design, id: 'other-design-0001' } : o.design)
           : Effect.fail(new DesignNotFound({ designId: path.designId })),
       )
       .handle('ensurePrintfile', ({ path, payload }) =>
@@ -114,13 +118,18 @@ export const fakeEngine = (o: FakeEngineOptions) => {
     if (url.hostname === 'engine.test' && url.pathname.startsWith('/files/')) {
       const file = files.get(req.url);
       if (!file) return new Response('not found', { status: 404 });
-      return new Response(new Blob([file as BlobPart]), {
-        status: 206,
-        headers: {
-          'content-type': 'image/png',
-          'content-range': `bytes 0-${file.length - 1}/${file.length}`,
-        },
-      });
+      return o.ignoresRange
+        ? new Response(new Blob([file as BlobPart]), {
+            status: 200,
+            headers: { 'content-type': 'image/png', 'content-length': String(file.length) },
+          })
+        : new Response(new Blob([file as BlobPart]), {
+            status: 206,
+            headers: {
+              'content-type': 'image/png',
+              'content-range': `bytes 0-${file.length - 1}/${file.length}`,
+            },
+          });
     }
     if (req.url === o.design.previewUrl)
       return new Response('', { status: o.previewStatus ?? 206 });

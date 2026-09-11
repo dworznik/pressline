@@ -1,8 +1,12 @@
-import { specHash, type DesignResponse, type PrintfileSpec } from '@pressline/contract';
+import {
+  parseImageHeader,
+  specHash,
+  type DesignResponse,
+  type PrintfileSpec,
+} from '@pressline/contract';
 import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PrintfileState } from '$lib/server/printfile/ensure';
-import { parseImageHeader } from '$lib/server/printfile/validate';
 import type { MemoryPrintfileAnswer } from '$lib/server/services/memory';
 import { catalog, offers } from './fixtures/catalogue';
 import { jpeg, png } from './fixtures/images';

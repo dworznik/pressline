@@ -1,8 +1,7 @@
-import { PrintfileSpec } from '@pressline/contract';
+import { inspectPrintfile, PrintfileInspection, PrintfileSpec } from '@pressline/contract';
 import { Effect, Schema } from 'effect';
 import { deriveSpec, resolveCatalogue } from '../catalogue/catalogue';
 import { Config, type OfferConfig } from '../config/schema';
-import { inspectPrintfile, PrintfileInspection } from '../printfile/validate';
 import { FulfilmentProvider } from '../services/fulfilment-provider';
 import { Psp } from '../services/psp';
 

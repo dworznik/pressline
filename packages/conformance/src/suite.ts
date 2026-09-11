@@ -8,7 +8,7 @@ import {
   type PrintfileReady,
   type PrintfileSpec,
 } from '@pressline/contract';
-import { Duration, Effect, Layer, Schedule } from 'effect';
+import { Duration, Effect, Layer } from 'effect';
 
 /**
  * The DesignSource conformance suite (ticket #21): one Engine, one Design ID,
@@ -24,6 +24,12 @@ export interface ConformanceOptions {
   readonly dpi?: number;
   /** Longest wait for a rendering Engine. Default 60 s. */
   readonly renderTimeout?: Duration.DurationInput;
+  /**
+   * The Spec the Engine must refuse with 422. Default: a 100:1 aspect, which
+   * an Engine that honours its Design's aspect rejects; an Engine that pads
+   * anything to any shape may pass `false` to skip the check.
+   */
+  readonly impossibleSpec?: PrintfileSpec | false;
   /** A fetch to use instead of the global one (tests, custom agents). */
   readonly fetch?: typeof globalThis.fetch;
 }
@@ -41,6 +47,15 @@ export interface ConformanceReport {
 
 const pass = (name: string, detail: string): Check => ({ name, ok: true, detail });
 const failed = (name: string, detail: string): Check => ({ name, ok: false, detail });
+/** Not judged: what it depended on failed, or the caller opted out. Counts as ok. */
+const skipped = (name: string, detail: string): Check => ({
+  name,
+  ok: true,
+  detail: `skipped: ${detail}`,
+});
+
+/** Engines may ask for any polling interval; the suite waits at least a quarter second and at most ten. */
+const clampRetry = (ms: number) => Math.min(10_000, Math.max(250, ms));
 
 /** A Spec that fits the Design: 1200 px on the short side at the requested DPI, PNG with alpha allowed. */
 export const specFor = (design: DesignResponse, dpi: number): PrintfileSpec => {
@@ -109,6 +124,12 @@ export const runConformance = (options: ConformanceOptions) =>
       return { ok: false, checks };
     }
     const d = design.right;
+    if (d.id !== options.designId) {
+      checks.push(
+        failed('design', `answered with Design "${d.id}" for /designs/${options.designId}`),
+      );
+      return { ok: false, checks };
+    }
     checks.push(
       pass(
         'design',
@@ -149,34 +170,36 @@ export const runConformance = (options: ConformanceOptions) =>
       ready = first.right;
       checks.push(pass('render', 'answered 200 ready at once'));
     } else {
-      const retryAfter = first.right.retryAfterMs;
-      const polled = yield* ensure().pipe(
-        Effect.flatMap((r) =>
-          r.status === 'ready' ? Effect.succeed(r) : Effect.fail({ message: 'still rendering' }),
-        ),
-        Effect.retry({
-          schedule: Schedule.spaced(Duration.millis(Math.max(250, retryAfter))),
-          while: (e) => e.message === 'still rendering',
-        }),
-        Effect.timeoutOption(options.renderTimeout ?? Duration.seconds(60)),
-        Effect.either,
-      );
+      // Poll as Pressline does: wait what the Engine asked (clamped), then ask again, until ready or the timeout.
+      const firstWait = first.right.retryAfterMs;
+      const polled = yield* Effect.gen(function* () {
+        let wait = clampRetry(firstWait);
+        for (;;) {
+          yield* Effect.sleep(Duration.millis(wait));
+          const next = yield* ensure();
+          if (next.status === 'ready') return next;
+          wait = clampRetry(next.retryAfterMs);
+        }
+      }).pipe(Effect.timeoutOption(options.renderTimeout ?? Duration.seconds(60)), Effect.either);
       if (polled._tag === 'Right' && polled.right._tag === 'Some') {
         ready = polled.right.value;
-        checks.push(pass('render', `answered 202 (retry after ${retryAfter} ms), then 200 ready`));
+        checks.push(pass('render', `answered 202 (retry after ${firstWait} ms), then 200 ready`));
       } else {
         checks.push(
           failed(
             'render',
             polled._tag === 'Left'
               ? `polling failed: ${describe(polled.left)}`
-              : 'still rendering when the timeout ran out',
+              : `still rendering after ${Duration.format(Duration.decode(options.renderTimeout ?? Duration.seconds(60)))}`,
           ),
         );
       }
     }
 
-    if (ready) {
+    if (!ready) {
+      checks.push(skipped('idempotent', 'no Printfile to repeat'));
+      checks.push(skipped('printfile', 'no Printfile to check'));
+    } else {
       // 5. Idempotent on (Design ID, Spec Hash)
       const again = yield* ensure().pipe(Effect.either);
       const same =
@@ -210,8 +233,14 @@ export const runConformance = (options: ConformanceOptions) =>
     }
 
     // 7. An impossible Spec is refused with 422
+    const impossible =
+      options.impossibleSpec === undefined ? impossibleSpec(dpi) : options.impossibleSpec;
+    if (impossible === false) {
+      checks.push(skipped('rejects', 'this Engine renders any shape'));
+      return { ok: checks.every((c) => c.ok), checks } satisfies ConformanceReport;
+    }
     const rejected = yield* client.designs
-      .ensurePrintfile({ path: { designId: d.id }, payload: impossibleSpec(dpi) })
+      .ensurePrintfile({ path: { designId: d.id }, payload: impossible })
       .pipe(Effect.either);
     checks.push(
       rejected._tag === 'Left' && rejected.left._tag === 'PrintfileRejected'
@@ -219,7 +248,7 @@ export const runConformance = (options: ConformanceOptions) =>
         : failed(
             'rejects',
             rejected._tag === 'Right'
-              ? `answered ${rejected.right.status} to a 100:1 Spec instead of 422 PrintfileRejected`
+              ? `answered ${rejected.right.status} to a ${impossible.width}×${impossible.height} Spec instead of 422 PrintfileRejected`
               : `answered ${describe(rejected.left)} instead of 422 PrintfileRejected`,
           ),
     );

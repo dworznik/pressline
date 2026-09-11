@@ -17,3 +17,4 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - lint-staged@17.5.1
   - vite@8.3.0
+  - '@cloudflare/workers-types@5.20260911.1'

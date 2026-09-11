@@ -68,7 +68,7 @@ describe('conformance suite', () => {
 
     const lenient = await run(fakeEngine({ design, acceptsAnything: true }).fetch);
     expect(lenient.checks.find((c) => c.name === 'rejects')?.detail).toBe(
-      'answered ready to a 100:1 Spec instead of 422 PrintfileRejected',
+      'answered ready to a 4000×40 Spec instead of 422 PrintfileRejected',
     );
 
     const noPreview = await run(fakeEngine({ design, previewStatus: 404 }).fetch);
@@ -79,6 +79,51 @@ describe('conformance suite', () => {
       'protocol version 0, this suite speaks 1',
     );
     expect(formatReport(old)).toMatch(/1 check\(s\) failed\.$/);
+  });
+
+  it('fails an Engine that answers with another Design, and one that never finishes rendering', async () => {
+    const wrongId = await run(fakeEngine({ design, wrongId: true }).fetch);
+    expect(wrongId.checks.at(-1)).toMatchObject({
+      name: 'design',
+      ok: false,
+      detail: 'answered with Design "other-design-0001" for /designs/heron-0001',
+    });
+
+    const forever = await conformance({
+      baseUrl: 'https://engine.test',
+      secret: 's3cret',
+      designId: design.id,
+      fetch: fakeEngine({ design, renderingTimes: 1000 }).fetch,
+      renderTimeout: '800 millis',
+    });
+    expect(forever.ok).toBe(false);
+    expect(names(forever)).toMatchObject({
+      render: false,
+      idempotent: true,
+      printfile: true,
+      rejects: true,
+    });
+    expect(forever.checks.find((c) => c.name === 'render')?.detail).toBe(
+      'still rendering after 800ms',
+    );
+    expect(forever.checks.find((c) => c.name === 'idempotent')?.detail).toBe(
+      'skipped: no Printfile to repeat',
+    );
+  });
+
+  it('accepts a file host that ignores Range, and an Engine that renders any shape when told so', async () => {
+    const plain = await run(fakeEngine({ design, ignoresRange: true }).fetch);
+    expect(plain.ok, formatReport(plain)).toBe(true);
+
+    const anyShape = await conformance({
+      baseUrl: 'https://engine.test',
+      secret: 's3cret',
+      designId: design.id,
+      fetch: fakeEngine({ design, acceptsAnything: true }).fetch,
+      impossibleSpec: false,
+    });
+    expect(anyShape.ok).toBe(true);
+    expect(anyShape.checks.at(-1)?.detail).toBe('skipped: this Engine renders any shape');
   });
 
   it('stops early when the Engine does not answer at all', async () => {

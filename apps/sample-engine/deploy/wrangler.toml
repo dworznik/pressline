@@ -1,0 +1,20 @@
+# Cloudflare Workers deploy for the sample Engine (ticket #22).
+# Files go to R2; the render backend is WASM. Set ENGINE_SECRET and (optionally)
+# PRESSLINE_URL and OPENAI_API_KEY as secrets: `wrangler secret put ENGINE_SECRET`.
+name = "pressline-sample-engine"
+main = ".svelte-kit/cloudflare/_worker.js"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+assets = { directory = ".svelte-kit/cloudflare", binding = "ASSETS" }
+
+[vars]
+FILES = "r2"
+RENDER_BACKEND = "wasm"
+ENGINE_SLUG = "sample"
+# Public origin of the bucket (custom domain or r2.dev URL) and of this Worker.
+FILES_PUBLIC_URL = "https://files.your-engine.example"
+PUBLIC_URL = "https://your-engine.example"
+
+[[r2_buckets]]
+binding = "FILES_BUCKET"
+bucket_name = "pressline-sample-engine-files"

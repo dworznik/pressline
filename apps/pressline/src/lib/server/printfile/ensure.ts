@@ -1,10 +1,14 @@
-import type { CatalogueVariant, PrintfileReady } from '@pressline/contract';
+import {
+  PrintfileInvalid,
+  validatePrintfile,
+  type CatalogueVariant,
+  type PrintfileReady,
+} from '@pressline/contract';
 import { Clock, Duration, Effect, Option, Schema } from 'effect';
 import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { loadDesign } from '../design/design';
 import { DesignSource } from '../services/design-source';
-import { PrintfileInvalid, validatePrintfile } from './validate';
 
 /** Why this Design cannot be ordered on this Offer/variant right now (422). */
 export class PrintfileUnavailable extends Schema.TaggedError<PrintfileUnavailable>()(

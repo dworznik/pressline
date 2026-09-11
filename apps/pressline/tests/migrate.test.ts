@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Db } from '$lib/server/db/db';
 import { migrate, schemaVersion } from '$lib/server/db/migrate';
 import { migrations } from '$lib/server/db/migrations';
+import { layerSqliteLibsql } from '$lib/server/db/sqlite-libsql';
 import { layerSqliteNode } from '$lib/server/db/sqlite-node';
 
 describe('boot-time migrations', () => {
@@ -76,5 +77,50 @@ describe('boot-time migrations', () => {
       ).pipe(Effect.provide(layer)),
     );
     expect(tables).toEqual([]);
+  });
+});
+
+describe('boot-time migrations on libSQL (Turso on Vercel; a file here)', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'pressline-libsql-'));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  const run = <A>(eff: Effect.Effect<A, unknown, Db>, file: string) =>
+    Effect.runPromise(
+      Effect.scoped(
+        eff.pipe(Effect.provide(layerSqliteLibsql({ url: `file:${join(dir, file)}` }))),
+      ) as Effect.Effect<A, never>,
+    );
+
+  it('applies every migration once through libSQL batches, and is idempotent', async () => {
+    expect(await run(migrate(), 'a.db')).toBe(migrations.length);
+    expect(await run(migrate(), 'a.db')).toBe(migrations.length);
+    expect(await run(schemaVersion, 'a.db')).toBe(migrations.length);
+  });
+
+  it('rolls a failing migration back atomically on libSQL', async () => {
+    const broken = [
+      {
+        version: 1,
+        name: 'broken',
+        statements: [
+          'CREATE TABLE ok (id INTEGER PRIMARY KEY)',
+          'CREATE TABLE ok (id INTEGER PRIMARY KEY)',
+        ],
+      },
+    ];
+    await expect(run(migrate(broken), 'b.db')).rejects.toThrow();
+    const tables = await run(
+      Effect.flatMap(Db, (db) =>
+        db.all<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ok'",
+        ),
+      ),
+      'b.db',
+    );
+    expect(tables).toEqual([]);
+    expect(await run(schemaVersion, 'b.db')).toBe(0);
   });
 });

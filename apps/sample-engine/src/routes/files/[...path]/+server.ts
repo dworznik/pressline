@@ -7,11 +7,15 @@ const TYPES: Record<string, string> = {
   jpg: 'image/jpeg',
 };
 
+/** Only what Pressline hot-links is public; metadata and AI sources are not. */
+const PUBLIC = /^(previews|printfiles)\//;
+
 /** Serves the fs FileStore's files with Range support (Pressline reads Printfile headers with a ranged GET). */
 export const GET: RequestHandler = async ({ params, platform, request }) => {
-  const { engine } = await getRuntime(platform);
   const key = params.path ?? '';
-  const bytes = await engine.store.get(key);
+  if (!PUBLIC.test(key) || key.includes('..')) error(404, 'no such file');
+  const { engine } = await getRuntime(platform);
+  const bytes = await engine.store.get(key).catch(() => undefined);
   if (!bytes) error(404, 'no such file');
   const type = TYPES[key.split('.').pop() ?? ''] ?? 'application/octet-stream';
   const range = /^bytes=(\d+)-(\d*)$/.exec(request.headers.get('range') ?? '');
@@ -23,6 +27,12 @@ export const GET: RequestHandler = async ({ params, platform, request }) => {
   if (range) {
     const start = Number(range[1]);
     const end = Math.min(range[2] ? Number(range[2]) : bytes.length - 1, bytes.length - 1);
+    if (start > end) {
+      return new Response(null, {
+        status: 416,
+        headers: { 'content-range': `bytes */${bytes.length}` },
+      });
+    }
     const slice = bytes.slice(start, end + 1);
     return new Response(new Blob([slice as BlobPart]), {
       status: 206,

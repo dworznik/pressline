@@ -13,9 +13,12 @@ export const blobStore = (token: string): FileStore => {
         urls.set(key, existing.url);
         return existing.url;
       }
+      // Keys are content-addressed (design id + Spec Hash), so a racing second writer
+      // stores the same bytes; allowing the overwrite avoids a 500 for it.
       const res = await put(key, new Blob([bytes as BlobPart]), {
         access: 'public',
         addRandomSuffix: false,
+        allowOverwrite: true,
         contentType,
         token,
       });

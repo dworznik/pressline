@@ -32,6 +32,28 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  platform-builds:
+    name: build for cloudflare and vercel
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        adapter: [cloudflare, vercel]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @pressline/contract --filter @pressline/render build
+      - run: pnpm --filter pressline --filter pressline-sample-engine build
+        env:
+          PRESSLINE_ADAPTER: ${{ matrix.adapter }}
+      # The Cloudflare bundle must not carry the native SQLite driver (ADR-0008).
+      - run: '! grep -rl better-sqlite3 apps/pressline/.svelte-kit/cloudflare/_worker.js'
+        if: matrix.adapter == 'cloudflare'
+
   e2e:
     name: storefront e2e (playwright)
     runs-on: ubuntu-latest

@@ -65,10 +65,23 @@ const storeFrom = (
   return fsStore(str(env, 'FILES_DIR') ?? './data', publicUrl);
 };
 
-const backendFrom = async (env: Record<string, unknown>): Promise<Backend> => {
+const backendFrom = async (
+  env: Record<string, unknown>,
+  platform: App.Platform | undefined,
+  publicUrl: string,
+): Promise<Backend> => {
   if (str(env, 'RENDER_BACKEND') === 'wasm') {
     const { createWasmBackend } = await import('@pressline/render/wasm');
-    const load = async (url: string) => WebAssembly.compileStreaming(await fetch(url));
+    // `?url` gives a root-relative asset path. On Workers static assets are behind the
+    // ASSETS binding, not global fetch; elsewhere the app's own origin serves them.
+    const assets = platform?.env?.ASSETS as
+      { fetch: (r: Request) => Promise<Response> } | undefined;
+    const load = async (url: string) => {
+      const req = new Request(new URL(url, assets ? 'https://assets.internal' : publicUrl));
+      const res = await (assets ? assets.fetch(req) : fetch(req));
+      if (!res.ok) throw new Error(`could not load ${url}: ${res.status}`);
+      return WebAssembly.compile(await res.arrayBuffer());
+    };
     const [png, jpeg, resize, resvg] = await Promise.all([
       import('@jsquash/png/codec/pkg/squoosh_png_bg.wasm?url'),
       import('@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm?url'),
@@ -107,9 +120,11 @@ export const getRuntime = (platform: App.Platform | undefined): Promise<Runtime>
   cached ??= (async () => {
     const env = (platform?.env ?? process.env) as Record<string, unknown>;
     const settings = settingsFrom(env);
+    if (!settings.secret)
+      throw new Error('ENGINE_SECRET is not set: the protocol cannot be served');
     const engine: Engine = {
       store: storeFrom(env, platform, settings.publicUrl),
-      backend: await backendFrom(env),
+      backend: await backendFrom(env, platform, settings.publicUrl),
       catalogue: catalogueFrom(settings),
     };
     return { settings, engine, handler: makeEngineHandler(engine, settings.secret) };

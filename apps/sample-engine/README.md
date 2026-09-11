@@ -12,4 +12,6 @@ ENGINE_SECRET=dev-secret PRESSLINE_URL=http://localhost:5173 pnpm dev   # http:/
 - `FileStore`: filesystem (`./data`, served at `/files/*`), R2 (`FILES=r2`) or Vercel Blob (`FILES=blob`). URLs are public and immutable.
 - AI: set `OPENAI_API_KEY` and a prompt box appears; the image goes through the same render path.
 
-Its tests are the conformance suite run in-process: `pnpm test`. Deploy manifests for both platforms are in `deploy/`.
+The sample renders synchronously and always answers 200; an Engine whose renders take longer than a request may answer `202 { retryAfterMs }` and finish in the background (ADR-0005) — Pressline polls.
+
+Its tests are the conformance suite run in-process: `pnpm test`. Deploy: `vercel.json` here (root directory `apps/sample-engine`, Vercel Blob) and `deploy/wrangler.toml` (Workers + R2 + WASM rendering, `PRESSLINE_ADAPTER=cloudflare pnpm build` first).

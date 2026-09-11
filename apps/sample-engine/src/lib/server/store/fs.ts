@@ -1,12 +1,16 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join, normalize } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import type { FileStore } from './file-store.js';
 
 /** Local development and tests: files under `dir`, served by the app's own `/files/*` route. */
 export const fsStore = (dir: string, publicOrigin: string): FileStore => {
+  const root = resolve(dir);
   const path = (key: string) => {
-    const p = normalize(join(dir, key));
-    if (!p.startsWith(normalize(dir))) throw new Error(`bad key ${key}`);
+    const p = resolve(root, key);
+    const rel = relative(root, p);
+    // Inside the store's directory, never a sibling that merely shares the prefix.
+    if (rel === '' || rel.startsWith('..') || resolve(root, rel) !== p)
+      throw new Error(`bad key ${key}`);
     return p;
   };
   return {

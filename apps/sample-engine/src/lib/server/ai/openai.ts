@@ -8,6 +8,7 @@ export const openAiAdapter = (apiKey: string, fetchImpl: typeof fetch = fetch): 
       method: 'POST',
       headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'gpt-image-1', prompt, size: '1024x1536', n: 1 }),
+      signal: AbortSignal.timeout(90_000),
     });
     if (!res.ok) throw new Error(`OpenAI answered ${res.status}`);
     const body = (await res.json()) as { data?: { b64_json?: string }[] };

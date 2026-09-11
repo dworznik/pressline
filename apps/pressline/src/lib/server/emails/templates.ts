@@ -9,6 +9,9 @@ import type { Email } from '../services/mailer';
  */
 export interface EmailContext {
   readonly shopName: string;
+  readonly logoUrl?: string;
+  readonly accent: string;
+  readonly accentText: string;
   readonly withdrawalNotice: string;
   readonly contactEmail?: string;
   readonly offerName: string;
@@ -32,6 +35,11 @@ const money = (amount: number, currency: string) => {
 
 const shell = (title: string, body: string, ctx: EmailContext) => `<!doctype html>
 <html><body style="font-family: system-ui, sans-serif; color: #222; max-width: 36rem; margin: 0 auto; padding: 1.5rem;">
+  <p style="border-bottom: 3px solid ${esc(ctx.accent)}; padding-bottom: 0.75rem; font-weight: 600;">${
+    ctx.logoUrl
+      ? `<img src="${esc(ctx.logoUrl)}" alt="${esc(ctx.shopName)}" style="max-height: 40px;">`
+      : esc(ctx.shopName)
+  }</p>
   <h1 style="font-size: 1.4rem;">${esc(title)}</h1>
   ${body}
   <p style="color: #666; font-size: 0.9rem; margin-top: 2rem;">${esc(ctx.shopName)}${ctx.contactEmail ? ` · <a href="mailto:${esc(ctx.contactEmail)}">${esc(ctx.contactEmail)}</a>` : ''}</p>

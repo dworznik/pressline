@@ -26,3 +26,7 @@ playwright-report/
 .claude/worktrees/
 .cursor/
 .history/
+
+# Playwright
+test-results/
+playwright-report/

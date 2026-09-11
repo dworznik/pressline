@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { copy } from '$lib/copy';
   import { formatMoney } from '$lib/money';
   import type { PageData } from './$types';
 
@@ -17,7 +18,7 @@
 
 <main class="status" data-step={display.step}>
   <header>
-    <p class="ref">Order <code>{data.reference}</code></p>
+    <p class="ref">{copy.status.order} <code>{data.reference}</code></p>
     <h1>{display.label}</h1>
     <p>{display.detail}</p>
   </header>
@@ -26,13 +27,7 @@
     <ol class="steps">
       {#each steps as step (step)}
         <li class:reached={reached(step)}>
-          {step === 'paid'
-            ? 'Confirmed'
-            : step === 'making'
-              ? 'Being made'
-              : step === 'shipped'
-                ? 'Shipped'
-                : 'Done'}
+          {copy.status.steps[step]}
         </li>
       {/each}
     </ol>
@@ -40,7 +35,7 @@
 
   <section class="item">
     {#if order.previewUrl}
-      <img src={order.previewUrl} alt="Your design" />
+      <img src={order.previewUrl} alt={copy.status.designAlt} />
     {/if}
     <div>
       <h2>{order.offerName}</h2>
@@ -53,14 +48,18 @@
     <p class="tracking">
       <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
       <a href={order.tracking.url} rel="noopener noreferrer"
-        >Track your parcel{order.tracking.carrier ? ` with ${order.tracking.carrier}` : ''}</a
+        >{copy.status.trackParcel(order.tracking.carrier)}</a
       >
     </p>
   {/if}
 
   {#if order.recipient}
     <p class="recipient">
-      Shipping to {order.recipient.firstName}, {order.recipient.city}, {order.recipient.country}
+      {copy.status.shippingTo(
+        order.recipient.firstName,
+        order.recipient.city,
+        order.recipient.country,
+      )}
     </p>
   {/if}
 </main>

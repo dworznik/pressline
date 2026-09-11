@@ -78,6 +78,23 @@ export const PresslineConfigSchema = Schema.Struct({
   catalogue: Schema.optionalWith(CatalogueConfig, { default: () => ({ offers: [] }) }),
   /** Demo Mode: no money and no goods move. */
   demo: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  /** Storefront and email theming (ticket #19): the Operator's look, nothing more. */
+  branding: Schema.optionalWith(
+    Schema.Struct({
+      /** Absolute URL of a logo shown in the header and emails; the name is used when absent. */
+      logoUrl: Schema.optional(Schema.String.pipe(Schema.pattern(/^https?:\/\//))),
+      /** Accent colour as a CSS hex value, e.g. `#0a7`; buttons, links and the progress bar. */
+      accent: Schema.optionalWith(Schema.String.pipe(Schema.pattern(/^#[0-9a-fA-F]{3,8}$/)), {
+        default: () => '#222222',
+      }),
+      /** Text colour on the accent, e.g. white on a dark accent. */
+      accentText: Schema.optionalWith(Schema.String.pipe(Schema.pattern(/^#[0-9a-fA-F]{3,8}$/)), {
+        default: () => '#ffffff',
+      }),
+      tagline: Schema.optional(Schema.String),
+    }),
+    { default: () => ({ accent: '#222222', accentText: '#ffffff' }) },
+  ),
   shipping: Schema.optionalWith(
     Schema.Struct({
       /** Percent added on top of the provider's shipping rate for the Customer's shipping line. Default 0 = pass-through (ADR-0010). */

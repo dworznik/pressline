@@ -200,11 +200,23 @@ describe('orders resubmit and fix-address', () => {
     const fixed = await post<ActionResult>(app, `/api/operator/orders/${id}/address`, {
       recipient: { ...anna, address1: 'Torstraße 2' },
     });
-    // The fixture keeps rejecting creates; the Recipient is updated all the same.
+    // No provider draft exists (create was rejected), so the Recipient is stored and the resubmit
+    // runs; the fixture keeps rejecting, which is reported and leaves the Order in submit_failed.
     expect(fixed.status).toBe(422);
     const d = await detail(app, id);
     expect(d.order.recipient?.address1).toBe('Torstraße 2');
     expect(d.order.state).toBe('submit_failed');
+    await app.dispose();
+    // Wrong state: refused before anything is touched.
+    app = await boot();
+    const paid = await storefrontPaid(app);
+    const wrongState = await post<ActionResult>(app, `/api/operator/orders/${paid}/address`, {
+      recipient: anna,
+    });
+    expect(wrongState.status).toBe(422);
+    expect((wrongState.body as unknown as { message: string }).message).toContain(
+      'cannot fix the address of an Order in submitted',
+    );
   });
 
   it('resubmits an on_hold Order by confirming the provider order again', async () => {
@@ -250,6 +262,34 @@ describe('orders cancel', () => {
     expect((again.body as unknown as { message: string }).message).toBe(
       'cannot cancel an Order in cancelled (needs checkout_open or paid or submit_failed or submitted or on_hold or in_production or shipped)',
     );
+  });
+
+  it('expires the checkout session when cancelling an open checkout, so a late payment cannot land', async () => {
+    app = await boot();
+    const { body: q } = await app.json<Quote>(
+      '/api/quote?engine=sample&designId=design-portrait-1&offer=tee-black-front&variant=black-m&country=DE',
+    );
+    await app.fetch(`/api/designs/sample/${design.id}/printfile`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ offer: 'tee-black-front', variant: 'black-m' }),
+    });
+    const { body } = await app.json<{ orderId: string }>('/api/checkout', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ quoteId: q.id }),
+    });
+    const res = await post<ActionResult>(app, `/api/operator/orders/${body.orderId}/cancel`);
+    expect(res.status).toBe(200);
+    expect(res.body.outcome).toContain('checkout session expired at the PSP');
+    const session = (await app.pspSessions()).at(-1)!.session.id;
+    // The webhook for a payment that somehow completed is ignored: the session reads expired.
+    await app.pspWebhook({
+      id: 'evt_late',
+      type: 'checkout.session.completed',
+      sessionId: session,
+    });
+    expect((await detail(app, body.orderId)).order.state).toBe('cancelled');
   });
 
   it('tells the Operator when the provider is already producing it', async () => {

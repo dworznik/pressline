@@ -211,98 +211,121 @@ const parsePspWebhook = (rawBody: string) => {
   }
 };
 
-export const makePspMemory = Effect.gen(function* () {
-  const ref = yield* Ref.make<
-    ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
-  >([]);
-  const details = new Map<string, CheckoutSessionDetails>();
-  const payments = new Map<string, PaymentStatus>();
-  let down = false;
-  let pspWebhookUrl = 'https://pressline.test/webhooks/stripe';
-  const layer = Layer.succeed(Psp, {
-    health: () =>
-      down
-        ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
-        : Effect.void,
-    getPaymentStatus: (paymentIntentId) =>
-      down
-        ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
-        : Effect.succeed(
-            payments.get(paymentIntentId) ?? {
-              refunded: false,
-              amountRefunded: 0,
-              disputed: false,
-            },
-          ),
-    getWebhookStatus: () => Effect.succeed({ configured: true, url: pspWebhookUrl }),
-    registerWebhook: (url) => {
-      if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
-      if (url === pspWebhookUrl) return Effect.succeed({ status: 'verified' as const, url });
-      pspWebhookUrl = url;
-      return Effect.succeed({ status: 'created' as const, url, secret: 'whsec_memory' });
-    },
-    createCheckoutSession: (input) =>
-      down
-        ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
-        : Ref.modify(ref, (all) => {
-            const session: CheckoutSession = {
-              id: `cs_test_${all.length + 1}`,
-              url: `https://checkout.stripe.test/c/pay/cs_test_${all.length + 1}`,
-              expiresAt: input.expiresAt,
-            };
-            details.set(session.id, {
-              id: session.id,
-              status: 'open',
-              paymentStatus: 'unpaid',
-              orderId: input.orderId,
-              currency: input.currency,
-              consentAccepted: false,
-              customer: {},
-            });
-            return [session, [...all, { input, session }]];
-          }),
-    getCheckoutSession: (id) => {
-      if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
-      const d = details.get(id);
-      return d
-        ? Effect.succeed(d)
-        : Effect.fail(
+export interface PspMemoryOptions {
+  /** Where the hosted page "lives": a fake PSP URL (tests) or straight back to the success URL (e2e). */
+  readonly hostedPage?: 'psp' | 'success';
+}
+
+export const makePspMemory = (options: PspMemoryOptions = {}) =>
+  Effect.gen(function* () {
+    const ref = yield* Ref.make<
+      ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
+    >([]);
+    const details = new Map<string, CheckoutSessionDetails>();
+    const payments = new Map<string, PaymentStatus>();
+    let down = false;
+    let pspWebhookUrl = 'https://pressline.test/webhooks/stripe';
+    const layer = Layer.succeed(Psp, {
+      health: () =>
+        down
+          ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+          : Effect.void,
+      getPaymentStatus: (paymentIntentId) =>
+        down
+          ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+          : Effect.succeed(
+              payments.get(paymentIntentId) ?? {
+                refunded: false,
+                amountRefunded: 0,
+                disputed: false,
+              },
+            ),
+      getWebhookStatus: () => Effect.succeed({ configured: true, url: pspWebhookUrl }),
+      expireCheckoutSession: (id) => {
+        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
+        const current = details.get(id);
+        if (!current)
+          return Effect.fail(
             new PspError({
               message: `No such checkout session: ${id}`,
               retryable: false,
               status: 404,
             }),
           );
-    },
-    verifyWebhook: (rawBody, signature) =>
-      signature !== 'memory:valid'
-        ? Effect.fail(new WebhookRejected({ message: 'bad signature' }))
-        : parsePspWebhook(rawBody),
-    parseWebhook: parsePspWebhook,
+        details.set(id, { ...current, status: 'expired' });
+        return Effect.void;
+      },
+      registerWebhook: (url) => {
+        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
+        if (url === pspWebhookUrl) return Effect.succeed({ status: 'verified' as const, url });
+        pspWebhookUrl = url;
+        return Effect.succeed({ status: 'created' as const, url, secret: 'whsec_memory' });
+      },
+      createCheckoutSession: (input) =>
+        down
+          ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+          : Ref.modify(ref, (all) => {
+              const session: CheckoutSession = {
+                id: `cs_test_${all.length + 1}`,
+                url:
+                  options.hostedPage === 'success'
+                    ? input.successUrl
+                    : `https://checkout.stripe.test/c/pay/cs_test_${all.length + 1}`,
+                expiresAt: input.expiresAt,
+              };
+              details.set(session.id, {
+                id: session.id,
+                status: 'open',
+                paymentStatus: 'unpaid',
+                orderId: input.orderId,
+                currency: input.currency,
+                consentAccepted: false,
+                customer: {},
+              });
+              return [session, [...all, { input, session }]];
+            }),
+      getCheckoutSession: (id) => {
+        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
+        const d = details.get(id);
+        return d
+          ? Effect.succeed(d)
+          : Effect.fail(
+              new PspError({
+                message: `No such checkout session: ${id}`,
+                retryable: false,
+                status: 404,
+              }),
+            );
+      },
+      verifyWebhook: (rawBody, signature) =>
+        signature !== 'memory:valid'
+          ? Effect.fail(new WebhookRejected({ message: 'bad signature' }))
+          : parsePspWebhook(rawBody),
+      parseWebhook: parsePspWebhook,
+    });
+    return {
+      layer,
+      sessions: Ref.get(ref),
+      setDown: (d: boolean) => void (down = d),
+      /** What the PSP reports for a payment intent (refunds, disputes). */
+      setPayment: (paymentIntentId: string, status: PaymentStatus) => {
+        payments.set(paymentIntentId, status);
+      },
+      /** What a later re-fetch of this session returns (e.g. after the Customer paid). */
+      setSession: (id: string, patch: Partial<CheckoutSessionDetails>) => {
+        const current = details.get(id) ?? {
+          id,
+          status: 'open' as const,
+          paymentStatus: 'unpaid' as const,
+          consentAccepted: false,
+          customer: {},
+        };
+        details.set(id, { ...current, ...patch });
+      },
+    };
   });
-  return {
-    layer,
-    sessions: Ref.get(ref),
-    setDown: (d: boolean) => void (down = d),
-    /** What the PSP reports for a payment intent (refunds, disputes). */
-    setPayment: (paymentIntentId: string, status: PaymentStatus) => {
-      payments.set(paymentIntentId, status);
-    },
-    /** What a later re-fetch of this session returns (e.g. after the Customer paid). */
-    setSession: (id: string, patch: Partial<CheckoutSessionDetails>) => {
-      const current = details.get(id) ?? {
-        id,
-        status: 'open' as const,
-        paymentStatus: 'unpaid' as const,
-        consentAccepted: false,
-        customer: {},
-      };
-      details.set(id, { ...current, ...patch });
-    },
-  };
-});
 
-export const layerPspMemory = Layer.unwrapEffect(Effect.map(makePspMemory, (m) => m.layer));
+export const layerPspMemory = Layer.unwrapEffect(Effect.map(makePspMemory(), (m) => m.layer));
 
 export interface MemoryCatalog {
   readonly products: ReadonlyArray<CatalogProduct>;

@@ -20,6 +20,7 @@
     "test:watch": "vitest",
     "build": "pnpm -r --if-present build",
     "adr:check": "node scripts/check-adrs.mjs",
+    "e2e": "pnpm --filter pressline e2e",
     "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm test && pnpm build"
   },
   "devDependencies": {

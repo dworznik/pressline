@@ -1,5 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { copy } from '$lib/copy';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -21,27 +22,16 @@
 </script>
 
 <svelte:head>
-  <title>Thank you · Order {order.id.slice(0, 8)}</title>
+  <title>{copy.thanks.tabTitle(data.reference)}</title>
 </svelte:head>
 
 <main class="thanks" data-tone={tone}>
-  {#if tone === 'confirmed'}
-    <h1>Thank you!</h1>
-    <p>Your order is confirmed. We will email you when it ships.</p>
-  {:else if tone === 'confirming'}
-    <h1>Thank you!</h1>
-    <p>We are confirming your payment. You will get an email with your order details shortly.</p>
-  {:else if tone === 'expired'}
-    <h1>This checkout has expired</h1>
-    <p>No payment was taken. Please start again from your design.</p>
-  {:else}
-    <h1>This order was cancelled</h1>
-    <p>If you were charged, the refund will arrive on the same payment method.</p>
-  {/if}
-  <p class="ref">Order reference: <code>{data.reference}</code></p>
+  <h1>{copy.thanks[tone].title}</h1>
+  <p>{copy.thanks[tone].text}</p>
+  <p class="ref">{copy.thanks.reference} <code>{data.reference}</code></p>
   <p>
     <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-    <a href={statusHref}>Track this order</a>
+    <a href={statusHref} class="track">{copy.thanks.track}</a>
   </p>
 </main>
 

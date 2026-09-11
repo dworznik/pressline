@@ -109,6 +109,9 @@ const contextFor = (orderId: string) =>
     const origin = (config.checkout.publicUrl ?? order.publicOrigin ?? '').replace(/\/$/, '');
     const ctx: EmailContext = {
       shopName: config.name,
+      ...(config.branding.logoUrl ? { logoUrl: config.branding.logoUrl } : {}),
+      accent: config.branding.accent,
+      accentText: config.branding.accentText,
       withdrawalNotice: config.legal.withdrawalNotice,
       ...(config.legal.contactEmail ? { contactEmail: config.legal.contactEmail } : {}),
       offerName: offer?.name ?? order.offer,

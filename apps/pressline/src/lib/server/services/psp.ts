@@ -113,6 +113,8 @@ export interface PspService {
   ) => Effect.Effect<PspWebhookEvent, WebhookRejected>;
   /** Read an already-verified body again (Reconciliation replays stored Inbound Events). */
   readonly parseWebhook: (rawBody: string) => Effect.Effect<PspWebhookEvent, WebhookRejected>;
+  /** Close an open hosted checkout so the Customer can no longer pay for it. */
+  readonly expireCheckoutSession: (id: string) => Effect.Effect<void, PspError>;
   /** Create (or confirm) the webhook endpoint at `url`; the signing secret is only revealed on creation. */
   readonly registerWebhook: (url: string) => Effect.Effect<PspWebhookRegistration, PspError>;
 }

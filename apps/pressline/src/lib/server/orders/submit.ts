@@ -187,6 +187,12 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
     yield* transition(order.id, 'submitted', cause, causeRef, {
       providerOrderId: confirmed.id,
     }).pipe(Effect.catchTag('TransitionRefused', () => Effect.void));
+    if (config.demo) {
+      // Demo Mode: the provider layer cancelled the draft instead of confirming it; the ledger says so.
+      yield* transition(order.id, 'cancelled', cause, causeRef, {
+        note: 'Demo Mode: provider draft cancelled instead of confirmed; nothing is produced',
+      }).pipe(Effect.catchTag('TransitionRefused', () => Effect.void));
+    }
     return { outcome: 'submitted', providerOrderId: confirmed.id } satisfies SubmitOutcome;
   }).pipe(
     Effect.catchTag('FulfilmentProviderError', (e) =>

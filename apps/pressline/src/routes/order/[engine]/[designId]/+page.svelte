@@ -193,6 +193,12 @@
   </figure>
 
   <section class="details">
+    {#if data.page.storefront.demo}
+      <p class="demo" data-demo>
+        Demo shop: nothing is charged and nothing is printed. At checkout, pay with the test card
+        <code>{data.page.storefront.demo.testCard}</code>, any future expiry and any CVC.
+      </p>
+    {/if}
     <h1>{design.title ?? 'Your design'}</h1>
     {#if cancelled}
       <p class="notice" data-state="cancelled">
@@ -384,6 +390,12 @@
     padding-top: 0.25rem;
   }
   .tax-note,
+  .demo {
+    background: #fff7d6;
+    border: 1px solid #e8d48b;
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+  }
   .withdrawal {
     font-size: 0.9rem;
     color: #555;

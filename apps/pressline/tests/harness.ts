@@ -25,6 +25,7 @@ import {
   type DesignSourceMemoryOptions,
   type MemoryCatalog,
 } from '$lib/server/services/memory';
+import { demoFulfilmentProvider } from '$lib/server/services/demo';
 
 /**
  * Seam 1 (docs/SPEC.md → Testing Decisions): boot the bridge's HTTP surface
@@ -211,7 +212,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     }),
     layerSqliteMigrated(dbPath),
     designSource.layer,
-    provider.layer,
+    options.config?.demo ? demoFulfilmentProvider(provider.layer) : provider.layer,
     psp.layer,
     mailer.layer,
     FetchHttpClient.layer.pipe(

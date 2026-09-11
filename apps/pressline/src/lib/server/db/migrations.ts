@@ -217,4 +217,12 @@ export const migrations: ReadonlyArray<Migration> = [
        )`,
     ],
   },
+  {
+    version: 11,
+    name: 'orders_purged_at',
+    statements: [
+      // PII purge (ticket #17): when the Recipient and consent were stripped from a terminal Order.
+      `ALTER TABLE orders ADD COLUMN purged_at INTEGER`,
+    ],
+  },
 ];

@@ -1,0 +1,46 @@
+{
+  "data": {
+    "default_url": "https://shop.example/webhooks/printful",
+    "expires_at": null,
+    "events": [
+      {
+        "type": "order_created",
+        "url": null
+      },
+      {
+        "type": "order_updated",
+        "url": null
+      },
+      {
+        "type": "order_failed",
+        "url": null
+      },
+      {
+        "type": "order_canceled",
+        "url": null
+      },
+      {
+        "type": "order_put_hold",
+        "url": null
+      },
+      {
+        "type": "order_remove_hold",
+        "url": null
+      },
+      {
+        "type": "shipment_sent",
+        "url": null
+      },
+      {
+        "type": "shipment_returned",
+        "url": null
+      },
+      {
+        "type": "shipment_canceled",
+        "url": null
+      }
+    ],
+    "secret_key": "0123456789abcdef0123456789abcdef",
+    "public_key": "SbF/9d/uWguI"
+  }
+}

@@ -89,7 +89,6 @@ const toPspError = (e: unknown): PspError => {
 export const STRIPE_WEBHOOK_EVENTS = [
   'checkout.session.completed',
   'checkout.session.async_payment_succeeded',
-  'checkout.session.async_payment_failed',
   'checkout.session.expired',
 ] as const;
 
@@ -154,7 +153,14 @@ export const makeStripe = (options: StripeOptions) =>
       registerWebhook: (url) =>
         Effect.gen(function* () {
           const list = yield* call(() => stripe.webhookEndpoints.list({ limit: 100 }));
-          const existing = list.data.find((w) => w.url === url && w.status === 'enabled');
+          const existing = list.data.find(
+            (w) =>
+              w.url === url &&
+              w.status === 'enabled' &&
+              STRIPE_WEBHOOK_EVENTS.every(
+                (e) => w.enabled_events.includes(e) || w.enabled_events.includes('*'),
+              ),
+          );
           if (existing) return { status: 'verified' as const, url };
           const created = yield* call(() =>
             stripe.webhookEndpoints.create({

@@ -51,7 +51,8 @@ export const StepReport = Schema.Struct({
   notes: Schema.Array(Schema.String),
 });
 
-export const Trigger = Schema.Literal('operator', 'cron', 'cli');
+/** `operator` covers the API and the CLI behind it; `cron` the platform schedulers. */
+export const Trigger = Schema.Literal('operator', 'cron');
 export type Trigger = typeof Trigger.Type;
 
 export const ReconciliationReport = Schema.Struct({

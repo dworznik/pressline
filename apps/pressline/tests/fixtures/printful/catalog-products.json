@@ -1,0 +1,68 @@
+{
+  "data": [
+    {
+      "id": 71,
+      "type": "T-SHIRT",
+      "name": "Unisex Staple T-Shirt | Bella + Canvas 3001",
+      "brand": "Bella + Canvas",
+      "model": "3001",
+      "techniques": [
+        {
+          "key": "dtg",
+          "display_name": "DTG printing",
+          "is_default": true
+        }
+      ],
+      "placements": [
+        {
+          "placement": "front",
+          "technique": "dtg",
+          "layers": [
+            {
+              "type": "file"
+            }
+          ]
+        },
+        {
+          "placement": "back",
+          "technique": "dtg",
+          "layers": [
+            {
+              "type": "file"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "type": "POSTER",
+      "name": "Enhanced Matte Paper Poster (in)",
+      "brand": null,
+      "model": "Poster",
+      "techniques": [
+        {
+          "key": "digital",
+          "display_name": "Digital printing",
+          "is_default": true
+        }
+      ],
+      "placements": [
+        {
+          "placement": "default",
+          "technique": "digital",
+          "layers": [
+            {
+              "type": "file"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "paging": {
+    "total": 2,
+    "offset": 0,
+    "limit": 100
+  }
+}

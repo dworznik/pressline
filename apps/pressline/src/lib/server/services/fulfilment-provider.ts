@@ -210,8 +210,19 @@ export interface FulfilmentProviderService {
     draft: ProviderOrderDraft,
   ) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
   readonly confirmOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
-  /** Cancel/delete a provider order. Printful v2 deletes drafts, failed and cancelled orders; confirmed orders need support. */
-  readonly cancelOrder: (id: string) => Effect.Effect<void, FulfilmentProviderError>;
+  /**
+   * Cancel a provider order when the provider allows it. Printful v2 deletes
+   * drafts, failed and on-hold orders; an order already in production answers
+   * `not_cancellable` and must be handled with the provider directly.
+   */
+  readonly cancelOrder: (
+    id: string,
+  ) => Effect.Effect<'cancelled' | 'not_cancellable', FulfilmentProviderError>;
+  /** Replace the recipient on a draft (or held) provider order; a non-retryable error when the provider refuses. */
+  readonly updateOrderRecipient: (
+    id: string,
+    recipient: ProviderRecipient,
+  ) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
   readonly getOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
   /** Live shipping options for a destination. Empty when the provider cannot ship there. */
   readonly getShippingRates: (

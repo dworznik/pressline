@@ -1,6 +1,7 @@
 import { HttpApiBuilder } from '@effect/platform';
 import { Clock, Effect } from 'effect';
 import { OperatorPrincipal, OperatorSecrets, Unauthorized } from '../operator/auth';
+import { cancel, createManualOrder, fixAddress, purge, resubmit } from '../operator/actions';
 import { InstanceFacts } from '../operator/instance';
 import { instanceHealth, orderDetail, orderList } from '../operator/read';
 import {
@@ -42,6 +43,11 @@ export const OperatorLive = HttpApiBuilder.group(PresslineApi, 'operator', (hand
       ),
     )
     .handle('catalogueCheck', () => catalogueCheck)
+    .handle('createOrder', ({ payload }) => createManualOrder(payload))
+    .handle('purgeOrders', ({ payload }) => purge(payload))
+    .handle('resubmitOrder', ({ path }) => resubmit(path.id))
+    .handle('fixOrderAddress', ({ path, payload }) => fixAddress(path.id, payload.recipient))
+    .handle('cancelOrder', ({ path }) => cancel(path.id))
     .handle('webhooksRegister', ({ payload }) => webhooksRegister(payload.publicUrl))
     .handle('printfileCheck', ({ payload }) => printfileCheck(payload))
     .handle('reconciliation', () => latestReport.pipe(Effect.map((r) => r ?? null))),

@@ -1,0 +1,12 @@
+{
+  "data": {
+    "default_url": "https://old.example/webhooks/printful",
+    "expires_at": null,
+    "events": [
+      {
+        "type": "order_updated",
+        "url": null
+      }
+    ]
+  }
+}

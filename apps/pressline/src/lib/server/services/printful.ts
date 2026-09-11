@@ -11,6 +11,7 @@ import {
   type PlacementPrintArea,
   type ProviderOrder,
   type ProviderOrderStatus,
+  type ProviderRecipient,
   type ProviderShipment,
   type ProviderWebhookEvent,
   ProviderWebhookRejected,
@@ -114,7 +115,19 @@ export const DEFAULT_TIMEOUT: Duration.DurationInput = '15 seconds';
 
 const CATALOG_PAGE = 100;
 
-/** Order and shipment events the webhook handler acts on (webhooks/printful.ts). */
+const toRecipientWire = (r: ProviderRecipient) => ({
+  name: r.name,
+  address1: r.address1,
+  ...(r.address2 ? { address2: r.address2 } : {}),
+  city: r.city,
+  ...(r.stateCode ? { state_code: r.stateCode } : {}),
+  country_code: r.countryCode,
+  ...(r.zip ? { zip: r.zip } : {}),
+  email: r.email,
+  ...(r.phone ? { phone: r.phone } : {}),
+});
+
+/** Order and shipment events the webhook handler acts on (webhooks/printful.ts); all are configurable event types in v2. */
 export const PRINTFUL_WEBHOOK_EVENTS = [
   'order_created',
   'order_updated',
@@ -124,7 +137,6 @@ export const PRINTFUL_WEBHOOK_EVENTS = [
   'order_remove_hold',
   'shipment_sent',
   'shipment_returned',
-  'shipment_delivered',
   'shipment_canceled',
 ] as const;
 
@@ -419,6 +431,42 @@ export const makePrintful = (options: PrintfulOptions) =>
         }),
       );
 
+    const patch = <A, I>(path: string, body: unknown, schema: Schema.Schema<A, I>) =>
+      HttpClientRequest.patch(path).pipe(
+        HttpClientRequest.bodyJson(body),
+        Effect.mapError(
+          (e) =>
+            new FulfilmentProviderError({
+              message: `Printful ${path}: could not encode request body (${e.reason._tag})`,
+              retryable: false,
+            }),
+        ),
+        Effect.flatMap((req) => client.execute(req)),
+        Effect.flatMap((res) =>
+          res.status >= 200 && res.status < 300
+            ? HttpClientResponse.schemaBodyJson(schema)(res).pipe(
+                Effect.mapError(
+                  (e) =>
+                    new FulfilmentProviderError({
+                      message: `Printful ${path}: ${e.message}`,
+                      retryable: false,
+                    }),
+                ),
+              )
+            : failStatus(res),
+        ),
+        Effect.mapError(toFulfilmentProviderError),
+        Effect.scoped,
+        Effect.timeoutFail({
+          duration: timeout,
+          onTimeout: () =>
+            new FulfilmentProviderError({
+              message: `Printful ${path}: no response within ${Duration.format(timeout)}`,
+              retryable: true,
+            }),
+        }),
+      );
+
     const parseWebhook = (rawBody: string) =>
       Effect.gen(function* () {
         const parsed = yield* Schema.decodeUnknown(Schema.parseJson(WebhookWire))(rawBody).pipe(
@@ -534,17 +582,7 @@ export const makePrintful = (options: PrintfulOptions) =>
           {
             external_id: d.externalId,
             shipping: d.shippingMethod,
-            recipient: {
-              name: d.recipient.name,
-              address1: d.recipient.address1,
-              ...(d.recipient.address2 ? { address2: d.recipient.address2 } : {}),
-              city: d.recipient.city,
-              ...(d.recipient.stateCode ? { state_code: d.recipient.stateCode } : {}),
-              country_code: d.recipient.countryCode,
-              ...(d.recipient.zip ? { zip: d.recipient.zip } : {}),
-              email: d.recipient.email,
-              ...(d.recipient.phone ? { phone: d.recipient.phone } : {}),
-            },
+            recipient: toRecipientWire(d.recipient),
             order_items: [
               {
                 source: 'catalog',
@@ -579,11 +617,23 @@ export const makePrintful = (options: PrintfulOptions) =>
         HttpClientRequest.del(`/v2/orders/${encodeURIComponent(id)}`).pipe(
           client.execute,
           Effect.flatMap((res) =>
-            res.status >= 200 && res.status < 300 ? Effect.void : failStatus(res),
+            res.status >= 200 && res.status < 300
+              ? Effect.succeed('cancelled' as const)
+              : // Printful refuses to delete an order it has started on (409/400); that is an answer, not a failure.
+                res.status === 409 || res.status === 400
+                ? Effect.succeed('not_cancellable' as const)
+                : failStatus(res),
           ),
           Effect.mapError(toFulfilmentProviderError),
           Effect.scoped,
         ),
+
+      updateOrderRecipient: (id, recipient) =>
+        patch(
+          `/v2/orders/${encodeURIComponent(id)}`,
+          { recipient: toRecipientWire(recipient) },
+          Envelope(OrderWire),
+        ).pipe(Effect.map(({ data }) => toProviderOrder(data))),
 
       getShippingRates: (req) =>
         post(
@@ -685,10 +735,17 @@ export const makePrintful = (options: PrintfulOptions) =>
         }),
 
       listCatalogVariants: (productId) =>
-        get(
-          `/v2/catalog-products/${productId}/catalog-variants?limit=100`,
-          Envelope(Schema.Array(VariantWire)),
-        ).pipe(Effect.map(({ data }) => data.map(toCatalogVariant))),
+        Effect.gen(function* () {
+          const all: CatalogVariant[] = [];
+          for (let offset = 0; ; offset += CATALOG_PAGE) {
+            const { data } = yield* get(
+              `/v2/catalog-products/${productId}/catalog-variants?limit=${CATALOG_PAGE}&offset=${offset}`,
+              Envelope(Schema.Array(VariantWire)),
+            );
+            all.push(...data.map(toCatalogVariant));
+            if (data.length < CATALOG_PAGE) return all;
+          }
+        }),
 
       registerWebhook: (url) =>
         Effect.gen(function* () {

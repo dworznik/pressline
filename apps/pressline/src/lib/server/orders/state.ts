@@ -26,6 +26,7 @@ export const Cause = Schema.Literal(
 );
 export type Cause = typeof Cause.Type;
 
+/** Fulfilment is over: nothing more will ship. Purge eligibility, not "no edges": a refund can still be recorded after `fulfilled`. */
 export const TERMINAL: ReadonlySet<OrderState> = new Set([
   'expired',
   'fulfilled',

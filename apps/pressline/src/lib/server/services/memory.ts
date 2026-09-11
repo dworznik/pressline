@@ -220,7 +220,10 @@ export const makePspMemory = Effect.gen(function* () {
   let down = false;
   let pspWebhookUrl = 'https://pressline.test/webhooks/stripe';
   const layer = Layer.succeed(Psp, {
-    health: () => Effect.void,
+    health: () =>
+      down
+        ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+        : Effect.void,
     getPaymentStatus: (paymentIntentId) =>
       down
         ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
@@ -233,6 +236,7 @@ export const makePspMemory = Effect.gen(function* () {
           ),
     getWebhookStatus: () => Effect.succeed({ configured: true, url: pspWebhookUrl }),
     registerWebhook: (url) => {
+      if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
       if (url === pspWebhookUrl) return Effect.succeed({ status: 'verified' as const, url });
       pspWebhookUrl = url;
       return Effect.succeed({ status: 'created' as const, url, secret: 'whsec_memory' });
@@ -502,8 +506,36 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
             Effect.flatMap(() => {
               const o = providerOrders.get(id);
               if (!o) return notFound('provider order', Number(id));
+              if (o.status === 'inprocess' || o.status === 'partial' || o.status === 'fulfilled') {
+                return Effect.succeed('not_cancellable' as const);
+              }
               providerOrders.set(id, { ...o, status: 'canceled' });
-              return Effect.void;
+              return Effect.succeed('cancelled' as const);
+            }),
+          ),
+        updateOrderRecipient: (id, recipient) =>
+          Ref.update(calls, (n) => n + 1).pipe(
+            Effect.flatMap(() => {
+              const o = providerOrders.get(id);
+              if (!o) return notFound('provider order', Number(id));
+              if (o.status !== 'draft' && o.status !== 'failed' && o.status !== 'onhold') {
+                return Effect.fail(
+                  new FulfilmentProviderError({
+                    message: `provider order ${id} is ${o.status}; the recipient can no longer be changed`,
+                    retryable: false,
+                  }),
+                );
+              }
+              const updated: ProviderOrder = {
+                ...o,
+                status: o.status === 'failed' ? 'draft' : o.status,
+                recipient: {
+                  countryCode: recipient.countryCode,
+                  ...(recipient.stateCode ? { stateCode: recipient.stateCode } : {}),
+                },
+              };
+              providerOrders.set(id, updated);
+              return Effect.succeed(updated);
             }),
           ),
         getShippingRates: (req: ShippingRateRequest) =>

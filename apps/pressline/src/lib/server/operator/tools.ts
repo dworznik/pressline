@@ -129,12 +129,16 @@ export const WebhookRegisterRequest = Schema.Struct({
   publicUrl: Schema.optional(Schema.String.pipe(Schema.pattern(/^https:\/\//))),
 });
 
-const Registration = Schema.Struct({
-  status: Schema.Literal('created', 'verified'),
-  url: Schema.String,
-  secret: Schema.optional(Schema.String),
-  publicKey: Schema.optional(Schema.String),
-});
+/** One provider's outcome. Each is attempted on its own: a failure at one never discards the other's once-shown secret. */
+const Registration = Schema.Union(
+  Schema.Struct({
+    status: Schema.Literal('created', 'verified'),
+    url: Schema.String,
+    secret: Schema.optional(Schema.String),
+    publicKey: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({ status: Schema.Literal('failed'), url: Schema.String, message: Schema.String }),
+);
 
 export const WebhookRegisterResult = Schema.Struct({
   stripe: Registration,
@@ -149,7 +153,7 @@ export const webhooksRegister = (publicUrl: string | undefined) =>
     const origin = (publicUrl ?? config.checkout.publicUrl)?.replace(/\/$/, '');
     if (!origin) {
       return yield* new ToolError({
-        message: 'no public URL: pass --url or set checkout.publicUrl in the config',
+        message: 'no public URL: pass --public-url or set checkout.publicUrl in the config',
       });
     }
     if (!origin.startsWith('https://')) {
@@ -157,12 +161,14 @@ export const webhooksRegister = (publicUrl: string | undefined) =>
     }
     const psp = yield* Psp;
     const provider = yield* FulfilmentProvider;
-    const stripe = yield* psp
-      .registerWebhook(`${origin}/webhooks/stripe`)
-      .pipe(Effect.mapError((e) => new ToolError({ message: `Stripe: ${e.message}` })));
+    const failed = (url: string) => (e: { readonly message: string }) =>
+      Effect.succeed({ status: 'failed' as const, url, message: e.message });
+    const stripeUrl = `${origin}/webhooks/stripe`;
+    const printfulUrl = `${origin}/webhooks/printful`;
+    const stripe = yield* psp.registerWebhook(stripeUrl).pipe(Effect.catchAll(failed(stripeUrl)));
     const printful = yield* provider
-      .registerWebhook(`${origin}/webhooks/printful`)
-      .pipe(Effect.mapError((e) => new ToolError({ message: `Printful: ${e.message}` })));
+      .registerWebhook(printfulUrl)
+      .pipe(Effect.catchAll(failed(printfulUrl)));
     return { stripe, printful } satisfies WebhookRegisterResult;
   });
 
@@ -199,7 +205,9 @@ export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
     );
     const spec = variant.spec;
     const problems: string[] = [];
-    if (!file.header) problems.push('not a readable PNG or JPEG header');
+    if (file.status !== 200 && file.status !== 206)
+      problems.push(`${req.url} answered ${file.status}`);
+    else if (!file.header) problems.push('not a readable PNG or JPEG header');
     else {
       if (!spec.formats.includes(file.header.format)) {
         problems.push(`${file.header.format} is not accepted here (${spec.formats.join(', ')})`);

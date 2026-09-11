@@ -43,7 +43,9 @@
 
   <section>
     <h2>Recipient</h2>
-    {#if o.recipient}
+    {#if o.purgedAt}
+      <p>Personal data purged {when(o.purgedAt)}.</p>
+    {:else if o.recipient}
       <address>
         {o.recipient.name}<br />{o.recipient.address1}{#if o.recipient.address2}<br />{o.recipient
             .address2}{/if}<br />

@@ -115,6 +115,8 @@ describe('pressline CLI', () => {
     expect(ok.out).toContain('✓ engine sample');
     expect(ok.out).toContain('✓ stripe webhook https://pressline.test/webhooks/stripe');
     expect(ok.out).toContain('✓ secret printful');
+    expect(ok.out).toContain('✓ stripe reachable');
+    expect(ok.out).toContain('✓ printful reachable');
 
     const bad = await run(app, ['doctor'], 'nope');
     expect(bad.error).toContain('unauthorised');
@@ -177,6 +179,23 @@ describe('pressline CLI', () => {
     ]);
     const http = await run(app, ['webhooks', 'register', '--public-url', 'http://shop.example']);
     expect(http.error).toContain('https');
+
+    // One provider down: the other is still registered and its secret shown; the command fails.
+    app.pspDown(true);
+    const partial = await run(app, [
+      'webhooks',
+      'register',
+      '--public-url',
+      'https://other.example',
+    ]);
+    expect(partial.lines).toEqual([
+      '✗ Stripe https://other.example/webhooks/stripe: PSP unreachable',
+      '✓ Printful created https://other.example/webhooks/printful',
+      '  set PRINTFUL_WEBHOOK_SECRET=6d656d6f7279',
+      '  set PRINTFUL_WEBHOOK_PUBLIC_KEY=memory-public-key',
+      'Secrets are shown once: store them in the deployment now, then redeploy.',
+    ]);
+    expect(partial.error).toContain('1 provider(s) could not be registered');
   });
 
   it('orders list and show read the ledger', async () => {
@@ -269,6 +288,6 @@ describe('pressline CLI', () => {
       'black-m',
     ]);
     expect(gone.out).toContain('File: HTTP 404');
-    expect(gone.out).toContain('✗ not a readable PNG or JPEG header');
+    expect(gone.out).toContain('✗ https://engine.test/nope.png answered 404');
   });
 });

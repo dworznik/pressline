@@ -51,6 +51,10 @@ const Health = Schema.Struct({
     demo: Schema.Boolean,
     mailer: Schema.String,
   }),
+  providers: Schema.Record({
+    key: Schema.String,
+    value: Schema.Struct({ ok: Schema.Boolean, detail: Schema.optional(Schema.String) }),
+  }),
   secrets: Schema.Record({ key: Schema.String, value: Schema.Boolean }),
   schema: Schema.Struct({ version: Schema.Number, latest: Schema.Number }),
 });
@@ -75,6 +79,10 @@ const doctor = Command.make('doctor', {}, () =>
       const present = h.secrets[name] ?? false;
       lines.push(`${mark(present)} secret ${name}`);
       if (!present) problems.push(`secret ${name} is not set`);
+    }
+    for (const [name, p] of Object.entries(h.providers)) {
+      lines.push(`${mark(p.ok)} ${name} ${p.ok ? 'reachable' : `unreachable: ${p.detail ?? ''}`}`);
+      if (!p.ok) problems.push(`${name} is unreachable`);
     }
     for (const e of h.engines) {
       lines.push(`${mark(e.enabled)} engine ${e.slug}${e.reason ? `: ${e.reason}` : ''}`);
@@ -133,8 +141,8 @@ const slugify = (s: string) =>
   s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
+    .slice(0, 40)
+    .replace(/^-|-$/g, '');
 
 /** An Offer the Operator can paste into `pressline.config.ts`, with every variant keyed by colour and size. */
 const offerSnippet = (p: (typeof SearchResult.Type)['products'][number]) => {
@@ -158,7 +166,7 @@ const offerSnippet = (p: (typeof SearchResult.Type)['products'][number]) => {
     `    catalogProductId: ${p.id},`,
     `    placement: '${method?.placement ?? 'front'}',`,
     `    technique: '${method?.technique ?? 'dtg'}',`,
-    `    retailPrice: 0, // minor units, set your price`,
+    `    retailPrice: 2500, // minor units (25.00): set your price`,
     `    variants: {`,
     variants,
     `    },`,
@@ -227,12 +235,15 @@ const catalogue = Command.make('catalogue').pipe(
 
 // ---- webhooks -------------------------------------------------------------
 
-const Registration = Schema.Struct({
-  status: Schema.Literal('created', 'verified'),
-  url: Schema.String,
-  secret: Schema.optional(Schema.String),
-  publicKey: Schema.optional(Schema.String),
-});
+const Registration = Schema.Union(
+  Schema.Struct({
+    status: Schema.Literal('created', 'verified'),
+    url: Schema.String,
+    secret: Schema.optional(Schema.String),
+    publicKey: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({ status: Schema.Literal('failed'), url: Schema.String, message: Schema.String }),
+);
 const RegisterResult = Schema.Struct({ stripe: Registration, printful: Registration });
 
 const publicUrl = Options.text('public-url').pipe(
@@ -248,14 +259,30 @@ const webhooksRegister = Command.make('register', { publicUrl }, ({ publicUrl })
       RegisterResult,
       Option.isSome(publicUrl) ? { publicUrl: publicUrl.value } : {},
     );
-    yield* print(`✓ Stripe ${r.stripe.status} ${r.stripe.url}`);
-    if (r.stripe.secret) yield* print(`  set STRIPE_WEBHOOK_SECRET=${r.stripe.secret}`);
-    yield* print(`✓ Printful ${r.printful.status} ${r.printful.url}`);
-    if (r.printful.secret) yield* print(`  set PRINTFUL_WEBHOOK_SECRET=${r.printful.secret}`);
-    if (r.printful.publicKey)
-      yield* print(`  set PRINTFUL_WEBHOOK_PUBLIC_KEY=${r.printful.publicKey}`);
-    if (r.stripe.secret || r.printful.secret) {
+    let secrets = false;
+    let failures = 0;
+    for (const [name, reg] of [
+      ['Stripe', r.stripe],
+      ['Printful', r.printful],
+    ] as const) {
+      if (reg.status === 'failed') {
+        failures++;
+        yield* print(`✗ ${name} ${reg.url}: ${reg.message}`);
+        continue;
+      }
+      yield* print(`✓ ${name} ${reg.status} ${reg.url}`);
+      if (reg.secret) {
+        secrets = true;
+        yield* print(`  set ${name.toUpperCase()}_WEBHOOK_SECRET=${reg.secret}`);
+      }
+      if (reg.publicKey) yield* print(`  set PRINTFUL_WEBHOOK_PUBLIC_KEY=${reg.publicKey}`);
+    }
+    if (secrets)
       yield* print('Secrets are shown once: store them in the deployment now, then redeploy.');
+    if (failures > 0) {
+      return yield* failWith(
+        `${failures} provider(s) could not be registered; run again after fixing`,
+      );
     }
   }),
 ).pipe(Command.withDescription('Create or verify the Stripe and Printful webhook endpoints'));
@@ -294,6 +321,7 @@ const OrderDetail = Schema.Struct({
         recipient: Schema.optional(
           Schema.Struct({ name: Schema.String, country: Schema.String, email: Schema.String }),
         ),
+        purgedAt: Schema.optional(Schema.Number),
       }),
     ),
   ),
@@ -360,6 +388,7 @@ const ordersShow = Command.make('show', { orderId }, ({ orderId }) =>
       `Order ${o.id}  ${o.state}`,
       `  ${o.engine}/${o.designId}  ${o.offer}/${o.variant}  ${money(o.amountTotal ?? o.retail + o.shipping, o.currency)} → ${o.country}`,
       ...(o.recipient ? [`  ${o.recipient.name} <${o.recipient.email}>`] : []),
+      ...(o.purgedAt ? [`  personal data purged ${iso(o.purgedAt)}`] : []),
       ...(o.providerOrderId ? [`  provider order ${o.providerOrderId}`] : []),
       'Transitions:',
       ...d.transitions.map(
@@ -387,9 +416,131 @@ const ordersShow = Command.make('show', { orderId }, ({ orderId }) =>
   }),
 ).pipe(Command.withDescription('Show one Order with its Transitions, Inbound Events and emails'));
 
+// ---- order actions (ticket #17) -------------------------------------------
+
+const ActionResult = Schema.Struct({
+  detail: OrderDetail,
+  outcome: Schema.String,
+});
+
+const showAction = (r: typeof ActionResult.Type) =>
+  print(`Order ${r.detail.order.id}  ${r.detail.order.state}`, `  ${r.outcome}`);
+
+const recipientOptions = {
+  name: Options.text('name'),
+  address1: Options.text('address1'),
+  address2: Options.text('address2').pipe(Options.optional),
+  city: Options.text('city'),
+  state: Options.text('state').pipe(
+    Options.withDescription('State/province code (US, CA, AU)'),
+    Options.optional,
+  ),
+  zip: Options.text('zip').pipe(Options.optional),
+  country: Options.text('country').pipe(Options.withDescription('ISO 3166-1 alpha-2')),
+  email: Options.text('email'),
+  phone: Options.text('phone').pipe(Options.optional),
+};
+
+type RecipientFlags = {
+  [K in keyof typeof recipientOptions]: (typeof recipientOptions)[K] extends Options.Options<
+    infer A
+  >
+    ? A
+    : never;
+};
+
+const toRecipient = (r: RecipientFlags) => ({
+  name: r.name,
+  address1: r.address1,
+  ...(Option.isSome(r.address2) ? { address2: r.address2.value } : {}),
+  city: r.city,
+  ...(Option.isSome(r.state) ? { state: r.state.value.toUpperCase() } : {}),
+  ...(Option.isSome(r.zip) ? { zip: r.zip.value } : {}),
+  country: r.country.toUpperCase(),
+  email: r.email,
+  ...(Option.isSome(r.phone) ? { phone: r.phone.value } : {}),
+});
+
+const ordersCreate = Command.make(
+  'create',
+  {
+    engine: Options.text('engine'),
+    design: Options.text('design').pipe(Options.withDescription('Design ID at the Engine')),
+    offer: Options.text('offer'),
+    variant: Options.text('variant'),
+    paidOutside: Options.boolean('paid-outside').pipe(
+      Options.withDescription('The Customer paid outside Stripe (reprint, offline sale); required'),
+    ),
+    sendEmail: Options.boolean('send-email').pipe(
+      Options.withDescription('Send the Customer the confirmation email'),
+    ),
+    ...recipientOptions,
+  },
+  (flags) =>
+    Effect.gen(function* () {
+      if (!flags.paidOutside) {
+        return yield* failWith('v1 creates orders paid outside Stripe only: pass --paid-outside');
+      }
+      const r = yield* api('POST', '/api/operator/orders', ActionResult, {
+        engine: flags.engine,
+        designId: flags.design,
+        offer: flags.offer,
+        variant: flags.variant,
+        recipient: toRecipient(flags),
+        paidOutside: true,
+        email: flags.sendEmail,
+      });
+      yield* showAction(r);
+    }),
+).pipe(Command.withDescription('Create an Order paid outside the PSP and submit it'));
+
+const ordersResubmit = Command.make('resubmit', { orderId }, ({ orderId }) =>
+  api('POST', `/api/operator/orders/${encodeURIComponent(orderId)}/resubmit`, ActionResult).pipe(
+    Effect.flatMap(showAction),
+  ),
+).pipe(Command.withDescription('Submit again from submit_failed, or re-confirm an on_hold order'));
+
+const ordersFixAddress = Command.make('fix-address', { orderId, ...recipientOptions }, (flags) =>
+  api('POST', `/api/operator/orders/${encodeURIComponent(flags.orderId)}/address`, ActionResult, {
+    recipient: toRecipient(flags),
+  }).pipe(Effect.flatMap(showAction)),
+).pipe(Command.withDescription('Replace the Recipient (same country) and resubmit'));
+
+const ordersCancel = Command.make('cancel', { orderId }, ({ orderId }) =>
+  api('POST', `/api/operator/orders/${encodeURIComponent(orderId)}/cancel`, ActionResult).pipe(
+    Effect.flatMap(showAction),
+  ),
+).pipe(
+  Command.withDescription('Cancel at the provider when possible and record it; never refunds'),
+);
+
+const olderThan = Options.integer('older-than').pipe(
+  Options.withDescription('Days since the Order last changed'),
+);
+
+const ordersPurge = Command.make('purge', { olderThan }, ({ olderThan }) =>
+  api('POST', '/api/operator/orders/purge', Schema.Struct({ purged: Schema.Number }), {
+    olderThanDays: olderThan,
+  }).pipe(
+    Effect.flatMap((r) =>
+      print(
+        `Purged personal data from ${r.purged} Order(s) finished more than ${olderThan} days ago.`,
+      ),
+    ),
+  ),
+).pipe(Command.withDescription('Strip Recipient and consent details from old terminal Orders'));
+
 const orders = Command.make('orders').pipe(
-  Command.withDescription('Browse Orders'),
-  Command.withSubcommands([ordersList, ordersShow]),
+  Command.withDescription('Browse and act on Orders'),
+  Command.withSubcommands([
+    ordersList,
+    ordersShow,
+    ordersCreate,
+    ordersResubmit,
+    ordersFixAddress,
+    ordersCancel,
+    ordersPurge,
+  ]),
 );
 
 // ---- reconcile ------------------------------------------------------------

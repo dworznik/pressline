@@ -69,6 +69,8 @@ export const Order = Schema.Struct({
   publicOrigin: Schema.optional(Schema.String),
   /** The design's Preview as hot-linked at checkout (ADR-0003). */
   previewUrl: Schema.optional(Schema.String),
+  /** When personal data was purged (ticket #17); the Recipient is gone, country and totals stay. */
+  purgedAt: Schema.optional(Schema.Int),
   createdAt: Schema.Int,
   updatedAt: Schema.Int,
 });
@@ -130,6 +132,7 @@ type Row = {
   tracking: string | null;
   public_origin: string | null;
   preview_url: string | null;
+  purged_at: number | null;
   created_at: number;
   updated_at: number;
 };
@@ -185,6 +188,7 @@ const fromRow = (r: Row): Effect.Effect<Order> =>
       ...(tracking ? { tracking } : {}),
       ...(r.public_origin !== null ? { publicOrigin: r.public_origin } : {}),
       ...(r.preview_url !== null ? { previewUrl: r.preview_url } : {}),
+      ...(r.purged_at !== null ? { purgedAt: r.purged_at } : {}),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };
@@ -287,7 +291,7 @@ export interface NewOrder {
 }
 
 /** Create the Order in `checkout_open` with its first Transition, atomically. */
-export const createOrder = (o: NewOrder, causeRef: string) =>
+export const createOrder = (o: NewOrder, causeRef: string, cause: Cause = 'storefront') =>
   Effect.gen(function* () {
     const db = yield* Db;
     const now = yield* Clock.currentTimeMillis;
@@ -326,8 +330,8 @@ export const createOrder = (o: NewOrder, causeRef: string) =>
         ],
       },
       {
-        sql: `INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, at) VALUES (?, NULL, 'checkout_open', 'storefront', ?, ?)`,
-        params: [o.id, causeRef, now],
+        sql: `INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, at) VALUES (?, NULL, 'checkout_open', ?, ?, ?)`,
+        params: [o.id, cause, causeRef, now],
       },
     ]);
     return yield* findOrder(o.id);
@@ -474,3 +478,29 @@ export const transition = (
   });
 
 export const isTerminal = (state: OrderState) => TERMINAL.has(state);
+
+/** Replace the Recipient without moving the Order (the resubmit that follows is the Transition). */
+export const updateRecipient = (orderId: string, recipient: Recipient) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    const json = yield* Schema.encode(RecipientJson)(recipient).pipe(Effect.orDie);
+    yield* db.run('UPDATE orders SET recipient = ?, updated_at = ? WHERE id = ?', [
+      json,
+      now,
+      orderId,
+    ]);
+  }).pipe(Effect.orDie);
+
+/** Strip Recipient and consent from terminal Orders untouched for longer than `olderThanMs`; returns how many. */
+export const purgeOrders = (olderThanMs: number) =>
+  Effect.gen(function* () {
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    const states = [...TERMINAL].map(() => '?').join(', ');
+    return yield* db.run(
+      `UPDATE orders SET recipient = NULL, consent_accepted_at = NULL, purged_at = ?, updated_at = ?
+       WHERE purged_at IS NULL AND updated_at < ? AND state IN (${states})`,
+      [now, now, now - olderThanMs, ...TERMINAL],
+    );
+  }).pipe(Effect.orDie);

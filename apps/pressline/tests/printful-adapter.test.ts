@@ -35,16 +35,23 @@ const stubFetch: typeof fetch = async (input, init) => {
   if (req.headers.get('authorization') !== 'Bearer pf_test_token') {
     return Response.json({ code: 401, result: 'Unauthorized' }, { status: 401 });
   }
-  try {
-    return Response.json(fixture(`${key}.json`));
-  } catch {
+  // A method-specific fixture (`orders_123.patch.json`) wins over the shared one.
+  const method = req.method.toLowerCase();
+  const candidates = method === 'get' ? [key] : [`${key}.${method}`, key];
+  for (const c of candidates) {
     try {
-      const { status, body } = fixture(`${key}.error.json`);
+      return Response.json(fixture(`${c}.json`));
+    } catch {
+      /* next */
+    }
+    try {
+      const { status, body } = fixture(`${c}.error.json`);
       return Response.json(body, { status });
     } catch {
-      return Response.json({ code: 404, result: 'Not found' }, { status: 404 });
+      /* next */
     }
   }
+  return Response.json({ code: 404, result: 'Not found' }, { status: 404 });
 };
 
 const FIXTURE_HMAC_KEY = '0123456789abcdef'.repeat(4); // low-entropy on purpose: a fixture, not a secret
@@ -369,5 +376,59 @@ describe('Printful v2 adapter', () => {
     forceStatus = undefined;
     expect(rate).toMatchObject({ retryable: true, status: 429 });
     expect(down).toMatchObject({ retryable: true, status: 503 });
+  });
+});
+
+describe('Printful adapter: operator tools (tickets #16, #17)', () => {
+  it('lists catalog products and a product’s variants', async () => {
+    const products = await run(Effect.flatMap(FulfilmentProvider, (p) => p.listCatalogProducts()));
+    expect(products.map((p) => p.id)).toEqual([71, 1]);
+    const variants = await run(
+      Effect.flatMap(FulfilmentProvider, (p) => p.listCatalogVariants(71)),
+    );
+    expect(variants.map((v) => v.id)).toEqual([4017]);
+    expect(variants[0]?.placementDimensions[0]).toMatchObject({ placement: 'front', widthIn: 12 });
+  });
+
+  it('registers the webhook configuration when it points elsewhere, and reports the once-shown keys', async () => {
+    const created = await run(
+      Effect.flatMap(FulfilmentProvider, (p) =>
+        p.registerWebhook('https://shop.example/webhooks/printful'),
+      ),
+    );
+    expect(created).toEqual({
+      status: 'created',
+      url: 'https://shop.example/webhooks/printful',
+      secret: '0123456789abcdef0123456789abcdef',
+      publicKey: 'SbF/9d/uWguI',
+    });
+    const posted = seen.find((r) => r.method === 'POST' && r.url.endsWith('/v2/webhooks'));
+    const body = (await posted!.clone().json()) as {
+      default_url: string;
+      events: { type: string }[];
+    };
+    expect(body.default_url).toBe('https://shop.example/webhooks/printful');
+    expect(body.events.map((e) => e.type)).toContain('shipment_sent');
+  });
+
+  it('updates a draft’s recipient and tells cancellable from not', async () => {
+    const updated = await run(
+      Effect.flatMap(FulfilmentProvider, (p) =>
+        p.updateOrderRecipient('124', {
+          name: 'Anna Example',
+          address1: 'Torstraße 2',
+          city: 'Berlin',
+          countryCode: 'DE',
+          email: 'anna@example.com',
+        }),
+      ),
+    );
+    expect(updated.id).toBe('124');
+    expect(await run(Effect.flatMap(FulfilmentProvider, (p) => p.cancelOrder('124')))).toBe(
+      'cancelled',
+    );
+    expect(await run(Effect.flatMap(FulfilmentProvider, (p) => p.cancelOrder('123')))).toBe(
+      'not_cancellable',
+    );
   });
 });

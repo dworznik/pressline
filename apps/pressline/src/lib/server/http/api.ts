@@ -17,6 +17,14 @@ import { OperatorAuth, Unauthorized } from '../operator/auth';
 import { InstanceHealth, OrderDetail, OrderList, OrderListQuery } from '../operator/read';
 import { ReconciliationReport } from '../reconciliation/run';
 import {
+  ActionRefused,
+  ActionResult,
+  CreateOrderRequest,
+  PurgeRequest,
+  PurgeResult,
+} from '../operator/actions';
+import { Recipient } from '../orders/orders';
+import {
   CatalogueCheckResult,
   CatalogueSearchQuery,
   CatalogueSearchResult,
@@ -244,6 +252,40 @@ export const OperatorGroup = HttpApiGroup.make('operator')
     HttpApiEndpoint.get('order', '/api/operator/orders/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(OrderDetail)
+      .addError(OrderNotFound, { status: 404 }),
+  )
+  .add(
+    HttpApiEndpoint.post('createOrder', '/api/operator/orders')
+      .setPayload(CreateOrderRequest)
+      .addSuccess(ActionResult)
+      .addError(ActionRefused, { status: 422 })
+      .addError(OrderNotFound, { status: 404 }),
+  )
+  .add(
+    HttpApiEndpoint.post('purgeOrders', '/api/operator/orders/purge')
+      .setPayload(PurgeRequest)
+      .addSuccess(PurgeResult),
+  )
+  .add(
+    HttpApiEndpoint.post('resubmitOrder', '/api/operator/orders/:id/resubmit')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(ActionResult)
+      .addError(ActionRefused, { status: 422 })
+      .addError(OrderNotFound, { status: 404 }),
+  )
+  .add(
+    HttpApiEndpoint.post('fixOrderAddress', '/api/operator/orders/:id/address')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .setPayload(Schema.Struct({ recipient: Recipient }))
+      .addSuccess(ActionResult)
+      .addError(ActionRefused, { status: 422 })
+      .addError(OrderNotFound, { status: 404 }),
+  )
+  .add(
+    HttpApiEndpoint.post('cancelOrder', '/api/operator/orders/:id/cancel')
+      .setPath(Schema.Struct({ id: Schema.String }))
+      .addSuccess(ActionResult)
+      .addError(ActionRefused, { status: 422 })
       .addError(OrderNotFound, { status: 404 }),
   )
   .add(

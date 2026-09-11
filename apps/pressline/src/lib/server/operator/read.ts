@@ -69,6 +69,11 @@ export const WebhookStatus = Schema.Struct({
 export const InstanceHealth = Schema.Struct({
   engines: Schema.Array(EngineStatus),
   webhooks: WebhookStatus,
+  /** One call each to the PSP and the fulfilment provider, made now. */
+  providers: Schema.Struct({
+    stripe: Schema.Struct({ ok: Schema.Boolean, detail: Schema.optional(Schema.String) }),
+    printful: Schema.Struct({ ok: Schema.Boolean, detail: Schema.optional(Schema.String) }),
+  }),
   config: Schema.Struct({
     name: Schema.String,
     currency: Schema.String,
@@ -191,10 +196,20 @@ export const instanceHealth = (facts: InstanceFactsValue) =>
         detail: 'could not read webhook configuration',
       })),
     );
+    const reach = <E extends { readonly message: string }>(eff: Effect.Effect<void, E>) =>
+      eff.pipe(
+        Effect.as({ ok: true }),
+        Effect.catchAll((e) => Effect.succeed({ ok: false, detail: e.message })),
+      );
+    const providers = {
+      stripe: yield* reach(psp.health()),
+      printful: yield* reach(provider.health()),
+    };
     const version = yield* schemaVersion.pipe(Effect.orDie);
     return {
       engines,
       webhooks: { stripe, printful },
+      providers,
       config: {
         name: config.name,
         currency: config.currency,

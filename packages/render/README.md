@@ -32,6 +32,12 @@ const backend = await createWasmBackend({
 
 A Worker holds ~128 MiB. The WASM backend refuses, with `RenderRefused` (`reason: 'budget'`, `detail: { required, budget }`), any Spec whose raw pixels would not fit; `fitsBudget(spec, backend)` and `rawBytesFor(spec)` answer the same question before a Customer waits on it, so an Engine can decline an Offer or route it to Node. The Node backend streams through libvips and has no budget.
 
+## Notes
+
+- The PNG is written by the package itself (not a WASM encoder) so both backends produce the same structure; decoding and scaling are what differ.
+- EXIF orientation is not applied by either backend: rotate a phone JPEG before handing it in.
+- Errors are plain `Error` subclasses with a `_tag` (`RenderRefused`, `RenderError`), not Effect errors: this package is for any Engine, Effect or not.
+
 ## What it does not do
 
 Colour management beyond declaring sRGB, bleed, or any print-shop judgement. Pressline never runs it: the bridge validates headers only (ADR-0002) and the app is lint-banned from importing this package.

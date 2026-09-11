@@ -107,15 +107,29 @@ describe('WASM byte budget', () => {
   it('is knowable up front and refused with numbers, before any decoding', async () => {
     const backend = await wasmBackend(1024 * 1024);
     const big = spec({ width: 1000, height: 1000 });
-    expect(rawBytesFor(big)).toBe(1000 * 1000 * 4 * 2);
-    expect(fitsBudget(big, backend)).toEqual({ ok: false, required: 8_000_000, budget: 1_048_576 });
+    expect(rawBytesFor(big)).toBe(1000 * 1000 * 4 * 4);
+    expect(fitsBudget(big, backend)).toEqual({
+      ok: false,
+      required: 16_000_000,
+      budget: 1_048_576,
+    });
     expect(fitsBudget(spec(), backend)).toEqual({ ok: true });
     const err = await render(backend, { kind: 'raster', bytes: new Uint8Array(0) }, big).catch(
       (e: unknown) => e,
     );
     expect(err).toBeInstanceOf(RenderRefused);
     expect((err as RenderRefused).reason).toBe('budget');
-    expect((err as RenderRefused).detail).toEqual({ required: 8_000_000, budget: 1_048_576 });
+    expect((err as RenderRefused).detail).toEqual({ required: 16_000_000, budget: 1_048_576 });
+    // A small Spec with a huge source is refused from the header alone, before decoding.
+    const hugeHeader = new Uint8Array(24);
+    hugeHeader.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    new DataView(hugeHeader.buffer).setUint32(16, 6000);
+    new DataView(hugeHeader.buffer).setUint32(20, 6000);
+    const fromSource = await render(backend, { kind: 'raster', bytes: hugeHeader }, spec()).catch(
+      (e: unknown) => e,
+    );
+    expect((fromSource as RenderRefused).reason).toBe('budget');
+    expect((fromSource as RenderRefused).detail.required).toBe(6000 * 6000 * 4 + 120 * 160 * 4 * 3);
   });
 
   it('does not bind the Node backend', () => {

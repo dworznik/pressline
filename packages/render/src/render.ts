@@ -12,9 +12,20 @@ import {
 
 const WHITE = { r: 255, g: 255, b: 255 } as const;
 
-/** Raw RGBA bytes a render of this Spec holds at its peak: the canvas plus the scaled source (≈ the canvas again). */
-export const rawBytesFor = (spec: Pick<PrintfileSpec, 'width' | 'height'>): number =>
-  spec.width * spec.height * 4 * 2;
+/**
+ * Raw RGBA bytes a render holds at its peak: the decoded source, the scaled
+ * copy (≈ the canvas) and the canvas with its filtered rows for encoding.
+ * Without a source size (an Engine asking up front) the source is assumed
+ * no larger than the canvas.
+ */
+export const rawBytesFor = (
+  spec: Pick<PrintfileSpec, 'width' | 'height'>,
+  source?: { readonly width: number; readonly height: number },
+): number => {
+  const canvas = spec.width * spec.height * 4;
+  const src = source ? source.width * source.height * 4 : canvas;
+  return src + canvas * 3;
+};
 
 /**
  * Tell an Engine up front whether a Spec fits a backend's budget, so it can
@@ -24,12 +35,23 @@ export const fitsBudget = (
   spec: Pick<PrintfileSpec, 'width' | 'height'>,
   backend: Pick<Backend, 'defaultMaxRawBytes'>,
   options: Pick<RenderOptions, 'maxRawBytes'> = {},
+  source?: { readonly width: number; readonly height: number },
 ): { ok: true } | { ok: false; required: number; budget: number } => {
   const budget = options.maxRawBytes ?? backend.defaultMaxRawBytes;
   if (budget === undefined) return { ok: true };
-  const required = rawBytesFor(spec);
+  const required = rawBytesFor(spec, source);
   return required <= budget ? { ok: true } : { ok: false, required, budget };
 };
+
+const overBudget = (
+  spec: Pick<PrintfileSpec, 'width' | 'height'>,
+  b: { required: number; budget: number },
+) =>
+  new RenderRefused(
+    'budget',
+    `rendering ${spec.width}×${spec.height} needs ~${Math.ceil(b.required / 1048576)} MiB of raw pixels, over this backend's ${Math.floor(b.budget / 1048576)} MiB`,
+    { required: b.required, budget: b.budget },
+  );
 
 const sourceSize = async (backend: Backend, input: RenderInput) => {
   const cheap = input.kind === 'raster' ? rasterSize(input.bytes) : svgSize(input.svg);
@@ -66,15 +88,12 @@ export const render = async (
   if (spec.alpha === 'forbidden' && background === 'transparent') {
     throw new RenderRefused('alpha', 'this Spec forbids transparency; give a background colour');
   }
-  const budget = fitsBudget(spec, backend, options);
-  if (!budget.ok) {
-    throw new RenderRefused(
-      'budget',
-      `rendering ${spec.width}×${spec.height} needs ~${Math.ceil(budget.required / 1048576)} MiB of raw pixels, over this backend's ${Math.floor(budget.budget / 1048576)} MiB`,
-      { required: budget.required, budget: budget.budget },
-    );
-  }
+  // The Spec alone can be over budget; the source's header can push it over too. Both are known before any pixel is decoded.
+  const specBudget = fitsBudget(spec, backend, options);
+  if (!specBudget.ok) throw overBudget(spec, specBudget);
   const size = await sourceSize(backend, input);
+  const budget = fitsBudget(spec, backend, options, size);
+  if (!budget.ok) throw overBudget(spec, budget);
   const fit = options.fit ?? 'contain';
   const at = layout(size.width, size.height, spec.width, spec.height, fit, options.align ?? {});
   const scaled = await backend.rasterize(input, at.width, at.height);

@@ -30,3 +30,6 @@ playwright-report/
 # Playwright
 test-results/
 playwright-report/
+
+# Astro's generated types (also via apps/docs/.gitignore; listed here so prettier sees it)
+.astro/

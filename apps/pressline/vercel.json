@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "sveltekit",
+  "framework": "sveltekit-1",
   "buildCommand": "PRESSLINE_ADAPTER=vercel pnpm build",
   "crons": [
     {

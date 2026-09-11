@@ -79,7 +79,7 @@ export const getWebHandler = (platform: App.Platform | undefined): Promise<WebHa
 const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebHandler> => {
   const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
   const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' });
-  const DbLive = await layerDbForPlatform(rawEnv, platform);
+  const DbLive = await layerDbForPlatform(env, platform);
   assertDemoSafe(rawConfig.demo ?? false, env.STRIPE_SECRET_KEY);
   // Engines without a secret configured are wired with an empty one: the
   // startup health check then reports them as disabled rather than failing boot.

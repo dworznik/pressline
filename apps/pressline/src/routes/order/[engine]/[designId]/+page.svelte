@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { copy } from '$lib/copy';
   import { COUNTRIES, STATE_REQUIRED } from '$lib/countries';
   import type { PageData } from './$types';
+  const t = copy.design;
 
   let { data }: { data: PageData } = $props();
   const design = $derived(data.page.design);
@@ -41,6 +43,12 @@
     typeof b === 'object' && b !== null && typeof (b as { message?: unknown }).message === 'string';
 
   const offer = $derived(offers.find((o) => o.slug === offerSlug));
+  const variant = $derived(offer?.variants.find((v) => v.key === variantKey));
+  // What to show on the left (ticket #19): the Engine's mockup for this Offer
+  // when it has one (hot-linked, never stored, ADR-0003), else the Preview
+  // laid over the variant's product photo, else the Preview alone.
+  const engineMockup = $derived(offer ? design.mockups?.[offer.slug] : undefined);
+  const overlayAspect = $derived(variant ? variant.spec.width / variant.spec.height : 1);
   const base = $derived(`/api/designs/${data.page.engine}/${design.id}/printfile`);
 
   // Quote (ticket #7): re-fetched whenever the variant or destination changes.
@@ -87,14 +95,12 @@
       }
       checkout = {
         kind: 'error',
-        message: hasMessage(body)
-          ? body.message
-          : 'We could not start the payment. Please try again.',
+        message: hasMessage(body) ? body.message : t.checkoutError,
       };
       if (res.status === 422 && hasMessage(body) && /expired/i.test(body.message))
         void fetchQuote();
     } catch {
-      checkout = { kind: 'error', message: 'Network error. Please try again.' };
+      checkout = { kind: 'error', message: t.networkError };
     }
   };
   const cancelled = $derived(data.cancelled);
@@ -124,11 +130,9 @@
       if (res.status === 200 && isQuote(body)) quote = { kind: 'ready', quote: body };
       else if (res.status === 422 && hasMessage(body))
         quote = { kind: 'unavailable', message: body.message };
-      else
-        quote = { kind: 'error', message: 'We could not price this right now. Please try again.' };
+      else quote = { kind: 'error', message: t.priceError };
     } catch {
-      if (mine === quoteAttempt)
-        quote = { kind: 'error', message: 'Network error. Please try again.' };
+      if (mine === quoteAttempt) quote = { kind: 'error', message: t.networkError };
     }
   };
 
@@ -150,7 +154,7 @@
     } else if (res.status === 422 && hasMessage(body)) {
       printfile = { kind: 'unavailable', message: body.message };
     } else {
-      printfile = { kind: 'error', message: 'The design app did not answer. Please try again.' };
+      printfile = { kind: 'error', message: t.engineError };
     }
   };
 
@@ -166,8 +170,7 @@
       });
       await apply(res, mine);
     } catch {
-      if (mine === attempt)
-        printfile = { kind: 'error', message: 'Network error. Please try again.' };
+      if (mine === attempt) printfile = { kind: 'error', message: t.networkError };
     }
   };
 
@@ -177,46 +180,60 @@
       const res = await fetch(`${base}?offer=${offerSlug}&variant=${variantKey}`);
       await apply(res, mine);
     } catch {
-      if (mine === attempt)
-        printfile = { kind: 'error', message: 'Network error. Please try again.' };
+      if (mine === attempt) printfile = { kind: 'error', message: t.networkError };
     }
   };
 </script>
 
 <svelte:head>
-  <title>{design.title ?? 'Your design'} · Order a print</title>
+  <title>{t.tabTitle(design.title ?? t.fallbackTitle)}</title>
 </svelte:head>
 
 <main class="design">
   <figure class="preview">
-    <img src={design.previewUrl} alt={design.title ?? 'Your design'} />
+    {#if engineMockup}
+      <img
+        src={engineMockup}
+        alt={t.previewAlt(design.title ?? t.fallbackTitle)}
+        data-mockup="engine"
+      />
+      <figcaption>{t.mockupEngine}</figcaption>
+    {:else if variant?.imageUrl}
+      <div class="overlay" data-mockup="overlay">
+        <img src={variant.imageUrl} alt={variant.label} class="product" />
+        <img
+          src={design.previewUrl}
+          alt={t.previewAlt(design.title ?? t.fallbackTitle)}
+          class="placed"
+          style="aspect-ratio: {overlayAspect};"
+        />
+      </div>
+      <figcaption>{t.mockupOverlay}</figcaption>
+    {:else}
+      <img src={design.previewUrl} alt={design.title ?? t.fallbackTitle} data-mockup="preview" />
+    {/if}
   </figure>
 
   <section class="details">
     {#if data.page.storefront.demo}
-      <p class="demo" data-demo>
-        Demo shop: nothing is charged and nothing is printed. At checkout, pay with the test card
-        <code>{data.page.storefront.demo.testCard}</code>, any future expiry and any CVC.
-      </p>
+      <p class="demo" data-demo>{t.demoBanner(data.page.storefront.demo.testCard)}</p>
     {/if}
-    <h1>{design.title ?? 'Your design'}</h1>
+    <h1>{design.title ?? t.fallbackTitle}</h1>
     {#if cancelled}
-      <p class="notice" data-state="cancelled">
-        Payment was cancelled. Your design is still here when you are ready.
-      </p>
+      <p class="notice" data-state="cancelled">{t.cancelled}</p>
     {/if}
 
     {#if !design.sellable}
-      <p class="notice" data-state="not-sellable">This design is no longer available to order.</p>
+      <p class="notice" data-state="not-sellable">{t.notSellable}</p>
     {:else if offers.length === 0}
-      <p class="notice" data-state="no-offers">No products currently fit this design's shape.</p>
+      <p class="notice" data-state="no-offers">{t.noOffers}</p>
     {:else}
       <ul class="offers" data-state="offers">
         {#each offers as o (o.slug)}
           <li class="offer" class:selected={o.slug === offerSlug}>
             <h2>{o.name}</h2>
             <p class="price">
-              {money(o.retailPrice.amount)} <small>excl. shipping and tax</small>
+              {money(o.retailPrice.amount)} <small>{t.exclShipping}</small>
             </p>
             <p class="variants">
               {#each o.variants as v (v.key)}
@@ -237,9 +254,9 @@
       {#if offer && variantKey}
         <div class="destination">
           <label>
-            Ship to
+            {t.shipTo}
             <select bind:value={country} onchange={() => void fetchQuote()}>
-              <option value="">Choose a country</option>
+              <option value="">{t.chooseCountry}</option>
               {#each COUNTRIES as [code, name] (code)}
                 <option value={code}>{name}</option>
               {/each}
@@ -247,11 +264,11 @@
           </label>
           {#if needsState}
             <label>
-              State / province
+              {t.stateLabel}
               <input
                 bind:value={stateCode}
                 maxlength="3"
-                placeholder="e.g. CA"
+                placeholder={t.statePlaceholder}
                 oninput={() => stateCode.length >= 2 && void fetchQuote()}
               />
             </label>
@@ -260,22 +277,23 @@
 
         <div class="quote" data-quote={quote.kind}>
           {#if quote.kind === 'loading'}
-            <p>Getting a price…</p>
+            <p>{t.pricing}</p>
           {:else if quote.kind === 'ready'}
             <dl>
               <dt>{offer.name}</dt>
               <dd>{money(quote.quote.retail)}</dd>
               <dt>
-                Shipping ({quote.quote.shippingMethod
+                {t.shipping} ({quote.quote.shippingMethod
                   .name}{#if quote.quote.shippingMethod.minDeliveryDays},
                   {quote.quote.shippingMethod.minDeliveryDays}–{quote.quote.shippingMethod
-                    .maxDeliveryDays} days{/if})
+                    .maxDeliveryDays}
+                  {t.days}{/if})
               </dt>
               <dd>{money(quote.quote.shipping)}</dd>
-              <dt class="total">Total</dt>
+              <dt class="total">{t.total}</dt>
               <dd class="total">{money(quote.quote.total)}</dd>
             </dl>
-            <p class="tax-note">Tax is calculated at payment.</p>
+            <p class="tax-note">{t.taxNote}</p>
           {:else if quote.kind === 'unavailable' || quote.kind === 'error'}
             <p class="notice">{quote.message}</p>
           {/if}
@@ -283,11 +301,9 @@
 
         <div class="printfile" data-printfile={printfile.kind}>
           {#if printfile.kind === 'preparing'}
-            <p>Preparing your print file… this can take a moment.</p>
+            <p>{t.preparing}</p>
           {:else if printfile.kind === 'ready'}
-            <p>
-              Your print file is ready ({printfile.printfile.width}×{printfile.printfile.height}).
-            </p>
+            <p>{t.ready(printfile.printfile.width, printfile.printfile.height)}</p>
             <p class="withdrawal" data-withdrawal>{data.page.storefront.withdrawalNotice}</p>
             <!-- Checkout arrives with ticket #8; until then the button only reflects readiness. -->
             <button
@@ -296,7 +312,7 @@
               disabled={quote.kind !== 'ready' || checkout.kind === 'starting'}
               onclick={() => void startCheckout()}
             >
-              {checkout.kind === 'starting' ? 'Opening payment…' : 'Continue to payment'}
+              {checkout.kind === 'starting' ? t.opening : t.continue}
             </button>
             {#if checkout.kind === 'error'}
               <p class="notice">{checkout.message}</p>
@@ -305,7 +321,8 @@
             <p class="notice">{printfile.message}</p>
           {:else if printfile.kind === 'error'}
             <p class="notice">
-              {printfile.message} <button type="button" onclick={() => void ensure()}>Retry</button>
+              {printfile.message}
+              <button type="button" onclick={() => void ensure()}>{t.retry}</button>
             </p>
           {/if}
         </div>
@@ -328,10 +345,31 @@
       grid-template-columns: 1fr;
     }
   }
+  .preview {
+    margin: 0;
+  }
   .preview img {
     width: 100%;
     height: auto;
     border-radius: 0.5rem;
+  }
+  .preview figcaption {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.4rem;
+  }
+  .overlay {
+    position: relative;
+  }
+  .overlay .placed {
+    position: absolute;
+    left: 50%;
+    top: 26%;
+    width: 38%;
+    height: auto;
+    transform: translateX(-50%);
+    object-fit: contain;
+    border-radius: 0;
   }
   .offers {
     list-style: none;
@@ -345,7 +383,7 @@
     padding: 1rem;
   }
   .offer.selected {
-    border-color: #333;
+    border-color: var(--accent, #333);
   }
   .variant {
     margin-right: 0.5rem;
@@ -356,9 +394,9 @@
     cursor: pointer;
   }
   .variant.selected {
-    background: #333;
-    color: white;
-    border-color: #333;
+    background: var(--accent, #333);
+    color: var(--accent-text, white);
+    border-color: var(--accent, #333);
   }
   .notice {
     padding: 1rem;
@@ -404,7 +442,10 @@
     padding: 0.6rem 1.2rem;
     border-radius: 0.5rem;
     border: none;
-    background: #333;
-    color: white;
+    background: var(--accent, #333);
+    color: var(--accent-text, white);
+  }
+  .continue:disabled {
+    opacity: 0.5;
   }
 </style>

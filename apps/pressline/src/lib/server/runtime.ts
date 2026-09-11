@@ -14,6 +14,7 @@ import { demoFulfilmentProvider } from './services/demo';
 import { layerFulfilmentProviderMemory, layerPspMemory } from './services/memory';
 import { layerPrintful } from './services/printful';
 import { layerStripe } from './services/stripe';
+import { e2eConfig, e2eServices } from './e2e/seed';
 
 /**
  * Secrets and platform settings (ADR-0014): validated like any other boundary.
@@ -31,6 +32,8 @@ const Env = Schema.Struct({
   OPERATOR_TOKEN: Schema.optional(Schema.NonEmptyString),
   SESSION_SECRET: Schema.optional(Schema.NonEmptyString),
   CRON_SECRET: Schema.optional(Schema.NonEmptyString),
+  /** Playwright run: memory services seeded from `e2e/seed.ts`. Never set this on a real deployment. */
+  PRESSLINE_E2E: Schema.optional(Schema.Literal('1')),
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),
@@ -48,8 +51,15 @@ export const engineSecretVar = (slug: string) =>
  */
 let cached: WebHandler | undefined;
 
+const isE2E = () => process.env['PRESSLINE_E2E'] === '1';
+/** The config this process runs with: the Operator's file, or the e2e seed's when Playwright drives it. */
+const effectiveConfig = () => (isE2E() ? { ...rawConfig, ...e2eConfig } : rawConfig);
+
+/** For page loaders that need config outside the Effect runtime (branding). */
+export const currentConfig = () => effectiveConfig();
+
 /** Demo Mode makes the Operator View public (reads only); the page guard steps aside. */
-export const isDemo = (): boolean => rawConfig.demo ?? false;
+export const isDemo = (): boolean => effectiveConfig().demo ?? false;
 
 /** The cookie-signing secret, for the SvelteKit guard (same source as the runtime). */
 export const operatorSessionSecret = (platform: App.Platform | undefined): string => {
@@ -140,6 +150,27 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     Layer.tapErrorCause((c) => Effect.logError('boot failed', c)),
   );
 
-  cached = makeWebHandler(services);
+  cached = makeWebHandler(
+    env.PRESSLINE_E2E === '1'
+      ? Layer.mergeAll(
+          Config.layer(effectiveConfig()),
+          OperatorSecretsLive,
+          Layer.succeed(InstanceFacts, {
+            mailer: 'none',
+            secrets: {
+              printful: false,
+              stripe: false,
+              stripeWebhook: false,
+              printfulWebhook: false,
+              resend: false,
+              sessionSecret: false,
+              cron: false,
+            },
+          }),
+          layerSqliteMigrated(env.DATABASE_PATH),
+          e2eServices,
+        )
+      : services,
+  );
   return cached;
 };

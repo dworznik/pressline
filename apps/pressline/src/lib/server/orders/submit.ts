@@ -7,6 +7,7 @@ import {
   type ProviderOrder,
 } from '../services/fulfilment-provider';
 import { attachProviderOrder, findOrder, transition, type Order } from './orders';
+import { toProviderRecipient } from './recipient';
 import type { Cause } from './state';
 
 /** Backoff for retryable provider errors within one submit attempt. */
@@ -146,17 +147,7 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
         provider.createOrderDraft({
           externalId: order.id,
           shippingMethod: order.shippingMethod.id,
-          recipient: {
-            name: order.recipient.name,
-            address1: order.recipient.address1,
-            ...(order.recipient.address2 ? { address2: order.recipient.address2 } : {}),
-            city: order.recipient.city,
-            ...(order.recipient.state ? { stateCode: order.recipient.state } : {}),
-            countryCode: order.recipient.country,
-            ...(order.recipient.zip ? { zip: order.recipient.zip } : {}),
-            email: order.recipient.email,
-            ...(order.recipient.phone ? { phone: order.recipient.phone } : {}),
-          },
+          recipient: toProviderRecipient(order.recipient),
           item: {
             catalogVariantId,
             placement: offer.placement,

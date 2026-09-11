@@ -15,7 +15,9 @@ import {
 import { submitOrder, type SubmitOutcome } from '../orders/submit';
 import { ensurePrintfile } from '../printfile/ensure';
 import { makeQuote } from '../quote/quote';
-import { FulfilmentProvider, type ProviderRecipient } from '../services/fulfilment-provider';
+import { FulfilmentProvider } from '../services/fulfilment-provider';
+import { Psp } from '../services/psp';
+import { toProviderRecipient } from '../orders/recipient';
 import { OrderDetail, orderDetail } from './read';
 
 /**
@@ -53,19 +55,11 @@ export type ActionResult = typeof ActionResult.Type;
 const describe = (o: SubmitOutcome) =>
   `submit: ${o.outcome}${'reason' in o ? ` (${o.reason})` : ''}${'providerOrderId' in o ? ` provider order ${o.providerOrderId}` : ''}`;
 
-const toProviderRecipient = (r: Recipient): ProviderRecipient => ({
-  name: r.name,
-  address1: r.address1,
-  ...(r.address2 ? { address2: r.address2 } : {}),
-  city: r.city,
-  ...(r.state ? { stateCode: r.state } : {}),
-  countryCode: r.country,
-  ...(r.zip ? { zip: r.zip } : {}),
-  email: r.email,
-  ...(r.phone ? { phone: r.phone } : {}),
-});
-
 const refuse = (message: string) => new ActionRefused({ message });
+
+/** A webhook or another Operator moved the Order between our read and our write. */
+const movedMeanwhile = (e: { readonly _tag: string; readonly from?: string }) =>
+  refuse(`${e._tag}: the Order moved to ${e.from ?? '?'} meanwhile; check it and try again`);
 
 /** A manual Order: quote → ensure the Printfile → `checkout_open` → `paid` (outside) → submit. */
 export const createManualOrder = (req: CreateOrderRequest) =>
@@ -154,9 +148,7 @@ export const resubmit = (orderId: string, note = 'resubmitted by the Operator') 
         .confirmOrder(order.providerOrderId)
         .pipe(Effect.mapError((e) => refuse(`provider refused: ${e.message}`)));
       yield* transition(orderId, 'submitted', CAUSE, order.providerOrderId, { note }).pipe(
-        Effect.mapError((e) =>
-          refuse(`${e._tag}: the Order moved to ${'from' in e ? e.from : '?'} meanwhile`),
-        ),
+        Effect.mapError(movedMeanwhile),
       );
       return {
         detail: yield* orderDetail(orderId),
@@ -183,13 +175,15 @@ export const fixAddress = (orderId: string, recipient: Recipient) =>
         `the Order was quoted for ${order.country}; a different country needs a new Order`,
       );
     }
-    yield* updateRecipient(orderId, recipient);
+    // Provider first: if it refuses, the ledger is untouched. The new Recipient
+    // then rides on the resubmit's Transition, so the change has a Cause.
     if (order.providerOrderId) {
       const provider = yield* FulfilmentProvider;
       yield* provider
         .updateOrderRecipient(order.providerOrderId, toProviderRecipient(recipient))
         .pipe(Effect.mapError((e) => refuse(`provider refused the new address: ${e.message}`)));
     }
+    yield* updateRecipient(orderId, recipient);
     return yield* resubmit(orderId, 'address corrected by the Operator');
   });
 
@@ -211,6 +205,18 @@ export const cancel = (orderId: string) =>
       'cancel',
     );
     let atProvider = 'no provider order';
+    if (order.state === 'checkout_open' && order.psp.sessionId) {
+      // A Customer mid-payment must not be able to pay for a cancelled Order.
+      const psp = yield* Psp;
+      yield* psp
+        .expireCheckoutSession(order.psp.sessionId)
+        .pipe(
+          Effect.mapError((e) =>
+            refuse(`PSP: could not expire the checkout session: ${e.message}`),
+          ),
+        );
+      atProvider = 'checkout session expired at the PSP';
+    }
     if (order.providerOrderId) {
       const provider = yield* FulfilmentProvider;
       const result = yield* provider
@@ -223,11 +229,7 @@ export const cancel = (orderId: string) =>
     }
     yield* transition(orderId, 'cancelled', CAUSE, order.providerOrderId, {
       note: atProvider,
-    }).pipe(
-      Effect.mapError((e) =>
-        refuse(`${e._tag}: the Order moved to ${'from' in e ? e.from : '?'} meanwhile`),
-      ),
-    );
+    }).pipe(Effect.mapError(movedMeanwhile));
     return {
       detail: yield* orderDetail(orderId),
       outcome: `${atProvider}; no refund was made (refund in the PSP dashboard if due)`,

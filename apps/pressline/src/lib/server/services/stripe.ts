@@ -150,6 +150,9 @@ export const makeStripe = (options: StripeOptions) =>
           }),
         ),
 
+      expireCheckoutSession: (id) =>
+        call(() => stripe.checkout.sessions.expire(id)).pipe(Effect.asVoid),
+
       registerWebhook: (url) =>
         Effect.gen(function* () {
           const list = yield* call(() => stripe.webhookEndpoints.list({ limit: 100 }));

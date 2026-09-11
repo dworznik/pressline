@@ -619,8 +619,8 @@ export const makePrintful = (options: PrintfulOptions) =>
           Effect.flatMap((res) =>
             res.status >= 200 && res.status < 300
               ? Effect.succeed('cancelled' as const)
-              : // Printful refuses to delete an order it has started on (409/400); that is an answer, not a failure.
-                res.status === 409 || res.status === 400
+              : // Printful refuses to delete an order it has started on (409); that is an answer, not a failure.
+                res.status === 409
                 ? Effect.succeed('not_cancellable' as const)
                 : failStatus(res),
           ),

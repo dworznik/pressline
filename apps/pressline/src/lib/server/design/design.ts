@@ -63,6 +63,9 @@ export const loadDesign = (engine: string, designId: string) =>
       currency: catalogue.currency,
       storefront: {
         name: config.name,
+        ...(config.branding.logoUrl ? { logoUrl: config.branding.logoUrl } : {}),
+        accent: config.branding.accent,
+        accentText: config.branding.accentText,
         ...(config.demo ? { demo: { testCard: STRIPE_TEST_CARD } } : {}),
         withdrawalNotice: config.legal.withdrawalNotice,
         ...(config.legal.termsUrl ? { termsUrl: config.legal.termsUrl } : {}),

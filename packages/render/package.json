@@ -1,0 +1,61 @@
+{
+  "name": "@pressline/render",
+  "version": "0.1.0",
+  "description": "Render helper for Pressline Engines: fit, pad and stamp an image into a print-ready PNG for a Printfile Spec, on Node (sharp) or in a Worker (WASM)",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dworznik/pressline",
+    "directory": "packages/render"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/backends/node.d.ts",
+      "import": "./dist/backends/node.js"
+    },
+    "./wasm": {
+      "types": "./dist/backends/wasm.d.ts",
+      "import": "./dist/backends/wasm.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@pressline/contract": "workspace:*",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "sharp": "^0.35.4"
+  },
+  "peerDependenciesMeta": {
+    "@resvg/resvg-wasm": {
+      "optional": true
+    },
+    "sharp": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@jsquash/jpeg": "^1.6.0",
+    "@jsquash/png": "^3.1.1",
+    "@jsquash/resize": "^2.1.1"
+  },
+  "devDependencies": {
+    "@pressline/contract": "workspace:*",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "sharp": "^0.35.4",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  }
+}

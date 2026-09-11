@@ -1,4 +1,4 @@
-import { pickAdapter } from './adapter.js';
+import { pickAdapter } from '../../deploy/adapter.js';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 /** @type {import('@sveltejs/kit').Config} */

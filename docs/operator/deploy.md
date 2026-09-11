@@ -8,7 +8,7 @@ One deployable per platform (ADR-0012); `PRESSLINE_ADAPTER` picks the build (`cl
 | Ledger (ADR-0008) | D1, bound as `DB`                                              | Turso (libSQL) via `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` |
 | Migrations        | at the first request per isolate, race-guarded                 | same                                                         |
 | Reconciliation    | Cron Trigger → the Worker's `scheduled` export                 | Vercel Cron → `GET /api/cron/reconcile` with `CRON_SECRET`   |
-| Manifest          | `deploy/cloudflare/wrangler.toml` + `worker.ts`                | `apps/pressline/vercel.json`                                 |
+| Manifest          | repo-root `wrangler.toml` + `deploy/cloudflare/worker.ts`      | `apps/pressline/vercel.json`                                 |
 | Sample Engine     | `apps/sample-engine/deploy/wrangler.toml` (R2, WASM rendering) | `apps/sample-engine/vercel.json` (Blob, sharp)               |
 
 Anywhere else: `PRESSLINE_ADAPTER=node pnpm --filter pressline build` and run `build/index.js` with `DATABASE_PATH` pointing at a SQLite file; schedule `POST /api/operator/reconcile` with the operator token.

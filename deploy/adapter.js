@@ -7,12 +7,13 @@ import vercel from '@sveltejs/adapter-vercel';
  * One deployable per platform (ADR-0012). `PRESSLINE_ADAPTER` picks the
  * adapter at build time: `cloudflare`, `vercel`, `node`, or (default) `auto`,
  * which detects Cloudflare Pages and Vercel from their build environments.
- * The deploy templates set it explicitly.
+ * The deploy templates set it explicitly. Shared by both apps (ADR-0013: deploy/
+ * points at apps/*), so the adapters are root devDependencies.
  */
 export const pickAdapter = () => {
   switch (process.env['PRESSLINE_ADAPTER']) {
     case 'cloudflare':
-      return cloudflare({ config: process.env['WRANGLER_CONFIG'] });
+      return cloudflare();
     case 'vercel':
       // Node runtime, not Edge: the SQLite drivers and Stripe's SDK need it (ticket #24).
       return vercel({ runtime: 'nodejs22.x' });

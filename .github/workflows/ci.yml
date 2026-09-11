@@ -50,8 +50,9 @@ jobs:
       - run: pnpm --filter pressline --filter pressline-sample-engine build
         env:
           PRESSLINE_ADAPTER: ${{ matrix.adapter }}
-      # The Cloudflare bundle must not carry the native SQLite driver (ADR-0008).
-      - run: '! grep -rl better-sqlite3 apps/pressline/.svelte-kit/cloudflare/_worker.js'
+      # The Cloudflare bundle must not carry the native SQLite driver (ADR-0008): the
+      # adapter's _worker.js only re-exports the server output, so look at the chunks.
+      - run: '! grep -rl better-sqlite3 apps/pressline/.svelte-kit/output/server'
         if: matrix.adapter == 'cloudflare'
 
   e2e:

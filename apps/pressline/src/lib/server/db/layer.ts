@@ -11,8 +11,14 @@ export const layerDbMigrated = <E>(driver: Layer.Layer<Db, E | DbError>) =>
  * us the binding, libSQL when a Turso URL is set, else a SQLite file through
  * better-sqlite3, which only a Node bundle carries.
  */
+export interface DbEnv {
+  readonly DATABASE_PATH?: string | undefined;
+  readonly TURSO_DATABASE_URL?: string | undefined;
+  readonly TURSO_AUTH_TOKEN?: string | undefined;
+}
+
 export const layerDbForPlatform = async (
-  env: Record<string, unknown>,
+  env: DbEnv,
   platform: App.Platform | undefined,
 ): Promise<Layer.Layer<Db, DbError>> => {
   const d1 = platform?.env?.DB;
@@ -20,20 +26,22 @@ export const layerDbForPlatform = async (
     const { layerSqliteD1 } = await import('./sqlite-d1');
     return layerDbMigrated(layerSqliteD1(d1));
   }
-  const url = env['TURSO_DATABASE_URL'];
-  if (typeof url === 'string' && url.length > 0) {
-    const token = env['TURSO_AUTH_TOKEN'];
+  if (env.TURSO_DATABASE_URL) {
     const { layerSqliteLibsql } = await import('./sqlite-libsql');
     return layerDbMigrated(
-      layerSqliteLibsql({ url, ...(typeof token === 'string' ? { authToken: token } : {}) }),
+      layerSqliteLibsql({
+        url: env.TURSO_DATABASE_URL,
+        ...(env.TURSO_AUTH_TOKEN ? { authToken: env.TURSO_AUTH_TOKEN } : {}),
+      }),
     );
   }
+  // A platform bundle without its database is a misconfiguration, not a reason to open a local file.
   if (__PRESSLINE_ADAPTER__ === 'cloudflare') {
-    throw new Error('No database: bind D1 as `DB` in wrangler.toml (deploy/cloudflare)');
+    throw new Error('No database: bind D1 as `DB` in wrangler.toml');
   }
-  const path = env['DATABASE_PATH'];
+  if (__PRESSLINE_ADAPTER__ === 'vercel') {
+    throw new Error('No database: attach Turso so TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are set');
+  }
   const { layerSqliteNode } = await import('./sqlite-node');
-  return layerDbMigrated(
-    layerSqliteNode(typeof path === 'string' && path ? path : './pressline.db'),
-  );
+  return layerDbMigrated(layerSqliteNode(env.DATABASE_PATH ?? './pressline.db'));
 };

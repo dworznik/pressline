@@ -1,0 +1,8 @@
+# Read by adapter-cloudflare at build time only (deploy/adapter.js passes it
+# explicitly). Without it wrangler's find-up would reach the repo-root
+# wrangler.toml and the adapter would write SvelteKit's worker over its `main`.
+name = "pressline"
+main = ".svelte-kit/cloudflare/_worker.js"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+assets = { directory = ".svelte-kit/cloudflare", binding = "ASSETS" }

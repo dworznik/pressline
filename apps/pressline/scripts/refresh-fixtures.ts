@@ -28,7 +28,8 @@ const recordingFetch =
     const req = new Request(input, init);
     const res = await fetch(req);
     const key = name(req);
-    if (key && res.headers.get('content-type')?.includes('json')) {
+    // Only successes are worth replaying; a 4xx must never replace a good fixture.
+    if (key && res.ok && res.headers.get('content-type')?.includes('json')) {
       recorded.set(key, await res.clone().json());
     }
     return res;
@@ -37,7 +38,10 @@ const recordingFetch =
 const printfulName = (req: Request) => {
   const u = new URL(req.url);
   if (u.hostname !== 'api.printful.com') return undefined;
-  return `printful/${u.pathname.replace(/^\/v2\//, '').replaceAll('/', '_')}${req.method === 'GET' ? '' : `.${req.method.toLowerCase()}`}`;
+  const key = u.pathname.replace(/^\/v2\//, '').replaceAll('/', '_');
+  // The replaying stub keys by path; a method suffix only where GET and POST share one (`webhooks`).
+  const shared = key === 'webhooks';
+  return `printful/${key}${shared && req.method !== 'GET' ? `.${req.method.toLowerCase()}` : ''}`;
 };
 
 const printful = Effect.gen(function* () {
@@ -105,8 +109,16 @@ for (const [name, body] of recorded) {
   mkdirSync(resolve(file, '..'), { recursive: true });
   const masked = JSON.stringify(
     body,
-    (k, v) =>
-      typeof v === 'string' && /^(cs_test_|pi_|whsec_|acct_)/.test(v) ? `${v.slice(0, 8)}…` : v,
+    (k, v) => {
+      if (typeof v !== 'string') return v;
+      // Session ids also travel inside Stripe's hosted-page URL; the account's webhook URL is nobody's business.
+      if (/^(cs_test_|pi_|whsec_|acct_)/.test(v)) return `${v.slice(0, 8)}…`;
+      if (/cs_test_[A-Za-z0-9]+/.test(v)) return v.replace(/cs_test_[A-Za-z0-9]+/g, 'cs_test_…');
+      if (k === 'default_url' || (k === 'url' && v.includes('/webhooks/'))) {
+        return 'https://example.invalid/webhooks/printful';
+      }
+      return v;
+    },
     2,
   );
   writeFileSync(file, `${masked}\n`);

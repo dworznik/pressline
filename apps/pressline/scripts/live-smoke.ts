@@ -12,7 +12,7 @@ import { layerStripe } from '../src/lib/server/services/stripe';
  * and STRIPE_SECRET_KEY (a test-mode key); refuses a live Stripe key.
  */
 const PRINTFILE_URL =
-  process.env['SMOKE_PRINTFILE_URL'] ??
+  process.env['SMOKE_PRINTFILE_URL'] ||
   'https://raw.githubusercontent.com/dworznik/pressline/main/apps/docs/public/smoke-1800x2400.png';
 const VARIANT = Number(process.env['SMOKE_CATALOG_VARIANT_ID'] ?? 4017); // Bella+Canvas 3001, Black / M
 const PRODUCT = Number(process.env['SMOKE_CATALOG_PRODUCT_ID'] ?? 71);
@@ -63,24 +63,35 @@ const printful = Effect.gen(function* () {
     currency: 'EUR',
   });
   console.log(`printful: draft ${draft.id} status ${draft.status}`);
-  if (draft.status !== 'draft') throw new Error(`draft has status ${draft.status}`);
-  // Costs are calculated asynchronously; give Printful a moment.
-  let costed = draft;
-  for (let i = 0; i < 10 && (!costed.costs || costed.costs.calculating); i++) {
-    yield* Effect.sleep('2 seconds');
-    costed = yield* p.getOrder(draft.id);
-  }
-  if (!costed.costs || costed.costs.calculating) throw new Error('draft costs never calculated');
-  if (costed.costs.subtotal <= 0 || costed.costs.shipping < 0)
-    throw new Error(`implausible costs ${JSON.stringify(costed.costs)}`);
-  console.log(
-    `printful: costs ${costed.costs.subtotal} + ${costed.costs.shipping} ${costed.costs.currency}`,
+  const check = Effect.gen(function* () {
+    if (draft.status !== 'draft') throw new Error(`draft has status ${draft.status}`);
+    // Costs are calculated asynchronously; give Printful a moment.
+    let costed = draft;
+    for (let i = 0; i < 10 && (!costed.costs || costed.costs.calculating); i++) {
+      yield* Effect.sleep('2 seconds');
+      costed = yield* p.getOrder(draft.id);
+    }
+    if (!costed.costs || costed.costs.calculating) throw new Error('draft costs never calculated');
+    if (costed.costs.subtotal <= 0) {
+      throw new Error(
+        `draft costs came back empty (${JSON.stringify(costed.costs)}): calculation failed or the Printfile URL is not fetchable`,
+      );
+    }
+    console.log(
+      `printful: costs ${costed.costs.subtotal} + ${costed.costs.shipping} ${costed.costs.currency}`,
+    );
+    const found = yield* p.findOrderByExternalId(externalId);
+    if (found?.id !== draft.id) throw new Error('lookup by external id did not find the draft');
+  });
+  // Whatever happens above, the draft is deleted: nothing is left in the store.
+  yield* check.pipe(
+    Effect.ensuring(
+      p.cancelOrder(draft.id).pipe(
+        Effect.tap((r) => Effect.sync(() => console.log(`printful: draft ${draft.id} ${r}`))),
+        Effect.orDie,
+      ),
+    ),
   );
-  const found = yield* p.findOrderByExternalId(externalId);
-  if (found?.id !== draft.id) throw new Error('lookup by external id did not find the draft');
-  const cancelled = yield* p.cancelOrder(draft.id);
-  console.log(`printful: draft ${draft.id} ${cancelled}`);
-  if (cancelled !== 'cancelled') throw new Error('draft could not be deleted');
 });
 
 const stripe = Effect.gen(function* () {

@@ -100,9 +100,6 @@ importers:
         specifier: ^22.6.2
         version: 22.6.2(@types/node@22.20.2)
     devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^5.20260911.1
-        version: 5.20260911.1
       '@effect/platform-node':
         specifier: ^0.108.2
         version: 0.108.2(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)
@@ -173,9 +170,6 @@ importers:
         specifier: ^0.35.4
         version: 0.35.4(@types/node@22.20.2)
     devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^5.20260911.1
-        version: 5.20260911.1
       '@pressline/conformance':
         specifier: workspace:*
         version: link:../../packages/conformance

@@ -46,3 +46,21 @@ describe('GET /api/health', () => {
     expect((await app.fetch('/api/nope')).status).toBe(404);
   });
 });
+
+describe('OpenAPI', () => {
+  it('describes itself at /api/openapi.json', async () => {
+    const app = await makeTestApp();
+    try {
+      const { status, body } = await app.json<{ openapi: string; paths: Record<string, unknown> }>(
+        '/api/openapi.json',
+      );
+      expect(status).toBe(200);
+      expect(body.openapi).toMatch(/^3\./);
+      expect(Object.keys(body.paths)).toEqual(
+        expect.arrayContaining(['/api/offers', '/api/checkout', '/api/operator/orders']),
+      );
+    } finally {
+      await app.dispose();
+    }
+  });
+});

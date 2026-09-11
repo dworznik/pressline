@@ -68,9 +68,6 @@ importers:
       astro:
         specifier: ^7.3.2
         version: 7.3.2(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@24.13.4)(@vercel/blob@2.8.0)(tsx@4.23.13)(yaml@2.9.0)
-      sharp:
-        specifier: ^0.35.4
-        version: 0.35.4(@types/node@24.13.4)
     devDependencies:
       '@astrojs/check':
         specifier: ^0.9.6
@@ -7734,6 +7731,7 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.4
       '@img/sharp-win32-x64': 0.35.4
       '@types/node': 24.13.4
+    optional: true
 
   shebang-command@2.0.0:
     dependencies:

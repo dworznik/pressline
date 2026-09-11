@@ -9,7 +9,7 @@ Pressline's server is [Effect](https://effect.website) throughout. What you meet
 - **Services** are `Context.Tag`s (`Db`, `Psp`, `FulfilmentProvider`, `Mailer`, `DesignSource`, `Config`); **Layers** build them. Tests provide in-memory layers; production provides adapters. The web handler is built once from a `Layer` of services.
 - **Errors** are `Schema.TaggedError` classes; the HTTP layer maps each to a status. `Effect.either` when you want to inspect a failure; `Effect.orDie` for infrastructure faults that are bugs, not outcomes.
 - **Schema** validates every boundary: config, env, API bodies, database rows, provider wire shapes.
-- **HttpApi**: endpoints are declared once (`api.ts`), implemented by groups, served by `HttpApiBuilder.toWebHandler`, and the same declaration derives the typed client, the OpenAPI document, and the Engine contract.
+- **HttpApi**: endpoints are declared once (`api.ts`), implemented by groups, served by `HttpApiBuilder.toWebHandler`, and the same declaration produces the OpenAPI document. The Engine-facing contract is its own `HttpApi` in `@pressline/contract`, from which the Engine client is derived.
 - **Clock**: time comes from Effect's `Clock`, so tests advance it.
 
 Read `docs/adr/0011-effect-throughout.md` for why.

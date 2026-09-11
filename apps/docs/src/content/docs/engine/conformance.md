@@ -18,4 +18,4 @@ npx @pressline/conformance https://engine.example --secret $ENGINE_SECRET --desi
 Conformant.
 ```
 
-The `printfile` check is Pressline's own validator from `@pressline/contract`, so what passes here passes in production. `--timeout` raises the wait for slow renderers; `--any-shape` skips the 422 check for Engines that pad any Spec. As a test helper, `conformance({ baseUrl, secret, designId, fetch })` returns the same report for an in-process handler; the sample Engine's test suite is exactly that.
+The `printfile` check is Pressline's own validator from `@pressline/contract`, so what passes here passes in production. `--dpi` sets the Spec's DPI (default 150); `--timeout` raises the wait for slow renderers; `--any-shape` skips the 422 check for Engines that pad any Spec. As a test helper, `conformance({ baseUrl, secret, designId, fetch })` returns the same report for an in-process handler; the sample Engine's test suite is exactly that.

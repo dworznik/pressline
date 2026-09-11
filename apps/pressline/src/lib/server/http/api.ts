@@ -16,6 +16,16 @@ import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
 import { OperatorAuth, Unauthorized } from '../operator/auth';
 import { InstanceHealth, OrderDetail, OrderList, OrderListQuery } from '../operator/read';
 import { ReconciliationReport } from '../reconciliation/run';
+import {
+  CatalogueCheckResult,
+  CatalogueSearchQuery,
+  CatalogueSearchResult,
+  PrintfileCheckRequest,
+  PrintfileCheckResult,
+  ToolError,
+  WebhookRegisterRequest,
+  WebhookRegisterResult,
+} from '../operator/tools';
 import { ProviderWebhookRejected } from '../services/fulfilment-provider';
 import { WebhookRejected } from '../services/psp';
 import { ProviderWebhookProcessingFailed } from '../webhooks/printful';
@@ -237,7 +247,32 @@ export const OperatorGroup = HttpApiGroup.make('operator')
       .addError(OrderNotFound, { status: 404 }),
   )
   .add(
-    HttpApiEndpoint.post('reconcile', '/api/operator/reconcile').addSuccess(ReconciliationReport),
+    HttpApiEndpoint.post('reconcile', '/api/operator/reconcile')
+      .setUrlParams(Schema.Struct({ dryRun: Schema.optional(Schema.Literal('true', 'false')) }))
+      .addSuccess(ReconciliationReport),
+  )
+  .add(
+    HttpApiEndpoint.get('catalogueSearch', '/api/operator/catalogue/search')
+      .setUrlParams(CatalogueSearchQuery)
+      .addSuccess(CatalogueSearchResult)
+      .addError(CatalogueUnavailable, { status: 502 }),
+  )
+  .add(
+    HttpApiEndpoint.get('catalogueCheck', '/api/operator/catalogue/check').addSuccess(
+      CatalogueCheckResult,
+    ),
+  )
+  .add(
+    HttpApiEndpoint.post('webhooksRegister', '/api/operator/webhooks/register')
+      .setPayload(WebhookRegisterRequest)
+      .addSuccess(WebhookRegisterResult)
+      .addError(ToolError, { status: 422 }),
+  )
+  .add(
+    HttpApiEndpoint.post('printfileCheck', '/api/operator/printfile/check')
+      .setPayload(PrintfileCheckRequest)
+      .addSuccess(PrintfileCheckResult)
+      .addError(ToolError, { status: 422 }),
   )
   .add(
     HttpApiEndpoint.get('reconciliation', '/api/operator/reconciliation/latest').addSuccess(

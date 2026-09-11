@@ -200,7 +200,12 @@ describe('Reconciliation repairs', () => {
     app.setProviderOrderStatus(providerOrderId, 'inprocess');
     let report = await reconcile(app);
     expect(report.steps.providerCatchUp).toMatchObject({ checked: 1, repaired: 1 });
-    expect((await detail(app, orderId)).order.state).toBe('in_production');
+    const moved = await detail(app, orderId);
+    expect(moved.order.state).toBe('in_production');
+    expect(moved.transitions.at(-1)).toMatchObject({
+      to: 'in_production',
+      cause: 'reconciliation',
+    });
 
     app.setProviderOrderStatus(providerOrderId, 'onhold');
     report = await reconcile(app);
@@ -247,7 +252,7 @@ describe('Reconciliation repairs', () => {
     ).toHaveLength(1);
   });
 
-  it('does not record a refund on an Order the provider already has; it alarms instead', async () => {
+  it('records a refund after submission and tells the Operator to cancel at the provider', async () => {
     app = await boot();
     const { orderId, session } = await checkout(app);
     await pay(app, session, 'pi_late_refund');
@@ -257,10 +262,33 @@ describe('Reconciliation repairs', () => {
       {
         kind: 'refund',
         orderId,
-        message: 'refund of 3479 seen while submitted; not recorded (state machine)',
+        message:
+          'refund of 3479 recorded while submitted: cancel it at the provider if it has not shipped',
       },
     ]);
-    expect((await detail(app, orderId)).order.state).toBe('submitted');
+    expect((await detail(app, orderId)).order.state).toBe('refunded');
+    // Recorded once: the next night is quiet.
+    expect((await reconcile(app)).alarms).toEqual([]);
+  });
+
+  it('a dry run reports what it would do and changes nothing', async () => {
+    app = await boot({ createRetryableFailures: 4 });
+    const { orderId, session } = await checkout(app);
+    await pay(app, session);
+    app.advanceClock('20 minutes');
+    const dry = await app.json<ReconciliationReport>('/api/operator/reconcile?dryRun=true', {
+      method: 'POST',
+      headers: bearer,
+    });
+    expect(dry.body.dryRun).toBe(true);
+    expect(dry.body.steps.stuckPaid).toMatchObject({ checked: 1, repaired: 0 });
+    expect(dry.body.steps.stuckPaid?.notes[0]).toMatch(/would submit/);
+    expect((await detail(app, orderId)).order.state).toBe('paid');
+    const latest = await app.json<ReconciliationReport | null>(
+      '/api/operator/reconciliation/latest',
+      { headers: bearer },
+    );
+    expect(latest.body).toBeNull();
   });
 
   it('retries failed emails and reprocesses an Inbound Event whose claim lapsed', async () => {
@@ -277,17 +305,19 @@ describe('Reconciliation repairs', () => {
   });
 
   it('reports Engines that are down and a Catalogue that no longer resolves', async () => {
+    const gone = { ...offers[0]!, slug: 'tee-gone', catalogProductId: 999 };
     app = await makeTestApp({
-      config: { catalogue: { offers }, email: { operator: 'ops@shop.example' } },
+      config: { catalogue: { offers: [...offers, gone] }, email: { operator: 'ops@shop.example' } },
       catalog,
       engines: { engines: { sample: { designs: {}, down: true } } },
     });
     const report = await reconcile(app);
-    expect(report.alarms.map((a) => a.kind)).toEqual(['engine_disabled']);
+    expect(report.alarms.map((a) => a.kind)).toEqual(['engine_disabled', 'catalogue']);
+    expect(report.alarms[1]?.message).toContain('tee-gone');
     expect(report.steps.engines).toMatchObject({ checked: 1 });
     const mail = await app.sentMail();
     expect(mail).toHaveLength(1);
-    expect(mail[0]?.subject).toContain('1 thing needs attention');
+    expect(mail[0]?.subject).toContain('2 things need attention');
   });
 });
 

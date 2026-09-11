@@ -2,7 +2,7 @@ import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer, Schema } from 'effect';
 import rawConfig from '../../../pressline.config';
 import { Config } from './config/schema';
-import { MailerKind } from './http/operator';
+import { InstanceFacts } from './operator/instance';
 import { OperatorSecrets } from './operator/auth';
 import { layerSqliteMigrated } from './db/layer';
 import { makeWebHandler, type WebHandler } from './http/handler';
@@ -107,7 +107,18 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   const services = Layer.mergeAll(
     Config.layer(rawConfig),
     OperatorSecretsLive,
-    Layer.succeed(MailerKind, mailerKind),
+    Layer.succeed(InstanceFacts, {
+      mailer: mailerKind,
+      secrets: {
+        printful: !!env.PRINTFUL_TOKEN,
+        stripe: !!env.STRIPE_SECRET_KEY,
+        stripeWebhook: !!env.STRIPE_WEBHOOK_SECRET,
+        printfulWebhook: !!env.PRINTFUL_WEBHOOK_SECRET,
+        resend: !!env.RESEND_API_KEY,
+        sessionSecret: !!env.SESSION_SECRET,
+        cron: !!env.CRON_SECRET,
+      },
+    }),
     layerSqliteMigrated(env.DATABASE_PATH),
     layerDesignSourceHttp(engines),
     FulfilmentProviderLive,

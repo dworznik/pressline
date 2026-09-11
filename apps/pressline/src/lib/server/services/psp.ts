@@ -113,6 +113,14 @@ export interface PspService {
   ) => Effect.Effect<PspWebhookEvent, WebhookRejected>;
   /** Read an already-verified body again (Reconciliation replays stored Inbound Events). */
   readonly parseWebhook: (rawBody: string) => Effect.Effect<PspWebhookEvent, WebhookRejected>;
+  /** Create (or confirm) the webhook endpoint at `url`; the signing secret is only revealed on creation. */
+  readonly registerWebhook: (url: string) => Effect.Effect<PspWebhookRegistration, PspError>;
+}
+
+export interface PspWebhookRegistration {
+  readonly status: 'created' | 'verified';
+  readonly url: string;
+  readonly secret?: string;
 }
 
 export class Psp extends Context.Tag('pressline/Psp')<Psp, PspService>() {}

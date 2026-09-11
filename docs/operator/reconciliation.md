@@ -23,6 +23,6 @@ Set `email.operator` in `pressline.config.ts`. A run with Alarms emails that add
 
 ## Scheduling
 
-- **Vercel**: `vercel.json` declares a cron for `GET /api/cron/reconcile`; Vercel sends `Authorization: Bearer $CRON_SECRET`. Set `CRON_SECRET` in the project's environment.
-- **Cloudflare**: a Cron Trigger calls the Worker's `scheduled` export, which runs the same entry in-process. No secret needed.
-- **Anywhere else**: `POST /api/operator/reconcile` with the operator bearer token, or `pressline reconcile` from the CLI.
+- **Vercel**: point a cron at `GET /api/cron/reconcile`; Vercel sends `Authorization: Bearer $CRON_SECRET`, so set `CRON_SECRET` in the project's environment. The Vercel deploy template (#24) ships the `vercel.json` entry.
+- **Cloudflare**: a Cron Trigger invokes the Worker's `scheduled` export, which runs the same entry in-process; the Cloudflare deploy template (#23) wires it. No secret needed.
+- **Anywhere else**: `POST /api/operator/reconcile` with the operator bearer token, or `pressline reconcile` from the CLI (`--dry-run` to see what a run would do without changing anything).

@@ -6,7 +6,7 @@ import { Clock, Duration, Effect, type Exit, Layer, ManagedRuntime } from 'effec
 import { Config, type PresslineConfigSchema } from '$lib/server/config/schema';
 import { layerSqliteMigrated } from '$lib/server/db/layer';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
-import { MailerKind } from '$lib/server/http/operator';
+import { InstanceFacts } from '$lib/server/operator/instance';
 import { OperatorSecrets } from '$lib/server/operator/auth';
 import type { ProviderOrder, ProviderShipment } from '$lib/server/services/fulfilment-provider';
 import type { Email } from '$lib/server/services/mailer';
@@ -197,7 +197,18 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
       sessionSecret: 'session-secret-for-tests',
       cronSecret: CRON_SECRET,
     }),
-    Layer.succeed(MailerKind, 'memory'),
+    Layer.succeed(InstanceFacts, {
+      mailer: 'memory',
+      secrets: {
+        printful: true,
+        stripe: true,
+        stripeWebhook: true,
+        printfulWebhook: true,
+        resend: false,
+        sessionSecret: true,
+        cron: true,
+      },
+    }),
     layerSqliteMigrated(dbPath),
     designSource.layer,
     provider.layer,

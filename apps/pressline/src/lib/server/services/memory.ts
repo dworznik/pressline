@@ -218,6 +218,7 @@ export const makePspMemory = Effect.gen(function* () {
   const details = new Map<string, CheckoutSessionDetails>();
   const payments = new Map<string, PaymentStatus>();
   let down = false;
+  let pspWebhookUrl = 'https://pressline.test/webhooks/stripe';
   const layer = Layer.succeed(Psp, {
     health: () => Effect.void,
     getPaymentStatus: (paymentIntentId) =>
@@ -230,8 +231,12 @@ export const makePspMemory = Effect.gen(function* () {
               disputed: false,
             },
           ),
-    getWebhookStatus: () =>
-      Effect.succeed({ configured: true, url: 'https://pressline.test/webhooks/stripe' }),
+    getWebhookStatus: () => Effect.succeed({ configured: true, url: pspWebhookUrl }),
+    registerWebhook: (url) => {
+      if (url === pspWebhookUrl) return Effect.succeed({ status: 'verified' as const, url });
+      pspWebhookUrl = url;
+      return Effect.succeed({ status: 'created' as const, url, secret: 'whsec_memory' });
+    },
     createCheckoutSession: (input) =>
       down
         ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
@@ -364,6 +369,7 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
   Effect.map(Ref.make(0), (calls) => {
     const providerOrders = new Map<string, ProviderOrder>();
     const shipments = new Map<string, ReadonlyArray<ProviderShipment>>();
+    let providerWebhookUrl = 'https://pressline.test/webhooks/printful';
     let createFailuresLeft = catalog.orders?.createRetryableFailures ?? 0;
     let confirmFailuresLeft = catalog.orders?.confirmRetryableFailures ?? 0;
     const counted = <A>(what: string, id: number, item: A | undefined) =>
@@ -373,8 +379,21 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
     return {
       layer: Layer.succeed(FulfilmentProvider, {
         health: () => Effect.void,
-        getWebhookStatus: () =>
-          Effect.succeed({ configured: true, url: 'https://pressline.test/webhooks/printful' }),
+        getWebhookStatus: () => Effect.succeed({ configured: true, url: providerWebhookUrl }),
+        registerWebhook: (url) => {
+          if (url === providerWebhookUrl)
+            return Effect.succeed({ status: 'verified' as const, url });
+          providerWebhookUrl = url;
+          return Effect.succeed({
+            status: 'created' as const,
+            url,
+            secret: '6d656d6f7279',
+            publicKey: 'memory-public-key',
+          });
+        },
+        listCatalogProducts: () => Effect.succeed(catalog.products),
+        listCatalogVariants: (productId) =>
+          Effect.succeed(catalog.variants.filter((v) => v.catalogProductId === productId)),
         getCatalogProduct: (id) =>
           counted(
             'catalog product',

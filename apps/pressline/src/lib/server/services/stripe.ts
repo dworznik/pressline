@@ -85,6 +85,14 @@ const toPspError = (e: unknown): PspError => {
   return new PspError({ message: `Stripe: ${String(e)}`, retryable: true });
 };
 
+/** The events the webhook handler acts on (webhooks/stripe.ts); the endpoint subscribes to exactly these. */
+export const STRIPE_WEBHOOK_EVENTS = [
+  'checkout.session.completed',
+  'checkout.session.async_payment_succeeded',
+  'checkout.session.async_payment_failed',
+  'checkout.session.expired',
+] as const;
+
 const toWebhookEvent = (event: Stripe.Event): PspWebhookEvent => {
   const object = event.data.object as { object?: string; id?: string };
   return {
@@ -142,6 +150,25 @@ export const makeStripe = (options: StripeOptions) =>
                 };
           }),
         ),
+
+      registerWebhook: (url) =>
+        Effect.gen(function* () {
+          const list = yield* call(() => stripe.webhookEndpoints.list({ limit: 100 }));
+          const existing = list.data.find((w) => w.url === url && w.status === 'enabled');
+          if (existing) return { status: 'verified' as const, url };
+          const created = yield* call(() =>
+            stripe.webhookEndpoints.create({
+              url,
+              enabled_events: [...STRIPE_WEBHOOK_EVENTS],
+              description: 'Pressline',
+            }),
+          );
+          return {
+            status: 'created' as const,
+            url,
+            ...(created.secret ? { secret: created.secret } : {}),
+          };
+        }),
 
       createCheckoutSession: (input: CheckoutSessionInput) =>
         call(() =>

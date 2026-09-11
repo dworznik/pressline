@@ -99,6 +99,54 @@ const readPrefix = (stream: Stream.Stream<Uint8Array, unknown>, limit: number) =
     ),
   );
 
+export const PrintfileInspection = Schema.Struct({
+  status: Schema.Int,
+  contentType: Schema.String,
+  bytes: Schema.optional(Schema.Int),
+  header: Schema.optional(
+    Schema.Struct({
+      format: Schema.Literal('png', 'jpeg'),
+      width: Schema.Int,
+      height: Schema.Int,
+      hasAlpha: Schema.Boolean,
+    }),
+  ),
+});
+export type PrintfileInspection = typeof PrintfileInspection.Type;
+
+/** What one ranged GET says about a file: status, served type, size, and the parsed header if any. */
+export const inspectPrintfile = (
+  url: string,
+): Effect.Effect<PrintfileInspection, PrintfileInvalid, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+    const response = yield* client
+      .execute(
+        HttpClientRequest.get(url).pipe(
+          HttpClientRequest.setHeader('Range', `bytes=0-${HEADER_BYTES - 1}`),
+        ),
+      )
+      .pipe(
+        Effect.timeout(Duration.seconds(10)),
+        Effect.mapError((e) => fail('unreachable', `could not fetch ${url}: ${e.message}`)),
+      );
+    const contentType = (response.headers['content-type'] ?? '').split(';')[0]!.trim();
+    const total =
+      response.status === 206
+        ? Number(/\/(\d+)$/.exec(response.headers['content-range'] ?? '')?.[1])
+        : Number(response.headers['content-length']);
+    const prefix = yield* readPrefix(response.stream, HEADER_BYTES).pipe(
+      Effect.mapError((e) => fail('unreachable', `could not read ${url}: ${String(e)}`)),
+    );
+    const header = parseImageHeader(prefix);
+    return {
+      status: response.status,
+      contentType,
+      ...(Number.isFinite(total) && total > 0 ? { bytes: total } : {}),
+      ...(header ? { header } : {}),
+    };
+  }).pipe(Effect.scoped);
+
 /**
  * Validate the Engine's answer against the Spec. `expectedSpecHash` is what
  * Pressline computed; the Engine must echo it (ADR-0005).

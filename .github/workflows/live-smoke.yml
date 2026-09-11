@@ -18,6 +18,9 @@ jobs:
   smoke:
     if: github.repository == 'dworznik/pressline'
     runs-on: ubuntu-latest
+    env:
+      # `secrets` cannot appear in an `if`; a job env may read them, and a step `if` may read env.
+      SMOKE_ENABLED: ${{ secrets.PRINTFUL_TOKEN != '' && secrets.STRIPE_TEST_SECRET_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -29,7 +32,7 @@ jobs:
       - run: pnpm --filter @pressline/contract build
       - name: Live smoke
         id: smoke
-        if: ${{ secrets.PRINTFUL_TOKEN != '' && secrets.STRIPE_TEST_SECRET_KEY != '' }}
+        if: env.SMOKE_ENABLED == 'true'
         env:
           PRINTFUL_TOKEN: ${{ secrets.PRINTFUL_TOKEN }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}

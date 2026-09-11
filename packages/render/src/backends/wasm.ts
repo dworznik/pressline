@@ -45,7 +45,7 @@ export const createWasmBackend = async (options: WasmBackendOptions): Promise<Ba
   let resvg: typeof ResvgModule | undefined;
   if (options.modules.resvg) {
     resvg = await import('@resvg/resvg-wasm');
-    // resvg's initWasm may run once per isolate; later backends share the instance.
+    // resvg's initWasm may run once per isolate: the first module wins and later backends share it.
     resvgReady ??= resvg.initWasm(await toModule(options.modules.resvg));
     await resvgReady;
   }
@@ -64,10 +64,14 @@ export const createWasmBackend = async (options: WasmBackendOptions): Promise<Ba
       throw new RenderError('could not decode the input', { cause: e });
     }
   };
-  const svgToRgba = (svg: string, width: number): Rgba => {
+  const svgToRgba = (svg: string, width: number, height: number): Rgba => {
     if (!resvg) throw new RenderError('SVG input needs the resvg module');
     try {
-      const r = new resvg.Resvg(svg, { fitTo: { mode: 'width', value: width } });
+      // Constrain the axis the layout constrained, so rounding cannot leave a one-pixel mismatch to resample.
+      const r = new resvg.Resvg(svg, {
+        fitTo:
+          width >= height ? { mode: 'width', value: width } : { mode: 'height', value: height },
+      });
       const out = r.render();
       const data = new Uint8ClampedArray(
         out.pixels.buffer,
@@ -85,17 +89,23 @@ export const createWasmBackend = async (options: WasmBackendOptions): Promise<Ba
     defaultMaxRawBytes: options.maxRawBytes ?? DEFAULT_WASM_BUDGET,
     size: async (input) => {
       if (input.kind === 'raster') {
+        // Only reached for a header the cheap probe could not read: decode to find out.
         const img = await decode(input.bytes);
         return { width: img.width, height: img.height };
       }
       if (!resvg) throw new RenderError('SVG input needs the resvg module');
-      const r = new resvg.Resvg(input.svg);
-      const size = { width: r.width, height: r.height };
-      r.free();
-      return size;
+      try {
+        const r = new resvg.Resvg(input.svg);
+        const size = { width: r.width, height: r.height };
+        r.free();
+        return size;
+      } catch (e) {
+        throw new RenderError('could not read the SVG', { cause: e });
+      }
     },
     rasterize: async (input, width, height) => {
-      const src = input.kind === 'svg' ? svgToRgba(input.svg, width) : await decode(input.bytes);
+      const src =
+        input.kind === 'svg' ? svgToRgba(input.svg, width, height) : await decode(input.bytes);
       if (src.width === width && src.height === height) return src;
       const out = await resize(
         { width: src.width, height: src.height, data: src.data } as ImageData,

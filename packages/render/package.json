@@ -31,10 +31,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build"
   },
   "peerDependencies": {
-    "@pressline/contract": "workspace:*",
+    "@pressline/contract": "workspace:^",
     "@resvg/resvg-wasm": "^2.6.2",
     "sharp": "^0.35.4"
   },

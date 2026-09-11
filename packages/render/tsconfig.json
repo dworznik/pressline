@@ -1,5 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@pressline/contract": ["../contract/src/index.ts"]
+    }
+  },
   "include": ["src", "tests", "vitest.config.ts"]
 }

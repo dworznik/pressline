@@ -37,12 +37,13 @@ const EDGES: Readonly<Record<OrderState, ReadonlyArray<OrderState>>> = {
   checkout_open: ['expired', 'paid', 'cancelled'],
   paid: ['submitted', 'submit_failed', 'cancelled', 'refunded'],
   submit_failed: ['submitted', 'cancelled'],
-  submitted: ['in_production', 'on_hold', 'shipped', 'fulfilled', 'cancelled'],
-  on_hold: ['submitted', 'in_production', 'cancelled'],
-  in_production: ['shipped', 'fulfilled', 'on_hold', 'cancelled'],
-  shipped: ['fulfilled', 'cancelled'],
+  submitted: ['in_production', 'on_hold', 'shipped', 'fulfilled', 'cancelled', 'refunded'],
+  on_hold: ['submitted', 'in_production', 'cancelled', 'refunded'],
+  in_production: ['shipped', 'fulfilled', 'on_hold', 'cancelled', 'refunded'],
+  shipped: ['fulfilled', 'cancelled', 'refunded'],
   expired: [],
-  fulfilled: [],
+  // Fulfilled is the end of fulfilment, but a goodwill refund can still be recorded after it.
+  fulfilled: ['refunded'],
   cancelled: ['refunded'],
   refunded: [],
 };

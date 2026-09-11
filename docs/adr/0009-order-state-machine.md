@@ -6,7 +6,7 @@ status: accepted
 
 An Order row is created when the Stripe Checkout session is created, so a single Pressline Order ID rides in Stripe (`client_reference_id`/metadata) and becomes Printful `external_id`; reconciliation is then a three-way join on one key rather than a heuristic match. We rejected creating the Order only on payment with a separate short-lived Checkout record (a second table with its own expiry sweep).
 
-States: `checkout_open → expired | paid`; `paid → submitted | submit_failed`; `submitted → in_production | on_hold`; `on_hold → submitted | in_production`; `in_production → shipped → fulfilled`; any non-terminal `→ cancelled`; `paid | cancelled → refunded`. Terminal: `expired`, `fulfilled`, `cancelled`, `refunded`.
+States: `checkout_open → expired | paid`; `paid → submitted | submit_failed`; `submitted → in_production | on_hold`; `on_hold → submitted | in_production`; `in_production → shipped → fulfilled`; any non-terminal `→ cancelled`; `→ refunded` from any state after payment, `fulfilled` included (amended 2026-09-11: Reconciliation records a refund wherever the Order is, since a goodwill refund after delivery is a fact the ledger must hold; it alarms the Operator to cancel at the provider when the goods have not shipped). Terminal: `expired`, `fulfilled`, `cancelled`, `refunded`.
 
 ## Considered options
 

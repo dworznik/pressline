@@ -19,10 +19,8 @@ export const load: PageServerLoad = async ({ fetch, cookies }) => {
 export const actions: Actions = {
   /** Run Reconciliation now; the page reloads with the fresh report. */
   run: async ({ fetch, cookies }) => {
-    const cookie = cookies.get(SESSION_COOKIE);
-    const res = await fetch('/api/operator/reconcile', {
+    const res = await operatorFetch(fetch, cookies.get(SESSION_COOKIE), '/api/operator/reconcile', {
       method: 'POST',
-      headers: cookie ? { cookie: `${SESSION_COOKIE}=${cookie}` } : {},
     });
     if (!res.ok) return fail(res.status === 401 ? 401 : 502, { message: 'Reconciliation failed.' });
     return { ran: true };

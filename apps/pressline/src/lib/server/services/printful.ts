@@ -112,6 +112,31 @@ const eventIdOf = (e: typeof WebhookWire.Type) =>
 
 export const DEFAULT_TIMEOUT: Duration.DurationInput = '15 seconds';
 
+const CATALOG_PAGE = 100;
+
+/** Order and shipment events the webhook handler acts on (webhooks/printful.ts). */
+export const PRINTFUL_WEBHOOK_EVENTS = [
+  'order_created',
+  'order_updated',
+  'order_failed',
+  'order_canceled',
+  'order_put_hold',
+  'order_remove_hold',
+  'shipment_sent',
+  'shipment_returned',
+  'shipment_delivered',
+  'shipment_canceled',
+] as const;
+
+const WebhookInfoWire = Schema.Struct({
+  default_url: Schema.optional(Schema.NullOr(Schema.String)),
+  events: Schema.optional(
+    Schema.Array(
+      Schema.Struct({ type: Schema.String, url: Schema.optional(Schema.NullOr(Schema.String)) }),
+    ),
+  ),
+});
+
 const Envelope = <A, I>(data: Schema.Schema<A, I>) => Schema.Struct({ data });
 
 const ProductWire = Schema.Struct({
@@ -135,6 +160,21 @@ const VariantWire = Schema.Struct({
       orientation: Schema.optional(Schema.String),
     }),
   ),
+});
+
+const toCatalogVariant = (data: typeof VariantWire.Type): CatalogVariant => ({
+  id: data.id,
+  catalogProductId: data.catalog_product_id,
+  name: data.name,
+  ...(data.size ? { size: data.size } : {}),
+  ...(data.color ? { color: data.color } : {}),
+  ...(data.image ? { imageUrl: data.image } : {}),
+  placementDimensions: data.placement_dimensions.map((d) => ({
+    placement: d.placement,
+    widthIn: d.width,
+    heightIn: d.height,
+    orientation: d.orientation ?? 'any',
+  })),
 });
 
 const MockupStyleWire = Schema.Struct({
@@ -619,21 +659,72 @@ export const makePrintful = (options: PrintfulOptions) =>
 
       getCatalogVariant: (id) =>
         get(`/v2/catalog-variants/${id}`, Envelope(VariantWire)).pipe(
-          Effect.map(({ data }): CatalogVariant => ({
-            id: data.id,
-            catalogProductId: data.catalog_product_id,
-            name: data.name,
-            ...(data.size ? { size: data.size } : {}),
-            ...(data.color ? { color: data.color } : {}),
-            ...(data.image ? { imageUrl: data.image } : {}),
-            placementDimensions: data.placement_dimensions.map((d) => ({
-              placement: d.placement,
-              widthIn: d.width,
-              heightIn: d.height,
-              orientation: d.orientation ?? 'any',
-            })),
-          })),
+          Effect.map(({ data }) => toCatalogVariant(data)),
         ),
+
+      listCatalogProducts: () =>
+        Effect.gen(function* () {
+          const all: CatalogProduct[] = [];
+          for (let offset = 0; ; offset += CATALOG_PAGE) {
+            const { data } = yield* get(
+              `/v2/catalog-products?limit=${CATALOG_PAGE}&offset=${offset}`,
+              Envelope(Schema.Array(ProductWire)),
+            );
+            for (const p of data) {
+              all.push({
+                id: p.id,
+                name: p.name,
+                printMethods: p.placements.map((pl) => ({
+                  placement: pl.placement,
+                  technique: pl.technique,
+                })),
+              });
+            }
+            if (data.length < CATALOG_PAGE) return all;
+          }
+        }),
+
+      listCatalogVariants: (productId) =>
+        get(
+          `/v2/catalog-products/${productId}/catalog-variants?limit=100`,
+          Envelope(Schema.Array(VariantWire)),
+        ).pipe(Effect.map(({ data }) => data.map(toCatalogVariant))),
+
+      registerWebhook: (url) =>
+        Effect.gen(function* () {
+          const current = yield* get('/v2/webhooks', Envelope(WebhookInfoWire)).pipe(
+            Effect.map(({ data }) => data),
+            Effect.catchIf(
+              (e) => e.status === 404,
+              () => Effect.succeed(undefined),
+            ),
+          );
+          const configuredTypes = new Set(current?.events?.map((e) => e.type) ?? []);
+          const verified =
+            current?.default_url === url &&
+            PRINTFUL_WEBHOOK_EVENTS.every((t) => configuredTypes.has(t));
+          if (verified) return { status: 'verified' as const, url };
+          const { data } = yield* post(
+            '/v2/webhooks',
+            {
+              default_url: url,
+              expires_at: null,
+              events: PRINTFUL_WEBHOOK_EVENTS.map((type) => ({ type })),
+            },
+            Envelope(
+              Schema.Struct({
+                secret_key: Schema.optional(Schema.String),
+                public_key: Schema.optional(Schema.String),
+              }),
+            ),
+          );
+          return {
+            status: 'created' as const,
+            url,
+            ...(data.secret_key ? { secret: data.secret_key } : {}),
+            ...(data.public_key ? { publicKey: data.public_key } : {}),
+          };
+        }),
 
       getPlacementPrintAreas: (productId) =>
         get(

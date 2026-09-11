@@ -15,6 +15,7 @@ export default defineConfig({
       $lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
       '@pressline/contract': new URL('../../packages/contract/src/index.ts', import.meta.url)
         .pathname,
+      '@pressline/cli': new URL('../../packages/cli/src/index.ts', import.meta.url).pathname,
     },
   },
 });

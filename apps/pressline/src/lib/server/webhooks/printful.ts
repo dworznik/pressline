@@ -10,7 +10,7 @@ import {
   type Order,
   type OrderPatch,
 } from '../orders/orders';
-import type { OrderState } from '../orders/state';
+import type { Cause, OrderState } from '../orders/state';
 import {
   FulfilmentProvider,
   ProviderWebhookRejected,
@@ -60,8 +60,14 @@ export const stateFor = (status: ProviderOrder['status']): OrderState | undefine
   }
 };
 
-const recordTransition = (order: Order, to: OrderState, ref: string, patch: OrderPatch = {}) =>
-  transition(order.id, to, 'printful_webhook', ref, patch).pipe(
+const recordTransition = (
+  order: Order,
+  to: OrderState,
+  ref: string,
+  patch: OrderPatch = {},
+  cause: Cause = 'printful_webhook',
+) =>
+  transition(order.id, to, cause, ref, patch).pipe(
     Effect.flatMap(() =>
       // Shipped email (ticket #12): once, never blocking.
       to === 'shipped' || to === 'fulfilled'
@@ -104,6 +110,7 @@ const resolveOrder = (event: ProviderWebhookEvent) =>
 
 export const applyPrintfulEvent = (
   event: ProviderWebhookEvent,
+  cause: Cause = 'printful_webhook',
 ): Effect.Effect<
   Result,
   ProviderWebhookProcessingFailed,
@@ -151,10 +158,10 @@ export const applyPrintfulEvent = (
         target === 'in_production' &&
         tracking
       ) {
-        return yield* recordTransition(order, 'shipped', event.id, patch);
+        return yield* recordTransition(order, 'shipped', event.id, patch, cause);
       }
     }
-    return yield* recordTransition(order, target, event.id, patch);
+    return yield* recordTransition(order, target, event.id, patch, cause);
   });
 
 /** Deliveries older than this (or from the future) are rejected: a signed body must not be replayable forever. */

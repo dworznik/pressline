@@ -1,0 +1,39 @@
+{
+  "name": "@pressline/cli",
+  "version": "0.1.0",
+  "description": "Operator CLI for a Pressline instance: doctor, catalogue search and check, webhooks register, orders, reconcile, printfile check",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dworznik/pressline",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "pressline": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.77.1",
+    "@effect/platform": "^0.97.2",
+    "@effect/platform-node": "^0.108.2",
+    "effect": "^3.22.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

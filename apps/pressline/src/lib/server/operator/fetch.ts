@@ -5,6 +5,7 @@ export const operatorFetch = (
   fetch: typeof globalThis.fetch,
   cookie: string | undefined,
   path: string,
-) => fetch(path, { headers: cookie ? { cookie: `${SESSION_COOKIE}=${cookie}` } : {} });
+  init: { method?: string } = {},
+) => fetch(path, { ...init, headers: cookie ? { cookie: `${SESSION_COOKIE}=${cookie}` } : {} });
 
 export { SESSION_COOKIE };

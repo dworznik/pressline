@@ -231,6 +231,30 @@ export interface FulfilmentProviderService {
   readonly getPlacementPrintAreas: (
     productId: number,
   ) => Effect.Effect<ReadonlyArray<PlacementPrintArea>, FulfilmentProviderError>;
+  /** The whole provider catalogue (every page); the CLI searches it by name. */
+  readonly listCatalogProducts: () => Effect.Effect<
+    ReadonlyArray<CatalogProduct>,
+    FulfilmentProviderError
+  >;
+  readonly listCatalogVariants: (
+    productId: number,
+  ) => Effect.Effect<ReadonlyArray<CatalogVariant>, FulfilmentProviderError>;
+  /**
+   * Point the provider's webhooks at `url` for the events Pressline handles.
+   * The signing secret is only revealed when a configuration is created.
+   */
+  readonly registerWebhook: (
+    url: string,
+  ) => Effect.Effect<WebhookRegistration, FulfilmentProviderError>;
+}
+
+export interface WebhookRegistration {
+  readonly status: 'created' | 'verified';
+  readonly url: string;
+  /** Present only when created: the Operator must store it as the webhook secret. */
+  readonly secret?: string;
+  /** Provider-specific second credential (Printful's public key), when created. */
+  readonly publicKey?: string;
 }
 
 export class FulfilmentProvider extends Context.Tag('pressline/FulfilmentProvider')<

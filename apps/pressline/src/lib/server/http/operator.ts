@@ -1,14 +1,19 @@
 import { HttpApiBuilder } from '@effect/platform';
-import { Clock, Context, Effect } from 'effect';
+import { Clock, Effect } from 'effect';
 import { OperatorPrincipal, OperatorSecrets, Unauthorized } from '../operator/auth';
+import { InstanceFacts } from '../operator/instance';
 import { instanceHealth, orderDetail, orderList } from '../operator/read';
+import {
+  catalogueCheck,
+  catalogueSearch,
+  printfileCheck,
+  webhooksRegister,
+} from '../operator/tools';
+import { CatalogueUnavailable } from './api';
 import { SESSION_TTL_MS, signSession } from '../operator/session';
 import { latestReport, runReconciliation } from '../reconciliation/run';
 import { timingSafeEqual } from '../security';
 import { PresslineApi } from './api';
-
-/** Which Mailer is wired, for the health page (set by the runtime; tests get "memory"). */
-export class MailerKind extends Context.Tag('pressline/MailerKind')<MailerKind, string>() {}
 
 export const OperatorLive = HttpApiBuilder.group(PresslineApi, 'operator', (handlers) =>
   handlers
@@ -25,10 +30,20 @@ export const OperatorLive = HttpApiBuilder.group(PresslineApi, 'operator', (hand
         return { cookie: yield* signSession(secrets.sessionSecret, expiresAt), expiresAt };
       }),
     )
-    .handle('health', () => Effect.flatMap(MailerKind, (kind) => instanceHealth(kind)))
+    .handle('health', () => Effect.flatMap(InstanceFacts, instanceHealth))
     .handle('orders', ({ urlParams }) => orderList(urlParams))
     .handle('order', ({ path }) => orderDetail(path.id))
-    .handle('reconcile', () => runReconciliation('operator'))
+    .handle('reconcile', ({ urlParams }) =>
+      runReconciliation('operator', { dryRun: urlParams.dryRun === 'true' }),
+    )
+    .handle('catalogueSearch', ({ urlParams }) =>
+      catalogueSearch(urlParams.q).pipe(
+        Effect.mapError((e) => new CatalogueUnavailable({ message: e.message })),
+      ),
+    )
+    .handle('catalogueCheck', () => catalogueCheck)
+    .handle('webhooksRegister', ({ payload }) => webhooksRegister(payload.publicUrl))
+    .handle('printfileCheck', ({ payload }) => printfileCheck(payload))
     .handle('reconciliation', () => latestReport.pipe(Effect.map((r) => r ?? null))),
 );
 

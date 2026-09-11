@@ -10,6 +10,10 @@ export default {
     adapter: adapter(),
     // Resolve the contract package from source inside the monorepo so dev,
     // check and tests need no prior build of packages/contract.
-    alias: { '@pressline/contract': '../../packages/contract/src/index.ts' },
+    alias: {
+      '@pressline/contract': '../../packages/contract/src/index.ts',
+      // Tests drive the CLI against the in-process harness (ticket #16); the app itself never imports it.
+      '@pressline/cli': '../../packages/cli/src/index.ts',
+    },
   },
 };

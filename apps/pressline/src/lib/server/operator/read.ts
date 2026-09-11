@@ -9,6 +9,7 @@ import { OrderState } from '../orders/state';
 import { FulfilmentProvider } from '../services/fulfilment-provider';
 import { Psp } from '../services/psp';
 import { Config } from '../config/schema';
+import type { InstanceFactsValue } from './instance';
 
 /**
  * Operator read model (ticket #14, ADR-0014): everything the Operator View
@@ -74,6 +75,16 @@ export const InstanceHealth = Schema.Struct({
     offers: Schema.Number,
     demo: Schema.Boolean,
     mailer: Schema.String,
+  }),
+  /** Which secrets the runtime found; names are the env vars' meaning, not their values. */
+  secrets: Schema.Struct({
+    printful: Schema.Boolean,
+    stripe: Schema.Boolean,
+    stripeWebhook: Schema.Boolean,
+    printfulWebhook: Schema.Boolean,
+    resend: Schema.Boolean,
+    sessionSecret: Schema.Boolean,
+    cron: Schema.Boolean,
   }),
   schema: Schema.Struct({ version: Schema.Int, latest: Schema.Int }),
   counts: Schema.Record({ key: Schema.String, value: Schema.Int }),
@@ -162,7 +173,7 @@ const countsByState = Effect.gen(function* () {
   return Object.fromEntries(rows.map((r) => [r.state, r.n]));
 }).pipe(Effect.orDie);
 
-export const instanceHealth = (mailer: string) =>
+export const instanceHealth = (facts: InstanceFactsValue) =>
   Effect.gen(function* () {
     const config = yield* Config;
     const engines = yield* Effect.flatMap(Engines, (e) => e.all);
@@ -189,8 +200,9 @@ export const instanceHealth = (mailer: string) =>
         currency: config.currency,
         offers: config.catalogue.offers.length,
         demo: config.demo,
-        mailer,
+        mailer: facts.mailer,
       },
+      secrets: facts.secrets,
       schema: { version, latest: migrations.length },
       counts: yield* countsByState,
     };

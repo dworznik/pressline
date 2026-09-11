@@ -44,7 +44,7 @@ const alphaFor = (technique: string): PrintfileSpec['alpha'] =>
 
 /** Derive the Printfile Spec: print area inches × DPI, rounded to whole pixels. */
 export const deriveSpec = (
-  offer: OfferConfig,
+  offer: Pick<OfferConfig, 'slug' | 'placement' | 'technique'>,
   variant: CatalogVariant,
   area: PlacementPrintArea,
 ): Effect.Effect<PrintfileSpec, CatalogueError> => {

@@ -141,7 +141,7 @@ The read-only, authenticated pages where the Operator inspects Orders, Transitio
 _Avoid_: Admin, dashboard, back office, settings
 
 **Alarm**:
-A Reconciliation finding that needs the Operator: an Order stuck in `paid`, `submit_failed` or `on_hold`, a refund or dispute, or an Engine failing its health check. Alarms are emailed to the Operator; quiet nights send nothing.
+A Reconciliation finding that needs the Operator: an Order stuck in `paid`, `submit_failed` or `on_hold`, a refund or dispute, an Engine failing its health check, an Offer that no longer resolves, or a Customer email that keeps failing. Alarms are emailed to the Operator; quiet nights send nothing.
 _Avoid_: Alert, notification, warning
 
 **Demo Mode**:

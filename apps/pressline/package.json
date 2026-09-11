@@ -19,6 +19,8 @@
     "stripe": "^22.6.2"
   },
   "devDependencies": {
+    "@effect/platform-node": "^0.108.2",
+    "@pressline/cli": "workspace:*",
     "@sveltejs/adapter-auto": "^7.0.1",
     "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",

@@ -13,7 +13,8 @@ import { DesignsLive } from './designs';
 import { HealthLive } from './health';
 import { PrintfilesLive } from './printfiles';
 import { OperatorAuthLive, type OperatorSecrets } from '../operator/auth';
-import { CronLive, OperatorLive, type MailerKind } from './operator';
+import type { InstanceFacts } from '../operator/instance';
+import { CronLive, OperatorLive } from './operator';
 import { OrdersLive } from './orders';
 import { QuotesLive } from './quotes';
 import { WebhooksLive } from './webhooks';
@@ -28,7 +29,7 @@ export type Services =
   | Mailer
   | HttpClient.HttpClient
   | OperatorSecrets
-  | MailerKind;
+  | InstanceFacts;
 
 /**
  * Build the web-standard `(Request) => Promise<Response>` for the whole API

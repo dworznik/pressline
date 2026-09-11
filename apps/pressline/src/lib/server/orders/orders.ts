@@ -217,7 +217,9 @@ export const findOrderByProviderOrder = (providerOrderId: string) =>
     return rows[0] ? yield* fromRow(rows[0]) : undefined;
   });
 
-export const listOrders = (options: { state?: OrderState; limit?: number; before?: string } = {}) =>
+export const listOrders = (
+  options: { state?: OrderState; limit?: number; before?: string; updatedAfter?: number } = {},
+) =>
   Effect.gen(function* () {
     const db = yield* Db;
     const where: string[] = [];
@@ -229,6 +231,10 @@ export const listOrders = (options: { state?: OrderState; limit?: number; before
     if (options.before) {
       where.push('id < ?'); // UUIDv7 sorts by creation time
       params.push(options.before);
+    }
+    if (options.updatedAfter !== undefined) {
+      where.push('updated_at > ?');
+      params.push(options.updatedAfter);
     }
     const sql = `${SELECT}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
     const rows = yield* db.all<Row>(sql, [...params, options.limit ?? 100]);

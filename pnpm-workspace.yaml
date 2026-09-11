@@ -12,6 +12,7 @@ allowBuilds:
   fsevents: false
   core-js: false
   msgpackr-extract: false
+  '@parcel/watcher': false
 
 minimumReleaseAgeExclude:
   - lint-staged@17.5.1

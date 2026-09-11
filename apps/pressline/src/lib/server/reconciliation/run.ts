@@ -1,22 +1,22 @@
 import { Clock, Effect, Schema } from 'effect';
-import { resolveCatalogue } from '../catalogue/catalogue';
 import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { Engines } from '../design/engines';
 import { listUnsentEmails, sendOrderEmail } from '../emails/send';
+import { catalogueCheck } from '../operator/tools';
 import { listOrders, transition, type Order } from '../orders/orders';
 import { submitOrder } from '../orders/submit';
+import type { DesignSource } from '../services/design-source';
 import { FulfilmentProvider } from '../services/fulfilment-provider';
 import { Mailer } from '../services/mailer';
 import { Psp } from '../services/psp';
 import {
-  receive,
   listUnprocessed,
+  receive,
   release,
   settle,
   type InboundOutcome,
 } from '../webhooks/inbound';
-import type { DesignSource } from '../services/design-source';
 import { applyPrintfulEvent, stateFor } from '../webhooks/printful';
 import { applyPaid, applyStripeEvent } from '../webhooks/stripe';
 
@@ -26,6 +26,7 @@ import { applyPaid, applyStripeEvent } from '../webhooks/stripe';
  * (every repair is a Transition with Cause `reconciliation`), record refunds
  * the Operator issued elsewhere, retry failed emails, re-check Engines,
  * refresh the Catalogue cache, and raise Alarms for what needs a human.
+ * A dry run counts and notes what it would repair, and repairs nothing.
  */
 export const Alarm = Schema.Struct({
   kind: Schema.Literal(
@@ -50,10 +51,14 @@ export const StepReport = Schema.Struct({
   notes: Schema.Array(Schema.String),
 });
 
+export const Trigger = Schema.Literal('operator', 'cron', 'cli');
+export type Trigger = typeof Trigger.Type;
+
 export const ReconciliationReport = Schema.Struct({
   startedAt: Schema.Int,
   finishedAt: Schema.Int,
-  trigger: Schema.String,
+  trigger: Trigger,
+  dryRun: Schema.Boolean,
   steps: Schema.Record({ key: Schema.String, value: StepReport }),
   alarms: Schema.Array(Alarm),
 });
@@ -61,98 +66,118 @@ export type ReconciliationReport = typeof ReconciliationReport.Type;
 
 export const CHECKOUT_STALE_MS = 24 * 60 * 60 * 1000;
 export const PAID_STALE_MS = 15 * 60 * 1000;
+/** How far back the refund scan looks; refunds older than this are the Operator's bookkeeping. */
+export const REFUND_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+export const EMAIL_MAX_ATTEMPTS = 5;
+const PAGE = 500;
 
-type Step = { checked: number; repaired: number; notes: string[] };
+interface Run {
+  readonly now: number;
+  readonly dryRun: boolean;
+  readonly alarms: Alarm[];
+}
+interface Step {
+  checked: number;
+  repaired: number;
+  notes: string[];
+}
 const step = (): Step => ({ checked: 0, repaired: 0, notes: [] });
 
 const olderThan = (orders: ReadonlyArray<Order>, now: number, ms: number) =>
   orders.filter((o) => now - o.updatedAt > ms);
 
 /** 1. `checkout_open` older than 24h: ask the PSP; paid → settle (missed webhook), else expire. */
-const staleCheckouts = (now: number) =>
+const staleCheckouts = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
     const psp = yield* Psp;
-    for (const order of olderThan(
-      yield* listOrders({ state: 'checkout_open', limit: 500 }),
-      now,
+    const stale = olderThan(
+      yield* listOrders({ state: 'checkout_open', limit: PAGE }),
+      run.now,
       CHECKOUT_STALE_MS,
-    )) {
+    );
+    for (const order of stale) {
       r.checked++;
       const sessionId = order.psp.sessionId;
-      if (!sessionId) {
-        yield* transition(order.id, 'expired', 'reconciliation', undefined, {
-          note: 'no PSP session',
-        }).pipe(Effect.ignore);
-        r.repaired++;
-        continue;
-      }
-      const session = yield* psp.getCheckoutSession(sessionId).pipe(Effect.either);
-      if (session._tag === 'Left') {
+      const session = sessionId
+        ? yield* psp.getCheckoutSession(sessionId).pipe(Effect.either)
+        : undefined;
+      if (session?._tag === 'Left') {
         r.notes.push(`${order.id}: PSP unavailable (${session.left.message})`);
         continue;
       }
-      if (session.right.paymentStatus !== 'unpaid') {
-        const ref = `reconcile:${sessionId}`;
+      if (session && session.right.paymentStatus !== 'unpaid') {
+        r.notes.push(`${order.id}: paid at the PSP but never told us`);
+        if (run.dryRun) continue;
         yield* applyPaid(
           order,
           session.right,
           {
-            id: ref,
+            id: `reconcile:${sessionId}`,
             type: 'checkout.session.completed',
-            created: Math.floor(now / 1000),
-            sessionId,
+            created: Math.floor(run.now / 1000),
+            sessionId: sessionId!,
           },
           'reconciliation',
         );
         r.repaired++;
-        r.notes.push(`${order.id}: paid at the PSP but never told us; settled`);
-      } else {
-        yield* transition(order.id, 'expired', 'reconciliation', sessionId, {
-          note: `session ${session.right.status}`,
-        }).pipe(Effect.ignore);
-        r.repaired++;
+        continue;
       }
+      if (run.dryRun) {
+        r.notes.push(`${order.id}: would expire`);
+        continue;
+      }
+      const moved = yield* transition(order.id, 'expired', 'reconciliation', sessionId, {
+        note: session ? `session ${session.right.status}` : 'no PSP session',
+      }).pipe(Effect.either);
+      if (moved._tag === 'Right') r.repaired++;
+      else r.notes.push(`${order.id}: could not expire (${moved.left._tag})`);
     }
     return r;
   });
 
 /** 2. `paid` older than 15 min: submit again; still paid → Alarm. */
-const stuckPaid = (now: number, alarms: Alarm[]) =>
+const stuckPaid = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
-    for (const order of olderThan(
-      yield* listOrders({ state: 'paid', limit: 500 }),
-      now,
+    const stuck = olderThan(
+      yield* listOrders({ state: 'paid', limit: PAGE }),
+      run.now,
       PAID_STALE_MS,
-    )) {
+    );
+    for (const order of stuck) {
       r.checked++;
+      const age = `paid ${Math.round((run.now - order.updatedAt) / 60000)} min ago`;
+      if (run.dryRun) {
+        r.notes.push(`${order.id}: ${age}, would submit`);
+        continue;
+      }
       const outcome = yield* submitOrder(order.id, 'reconciliation', 'reconcile');
       if (outcome.outcome === 'submitted' || outcome.outcome === 'already_submitted') r.repaired++;
       else
-        alarms.push({
+        run.alarms.push({
           kind: 'stuck_paid',
           orderId: order.id,
-          message: `paid ${Math.round((now - order.updatedAt) / 60000)} min ago, submit: ${outcome.outcome}${'reason' in outcome ? ` (${outcome.reason})` : ''}`,
+          message: `${age}, submit: ${outcome.outcome}${'reason' in outcome ? ` (${outcome.reason})` : ''}`,
         });
     }
     return r;
   });
 
 /** 3. Provider catch-up for submitted / in_production / on_hold; submit_failed and on_hold are Alarms in themselves. */
-const providerCatchUp = (alarms: Alarm[]) =>
+const providerCatchUp = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
     const provider = yield* FulfilmentProvider;
     const open = [
-      ...(yield* listOrders({ state: 'submitted', limit: 500 })),
-      ...(yield* listOrders({ state: 'in_production', limit: 500 })),
-      ...(yield* listOrders({ state: 'on_hold', limit: 500 })),
+      ...(yield* listOrders({ state: 'submitted', limit: PAGE })),
+      ...(yield* listOrders({ state: 'in_production', limit: PAGE })),
+      ...(yield* listOrders({ state: 'on_hold', limit: PAGE })),
     ];
     for (const order of open) {
       r.checked++;
       if (!order.providerOrderId) {
-        alarms.push({
+        run.alarms.push({
           kind: 'provider_status',
           orderId: order.id,
           message: `${order.state} without a provider order id`,
@@ -166,31 +191,39 @@ const providerCatchUp = (alarms: Alarm[]) =>
       }
       const target = stateFor(fetched.right.status);
       if (target && target !== order.state) {
-        // Same path as a provider webhook, with the reconciliation Cause recorded via the event id.
-        const outcome = yield* applyPrintfulEvent({
-          id: `reconcile:${order.providerOrderId}:${fetched.right.status}`,
-          type: 'order_updated',
-          occurredAt: 0,
-          providerOrderId: order.providerOrderId,
-          orderExternalId: order.id,
-        }).pipe(Effect.either);
-        if (outcome._tag === 'Right' && outcome.right.outcome === 'applied') {
-          r.repaired++;
-          r.notes.push(
-            `${order.id}: ${order.state} → ${target} (provider says ${fetched.right.status})`,
-          );
+        if (run.dryRun) {
+          r.notes.push(`${order.id}: would move ${order.state} → ${target}`);
+        } else {
+          // Same path as a provider webhook (re-fetch, shipped email), recorded with this Cause.
+          const outcome = yield* applyPrintfulEvent(
+            {
+              id: `reconcile:${order.providerOrderId}:${fetched.right.status}`,
+              type: 'order_updated',
+              occurredAt: 0,
+              providerOrderId: order.providerOrderId,
+              orderExternalId: order.id,
+            },
+            'reconciliation',
+          ).pipe(Effect.either);
+          if (outcome._tag === 'Right' && outcome.right.outcome === 'applied') {
+            r.repaired++;
+            r.notes.push(
+              `${order.id}: ${order.state} → ${target} (provider says ${fetched.right.status})`,
+            );
+          }
         }
       }
       if (fetched.right.status === 'onhold') {
-        alarms.push({
+        run.alarms.push({
           kind: 'on_hold',
           orderId: order.id,
           message: 'provider has the order on hold',
         });
       }
     }
-    for (const order of yield* listOrders({ state: 'submit_failed', limit: 500 })) {
-      alarms.push({
+    for (const order of yield* listOrders({ state: 'submit_failed', limit: PAGE })) {
+      r.checked++;
+      run.alarms.push({
         kind: 'submit_failed',
         orderId: order.id,
         message: 'submission failed; fix and resubmit',
@@ -200,70 +233,79 @@ const providerCatchUp = (alarms: Alarm[]) =>
   });
 
 /**
- * 4. Refunds and disputes seen at the PSP. `refunded` is reachable from
- * `paid` and `cancelled` only (ADR-0009): a refund on an Order the provider
- * already has is an Alarm for the Operator to cancel first, not a repair.
+ * 4. Refunds and disputes seen at the PSP within the refund window. A refund
+ * is a fact wherever the Order is (ADR-0009); it is recorded and alarmed once.
  */
-const refundsAndDisputes = (alarms: Alarm[]) =>
+const refundsAndDisputes = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
     const psp = yield* Psp;
-    const candidates = [
-      ...(yield* listOrders({ state: 'paid', limit: 500 })),
-      ...(yield* listOrders({ state: 'submitted', limit: 500 })),
-      ...(yield* listOrders({ state: 'in_production', limit: 500 })),
-      ...(yield* listOrders({ state: 'shipped', limit: 500 })),
-      ...(yield* listOrders({ state: 'fulfilled', limit: 500 })),
-      ...(yield* listOrders({ state: 'cancelled', limit: 500 })),
-    ]
-      .filter((o) => o.psp.paymentIntentId)
-      .sort((a, b) => a.id.localeCompare(b.id));
+    const updatedAfter = run.now - REFUND_WINDOW_MS;
+    const states = [
+      'paid',
+      'submitted',
+      'on_hold',
+      'in_production',
+      'shipped',
+      'fulfilled',
+      'cancelled',
+    ] as const;
+    const candidates: Order[] = [];
+    for (const state of states) {
+      candidates.push(...(yield* listOrders({ state, limit: PAGE, updatedAfter })));
+    }
+    candidates.sort((a, b) => a.id.localeCompare(b.id));
     for (const order of candidates) {
+      const paymentIntentId = order.psp.paymentIntentId;
+      if (!paymentIntentId) continue;
       r.checked++;
-      const status = yield* psp.getPaymentStatus(order.psp.paymentIntentId!).pipe(Effect.either);
+      const status = yield* psp.getPaymentStatus(paymentIntentId).pipe(Effect.either);
       if (status._tag === 'Left') {
         r.notes.push(`${order.id}: PSP unavailable (${status.left.message})`);
         continue;
       }
       if (status.right.disputed) {
-        alarms.push({
+        run.alarms.push({
           kind: 'dispute',
           orderId: order.id,
           message: 'payment is disputed at the PSP',
         });
       }
-      if (status.right.refunded) {
-        const moved = yield* transition(
-          order.id,
-          'refunded',
-          'reconciliation',
-          order.psp.paymentIntentId,
-          {
-            note: `refunded ${status.right.amountRefunded} at the PSP`,
-          },
-        ).pipe(Effect.either);
-        if (moved._tag === 'Right') r.repaired++;
-        alarms.push({
+      if (!status.right.refunded) continue;
+      const amount = status.right.amountRefunded;
+      if (run.dryRun) {
+        r.notes.push(`${order.id}: would record a refund of ${amount}`);
+        continue;
+      }
+      const moved = yield* transition(order.id, 'refunded', 'reconciliation', paymentIntentId, {
+        note: `refunded ${amount} at the PSP`,
+      }).pipe(Effect.either);
+      if (moved._tag === 'Right') {
+        r.repaired++;
+        run.alarms.push({
           kind: 'refund',
           orderId: order.id,
-          message:
-            moved._tag === 'Right'
-              ? `refund of ${status.right.amountRefunded} recorded`
-              : `refund of ${status.right.amountRefunded} seen while ${order.state}; not recorded (state machine)`,
+          message: `refund of ${amount} recorded${order.state === 'paid' || order.state === 'cancelled' ? '' : ` while ${order.state}: cancel it at the provider if it has not shipped`}`,
         });
+      } else {
+        r.notes.push(`${order.id}: refund seen but not recorded (${moved.left._tag})`);
       }
     }
     return r;
   });
 
 /** 5. Inbound Events that were never settled (a crash mid-processing, a lapsed claim). */
-const reprocessInbound = () =>
+const reprocessInbound = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
     const psp = yield* Psp;
     const provider = yield* FulfilmentProvider;
     for (const e of yield* listUnprocessed()) {
       r.checked++;
+      if (run.dryRun) {
+        r.notes.push(`${e.provider}/${e.event_id}: would replay`);
+        continue;
+      }
       const claimed = yield* receive(e.provider, e.event_id, e.event_type, e.payload);
       if (!claimed.pending) continue;
       const replay: Effect.Effect<
@@ -273,7 +315,9 @@ const reprocessInbound = () =>
       > =
         e.provider === 'stripe'
           ? psp.parseWebhook(e.payload).pipe(Effect.flatMap(applyStripeEvent))
-          : provider.parseWebhook(e.payload).pipe(Effect.flatMap(applyPrintfulEvent));
+          : provider
+              .parseWebhook(e.payload)
+              .pipe(Effect.flatMap((event) => applyPrintfulEvent(event, 'reconciliation')));
       const outcome = yield* Effect.either(replay);
       if (outcome._tag === 'Right') {
         yield* settle(e.provider, e.event_id, outcome.right.outcome, outcome.right.note);
@@ -286,16 +330,28 @@ const reprocessInbound = () =>
     return r;
   });
 
-/** 6. Emails that failed. */
-const retryEmails = (alarms: Alarm[]) =>
+/** 6. Emails that failed: retried up to the cap, alarmed every run after it. */
+const retryEmails = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
-    for (const e of yield* listUnsentEmails()) {
+    for (const e of yield* listUnsentEmails(Number.MAX_SAFE_INTEGER)) {
       r.checked++;
+      if (e.attempts >= EMAIL_MAX_ATTEMPTS) {
+        run.alarms.push({
+          kind: 'email',
+          orderId: e.orderId,
+          message: `${e.kind} email failed ${e.attempts} times; not retried`,
+        });
+        continue;
+      }
+      if (run.dryRun) {
+        r.notes.push(`${e.orderId}: would resend ${e.kind}`);
+        continue;
+      }
       const outcome = yield* sendOrderEmail(e.orderId, e.kind);
       if (outcome === 'sent' || outcome === 'already_sent') r.repaired++;
-      else if (e.attempts + 1 >= 5)
-        alarms.push({
+      else if (e.attempts + 1 >= EMAIL_MAX_ATTEMPTS)
+        run.alarms.push({
           kind: 'email',
           orderId: e.orderId,
           message: `${e.kind} email failed ${e.attempts + 1} times`,
@@ -304,15 +360,15 @@ const retryEmails = (alarms: Alarm[]) =>
     return r;
   });
 
-/** 7. Engines. */
-const engineHealth = (alarms: Alarm[]) =>
+/** 7. Engines: re-check health; a disabled Engine is an Alarm. */
+const engineHealth = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
     const statuses = yield* Effect.flatMap(Engines, (e) => e.refresh);
     for (const s of statuses) {
       r.checked++;
       if (!s.enabled)
-        alarms.push({
+        run.alarms.push({
           kind: 'engine_disabled',
           message: `engine ${s.slug}: ${s.reason ?? 'disabled'}`,
         });
@@ -320,14 +376,19 @@ const engineHealth = (alarms: Alarm[]) =>
     return r;
   });
 
-/** 8. Catalogue cache. */
-const catalogueRefresh = (alarms: Alarm[]) =>
+/** 8. Catalogue: resolve every Offer on its own (refreshing the cache); each one that fails is an Alarm. */
+const catalogueRefresh = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
-    const result = yield* resolveCatalogue.pipe(Effect.either);
-    r.checked = 1;
-    if (result._tag === 'Left') alarms.push({ kind: 'catalogue', message: result.left.message });
-    else r.notes.push(`${result.right.offers.length} offers resolved`);
+    const { offers } = yield* catalogueCheck;
+    for (const o of offers) {
+      r.checked++;
+      if (o.ok) continue;
+      run.alarms.push({
+        kind: 'catalogue',
+        message: `Offer "${o.slug}": ${o.message ?? 'does not resolve'}`,
+      });
+    }
     return r;
   });
 
@@ -356,29 +417,29 @@ export const latestReport = Effect.gen(function* () {
     : undefined;
 }).pipe(Effect.orDie);
 
+const escapeHtml = (s: string) =>
+  s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
 const alarmEmail = (report: ReconciliationReport) =>
   Effect.gen(function* () {
     const config = yield* Config;
     const to = config.email.operator;
     if (!to || report.alarms.length === 0) return 'none' as const;
     const mailer = yield* Mailer;
-    const lines = report.alarms.map(
-      (a) => `- [${a.kind}] ${a.orderId ? `${a.orderId}: ` : ''}${a.message}`,
-    );
+    const n = report.alarms.length;
+    const ran = new Date(report.finishedAt).toISOString();
+    const line = (a: Alarm) => `${a.orderId ? `${a.orderId}: ` : ''}${a.message}`;
     const sent = yield* mailer
       .send({
         to,
-        subject: `${config.name}: ${report.alarms.length === 1 ? '1 thing needs' : `${report.alarms.length} things need`} attention`,
+        subject: `${config.name}: ${n === 1 ? '1 thing needs' : `${n} things need`} attention`,
         text: [
-          `Reconciliation ran at ${new Date(report.finishedAt).toISOString()}.`,
+          `Reconciliation ran at ${ran}.`,
           '',
-          ...lines,
+          ...report.alarms.map((a) => `- [${a.kind}] ${line(a)}`),
         ].join('\n'),
-        html: `<p>Reconciliation ran at ${new Date(report.finishedAt).toISOString()}.</p><ul>${report.alarms
-          .map(
-            (a) =>
-              `<li><strong>${a.kind}</strong>${a.orderId ? ` <code>${a.orderId}</code>` : ''}: ${a.message.replaceAll('<', '&lt;')}</li>`,
-          )
+        html: `<p>Reconciliation ran at ${ran}.</p><ul>${report.alarms
+          .map((a) => `<li><strong>${a.kind}</strong> ${escapeHtml(line(a))}</li>`)
           .join('')}</ul>`,
         idempotencyKey: `reconciliation:${report.startedAt}`,
       })
@@ -387,23 +448,33 @@ const alarmEmail = (report: ReconciliationReport) =>
   });
 
 /** Run every step, persist the report, and email the Operator only if there are Alarms. */
-export const runReconciliation = (trigger: string) =>
+export const runReconciliation = (trigger: Trigger, options: { dryRun?: boolean } = {}) =>
   Effect.gen(function* () {
     const startedAt = yield* Clock.currentTimeMillis;
-    const alarms: Alarm[] = [];
+    const run: Run = { now: startedAt, dryRun: options.dryRun ?? false, alarms: [] };
     const steps: Record<string, Step> = {};
-    steps.staleCheckouts = yield* staleCheckouts(startedAt);
-    steps.stuckPaid = yield* stuckPaid(startedAt, alarms);
-    steps.providerCatchUp = yield* providerCatchUp(alarms);
-    steps.refundsAndDisputes = yield* refundsAndDisputes(alarms);
-    steps.inboundEvents = yield* reprocessInbound();
-    steps.emails = yield* retryEmails(alarms);
-    steps.engines = yield* engineHealth(alarms);
-    steps.catalogue = yield* catalogueRefresh(alarms);
+    steps.staleCheckouts = yield* staleCheckouts(run);
+    steps.stuckPaid = yield* stuckPaid(run);
+    steps.providerCatchUp = yield* providerCatchUp(run);
+    steps.refundsAndDisputes = yield* refundsAndDisputes(run);
+    steps.inboundEvents = yield* reprocessInbound(run);
+    steps.emails = yield* retryEmails(run);
+    steps.engines = yield* engineHealth(run);
+    steps.catalogue = yield* catalogueRefresh(run);
     const finishedAt = yield* Clock.currentTimeMillis;
-    const report: ReconciliationReport = { startedAt, finishedAt, trigger, steps, alarms };
+    const report: ReconciliationReport = {
+      startedAt,
+      finishedAt,
+      trigger,
+      dryRun: run.dryRun,
+      steps,
+      alarms: run.alarms,
+    };
+    if (run.dryRun) return report;
     yield* persist(report);
     const mailed = yield* alarmEmail(report);
-    yield* Effect.logInfo(`reconciliation (${trigger}): ${alarms.length} alarms, email ${mailed}`);
+    yield* Effect.logInfo(
+      `reconciliation (${trigger}): ${run.alarms.length} alarms, email ${mailed}`,
+    );
     return report;
   });

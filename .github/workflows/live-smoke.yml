@@ -29,7 +29,7 @@ jobs:
       - run: pnpm --filter @pressline/contract build
       - name: Live smoke
         id: smoke
-        if: ${{ env.PRINTFUL_TOKEN != '' && env.STRIPE_SECRET_KEY != '' }}
+        if: ${{ secrets.PRINTFUL_TOKEN != '' && secrets.STRIPE_TEST_SECRET_KEY != '' }}
         env:
           PRINTFUL_TOKEN: ${{ secrets.PRINTFUL_TOKEN }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
@@ -41,6 +41,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           title="Live smoke failed on $(date -u +%F)"
-          existing=$(gh issue list --label live-smoke --state open --json number --jq '.[0].number')
+          gh label create live-smoke --description "Opened by the nightly live smoke on failure" --color B60205 --force >/dev/null 2>&1 || true
+          existing=$(gh issue list --label live-smoke --state open --json number --jq '.[0].number' || true)
           body="The nightly live smoke failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body"; else gh issue create --title "$title" --label live-smoke --body "$body"; fi

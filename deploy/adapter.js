@@ -13,7 +13,9 @@ import vercel from '@sveltejs/adapter-vercel';
 export const pickAdapter = () => {
   switch (process.env['PRESSLINE_ADAPTER']) {
     case 'cloudflare':
-      return cloudflare();
+      // The app's own build config: wrangler's find-up must not reach the repo-root
+      // wrangler.toml, whose `main` is the hand-written Worker shim.
+      return cloudflare({ config: 'wrangler.build.toml' });
     case 'vercel':
       // Node runtime, not Edge: the SQLite drivers and Stripe's SDK need it (ticket #24).
       return vercel({ runtime: 'nodejs22.x' });

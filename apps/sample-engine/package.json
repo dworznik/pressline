@@ -25,7 +25,6 @@
     "sharp": "^0.35.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260911.1",
     "@pressline/conformance": "workspace:*",
     "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",

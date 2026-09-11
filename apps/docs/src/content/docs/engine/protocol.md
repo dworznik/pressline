@@ -1,6 +1,6 @@
 ---
 title: The protocol
-description: Four endpoints, one shared secret, and files you host.
+description: Three endpoints, one shared secret, and files you host.
 ---
 
 An Engine is any HTTP service that serves, under a base URL the Operator configures:

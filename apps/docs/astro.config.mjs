@@ -1,10 +1,12 @@
 import starlight from '@astrojs/starlight';
-import { defineConfig } from 'astro/config';
+import { defineConfig, passthroughImageService } from 'astro/config';
 
 // pressline.dev (ticket #26): a static Starlight site. Deploy the `dist/`
 // output anywhere static; both platforms' buttons work with framework "astro".
 export default defineConfig({
   site: 'https://pressline.dev',
+  // No raster images on the site, so no sharp: assets pass through untouched.
+  image: { service: passthroughImageService() },
   integrations: [
     starlight({
       title: 'Pressline',

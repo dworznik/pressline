@@ -12,4 +12,4 @@ Four seams, highest first (`docs/SPEC.md → Testing Decisions`):
 
 No module-level tests of the ledger; a test asserts what a caller can observe.
 
-`pnpm verify` runs format, lint, typecheck, ADR check, tests and builds; CI runs the same plus the e2e job and the platform builds. Fixtures are refreshed from the live APIs by the nightly workflow's script (ticket #25, maintainers only).
+`pnpm verify` runs format, lint, typecheck, ADR check, tests and builds; CI runs the same plus the e2e job and the platform builds. Maintainers re-record fixtures from the live APIs with `pnpm --filter pressline fixtures:refresh` (needs `PRINTFUL_TOKEN` and a test-mode `STRIPE_SECRET_KEY`) and review the diff; the nightly live smoke (`test:live`) is what tells us an API changed shape.

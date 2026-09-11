@@ -1,6 +1,7 @@
 import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer, Schema } from 'effect';
 import rawConfig from '../../../pressline.config';
+import { assertDemoSafe } from './config/demo';
 import { Config } from './config/schema';
 import { InstanceFacts } from './operator/instance';
 import { OperatorSecrets } from './operator/auth';
@@ -9,6 +10,7 @@ import { makeWebHandler, type WebHandler } from './http/handler';
 import { layerDesignSourceHttp } from './services/design-source-http';
 import { layerMailerConsole, layerMailerNone } from './services/mailer';
 import { layerResend } from './services/resend';
+import { demoFulfilmentProvider } from './services/demo';
 import { layerFulfilmentProviderMemory, layerPspMemory } from './services/memory';
 import { layerPrintful } from './services/printful';
 import { layerStripe } from './services/stripe';
@@ -46,6 +48,9 @@ export const engineSecretVar = (slug: string) =>
  */
 let cached: WebHandler | undefined;
 
+/** Demo Mode makes the Operator View public (reads only); the page guard steps aside. */
+export const isDemo = (): boolean => rawConfig.demo ?? false;
+
 /** The cookie-signing secret, for the SvelteKit guard (same source as the runtime). */
 export const operatorSessionSecret = (platform: App.Platform | undefined): string => {
   const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
@@ -57,6 +62,7 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
   if (cached) return cached;
   const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
   const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' });
+  assertDemoSafe(rawConfig.demo ?? false, env.STRIPE_SECRET_KEY);
   // Engines without a secret configured are wired with an empty one: the
   // startup health check then reports them as disabled rather than failing boot.
   const engines = rawConfig.engines.map((e) => {
@@ -64,7 +70,7 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
     return { slug: e.slug, baseUrl: e.baseUrl, secret: typeof secret === 'string' ? secret : '' };
   });
 
-  const FulfilmentProviderLive = env.PRINTFUL_TOKEN
+  const RealProvider = env.PRINTFUL_TOKEN
     ? layerPrintful({
         token: env.PRINTFUL_TOKEN,
         ...(env.PRINTFUL_WEBHOOK_SECRET ? { webhookSecret: env.PRINTFUL_WEBHOOK_SECRET } : {}),
@@ -73,6 +79,10 @@ export const getWebHandler = (platform: App.Platform | undefined): WebHandler =>
           : {}),
       })
     : layerFulfilmentProviderMemory;
+  // Demo Mode: drafts are real, confirmation is a cancellation (ticket #18).
+  const FulfilmentProviderLive = rawConfig.demo
+    ? demoFulfilmentProvider(RealProvider)
+    : RealProvider;
   const PspLive = env.STRIPE_SECRET_KEY
     ? layerStripe({ secretKey: env.STRIPE_SECRET_KEY })
     : layerPspMemory;

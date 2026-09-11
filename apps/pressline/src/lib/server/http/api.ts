@@ -91,6 +91,8 @@ export class EngineError extends Schema.TaggedError<EngineError>()('EngineError'
 /** Operator branding and legal wording the Storefront shows (ADR-0010, ADR-0014). */
 export const StorefrontInfo = Schema.Struct({
   name: Schema.String,
+  /** Demo Mode (CONTEXT.md): set, with the PSP's test card, when no money or goods move. */
+  demo: Schema.optional(Schema.Struct({ testCard: Schema.String })),
   withdrawalNotice: Schema.String,
   termsUrl: Schema.optional(Schema.String),
   privacyUrl: Schema.optional(Schema.String),

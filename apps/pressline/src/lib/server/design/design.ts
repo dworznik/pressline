@@ -1,6 +1,7 @@
 import type { CatalogueOffer, DesignResponse } from '@pressline/contract';
 import { Effect, Schema } from 'effect';
 import { resolveCatalogue } from '../catalogue/catalogue';
+import { STRIPE_TEST_CARD } from '../config/demo';
 import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { DesignSource } from '../services/design-source';
@@ -62,6 +63,7 @@ export const loadDesign = (engine: string, designId: string) =>
       currency: catalogue.currency,
       storefront: {
         name: config.name,
+        ...(config.demo ? { demo: { testCard: STRIPE_TEST_CARD } } : {}),
         withdrawalNotice: config.legal.withdrawalNotice,
         ...(config.legal.termsUrl ? { termsUrl: config.legal.termsUrl } : {}),
         ...(config.legal.privacyUrl ? { privacyUrl: config.legal.privacyUrl } : {}),

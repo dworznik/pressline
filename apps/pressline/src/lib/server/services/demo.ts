@@ -12,9 +12,13 @@ export const demoFulfilmentProvider = <E, R>(inner: Layer.Layer<FulfilmentProvid
     Effect.map(FulfilmentProvider, (provider): FulfilmentProviderService => ({
       ...provider,
       confirmOrder: (id) =>
-        provider.cancelOrder(id).pipe(
-          Effect.flatMap(() => provider.getOrder(id)),
-          Effect.map((order) => ({ ...order, status: 'canceled' as const })),
-        ),
+        // Read before cancelling: Printful deletes a cancelled draft, so it cannot be fetched afterwards.
+        provider
+          .getOrder(id)
+          .pipe(
+            Effect.flatMap((order) =>
+              provider.cancelOrder(id).pipe(Effect.as({ ...order, status: 'canceled' as const })),
+            ),
+          ),
     })),
   ).pipe(Layer.provide(inner));

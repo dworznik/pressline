@@ -6,4 +6,4 @@
 - **Printful** drafts are created for real and then cancelled where the confirmation would be. The Order reaches `submitted` and immediately `cancelled`, with a Transition note saying why.
 - **Operator View** is readable without logging in, so visitors can watch an Order move; every action (CLI, `POST /api/operator/*`) still needs the operator token.
 
-pressline.store runs this way.
+The demo instance runs this way.

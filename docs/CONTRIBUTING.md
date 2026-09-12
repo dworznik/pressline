@@ -22,7 +22,7 @@ Pressline is written in Effect end to end (ADR-0011). The five ideas you need:
 - **Typed errors** are `Schema.TaggedError` classes (`DbError`, `ProviderError`). Handle with `Effect.catchTag`; never throw.
 - **Schema** validates every boundary: config at boot, request/response bodies, provider payloads.
 
-The fuller primer is on the docs site: `apps/docs/src/content/docs/contributing/effect.md` (pressline.dev → Contributing → Effect primer).
+The fuller primer is on the docs site: `apps/docs/src/content/docs/contributing/effect.md` (docs site → Contributing → Effect primer).
 
 ## Test seams
 

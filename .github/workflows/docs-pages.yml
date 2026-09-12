@@ -1,8 +1,8 @@
 name: docs-pages
 
 # Publishes apps/docs to GitHub Pages (https://dworznik.github.io/pressline)
-# on every push to main. pressline.dev can point at the same deployment
-# later by setting a custom domain on the Pages settings and dropping DOCS_BASE.
+# on every push to main. A custom domain can point at the same deployment
+# later by setting it on the Pages settings and dropping DOCS_BASE.
 on:
   push:
     branches: [main]

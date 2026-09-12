@@ -2,12 +2,27 @@
   "name": "@pressline/conformance",
   "version": "0.1.0",
   "description": "DesignSource conformance suite: run it against an Engine's base URL and learn whether it speaks the Pressline protocol before going live",
+  "keywords": [
+    "pressline",
+    "conformance",
+    "designsource",
+    "protocol",
+    "print-on-demand",
+    "engine"
+  ],
   "license": "MIT",
   "type": "module",
+  "homepage": "https://pressline.0xff.sh",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dworznik/pressline",
+    "url": "git+https://github.com/dworznik/pressline.git",
     "directory": "packages/conformance"
+  },
+  "bugs": {
+    "url": "https://github.com/dworznik/pressline/issues"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "bin": {
     "pressline-conformance": "./dist/bin.js"
@@ -20,8 +35,12 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
@@ -32,7 +51,7 @@
     "@effect/cli": "^0.77.1",
     "@effect/platform": "^0.97.2",
     "@effect/platform-node": "^0.108.2",
-    "@pressline/contract": "workspace:*",
+    "@pressline/contract": "workspace:^",
     "effect": "^3.22.2"
   },
   "devDependencies": {

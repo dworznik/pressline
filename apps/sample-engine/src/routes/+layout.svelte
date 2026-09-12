@@ -13,9 +13,7 @@
 
 <footer class="powered">
   <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-  <a href="https://dworznik.github.io/pressline/" target="_blank" rel="noopener"
-    >Powered by Pressline</a
-  >
+  <a href="https://pressline.0xff.sh/" target="_blank" rel="noopener">Powered by Pressline</a>
 </footer>
 
 <style>

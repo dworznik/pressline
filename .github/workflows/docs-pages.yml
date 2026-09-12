@@ -1,8 +1,8 @@
 name: docs-pages
 
-# Publishes apps/docs to GitHub Pages (https://dworznik.github.io/pressline)
-# on every push to main. A custom domain can point at the same deployment
-# later by setting it on the Pages settings and dropping DOCS_BASE.
+# Publishes apps/docs to GitHub Pages on every push to main, served at the
+# custom domain in apps/docs/public/CNAME. The site is at the root there, so
+# there is no DOCS_BASE; the github.io URL redirects to it.
 on:
   push:
     branches: [main]
@@ -31,8 +31,7 @@ jobs:
       - run: pnpm --filter @pressline/contract build
       - run: pnpm --filter pressline-docs build
         env:
-          DOCS_SITE: https://dworznik.github.io
-          DOCS_BASE: /pressline
+          DOCS_SITE: https://pressline.0xff.sh
       - uses: actions/upload-pages-artifact@v4
         with:
           path: apps/docs/dist

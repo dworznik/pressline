@@ -1,0 +1,80 @@
+// Two scenarios (ticket #66): one Order on its happy path and one
+// Reconciliation pass. Actors are the container view's components. Each step's
+// note names the Order state reached; the state machine itself is a table on
+// the Operator guide's orders page, not a diagram.
+views {
+  dynamic view order-flow {
+    title 'Order, happy path'
+    description '
+      One Order from Quote to shipped. The Printfile is validated before the
+      Checkout session exists; every webhook is verified, recorded as an
+      Inbound Event and re-fetched before the Order moves.
+    '
+
+    customer -> pressline.app.storefront 'opens the Design on the Storefront, chooses an Offer, variant and country' {
+      notes 'No Order yet. The Storefront shows the Quote: fixed retail price plus the shipping rate for the country (ADR-0010).'
+    }
+    pressline.app.storefront -> engine.app 'fetches the Design: Sellable, Preview, Eligibility' {
+      notes 'DesignSource over @pressline/contract. A non-sellable Design refuses to quote.'
+    }
+    pressline.app.storefront -> pressline.app.httpApi 'proceeds to checkout'
+    pressline.app.httpApi -> engine.app 'requests the Printfile for the Spec Hash and validates it' {
+      notes 'Headers only, never pixels (ADR-0002). Synchronous, or 202 until the Engine has rendered (ADR-0005).'
+    }
+    pressline.app.httpApi -> psp 'creates the Checkout session, Printfile URL already validated' {
+      notes 'Order **checkout_open**, Cause `storefront`. No session exists without a validated Printfile (ADR-0004).'
+    }
+    customer -> psp 'pays on the hosted Checkout page' {
+      notes 'Tax is added by the PSP; the Recipient is entered there and copied onto the Order.'
+    }
+    psp -> pressline.app.webhooks 'checkout.session.completed' {
+      notes 'A hint about which session changed, never the truth (ADR-0007).'
+    }
+    pressline.app.webhooks -> pressline.ledger 'verifies the signature, records the Inbound Event' {
+      notes 'Keyed by the event ID the provider assigned, so a redelivery is processed at most once.'
+    }
+    pressline.app.webhooks -> psp 're-fetches the session'
+    pressline.app.webhooks -> pressline.ledger 'Transition, Cause stripe_webhook' {
+      notes 'Order **paid** (ADR-0009).'
+    }
+    pressline.app.webhooks -> fulfilmentProvider 'submits the provider order with the Printfile URL' {
+      notes 'Order **submitted**. The provider fetches the Printfile from the FileStore of the Engine, possibly months later (ADR-0003).'
+    }
+    pressline.app.webhooks -> mailer 'order confirmation with the Withdrawal Notice'
+    fulfilmentProvider -> pressline.app.webhooks 'provider order status, once per change' {
+      notes 'Same rule: verify, record the Inbound Event, re-fetch, then transition.'
+    }
+    pressline.app.webhooks -> fulfilmentProvider 're-fetches the provider order'
+    pressline.app.webhooks -> pressline.ledger 'Transition, Cause printful_webhook' {
+      notes 'Order **in_production**, then on the next status **shipped**.'
+    }
+    pressline.app.webhooks -> mailer 'shipped with tracking'
+  }
+
+  dynamic view reconciliation {
+    title 'Reconciliation, one pass'
+    description '
+      The other half of "webhooks are hints": what happens when one never
+      arrives. Every open Order is compared with the PSP and the Fulfilment
+      Provider; anything missed becomes a Transition with Cause reconciliation.
+    '
+
+    operator -> pressline.app.reconciliation 'the platform scheduler fires, or the Operator runs `pressline reconcile`' {
+      notes 'Cloudflare Cron Trigger or Vercel Cron on schedule; the CLI or the Operator View on demand.'
+    }
+    pressline.app.reconciliation -> pressline.ledger 'reads every open Order'
+    pressline.app.reconciliation -> psp 're-fetches the Checkout session of each open Order' {
+      notes 'A stale `checkout_open` that was paid becomes **paid** and is submitted; one that was not becomes **expired**. Refunds and disputes are recorded.'
+    }
+    pressline.app.reconciliation -> fulfilmentProvider 're-fetches each provider order' {
+      notes 'A stuck **paid** Order is submitted again; **submitted**, **in_production** and **on_hold** move to what the provider reports.'
+    }
+    pressline.app.reconciliation -> pressline.ledger 'writes a Transition for anything the webhooks missed' {
+      notes 'Cause `reconciliation`, always (ADR-0009). Unsettled Inbound Events are reprocessed, failed emails retried.'
+    }
+    pressline.app.reconciliation -> mailer 'Alarms for the Operator' {
+      notes 'Only when there are any: a quiet night sends nothing.'
+    }
+    mailer -> operator 'Alarm email'
+  }
+}

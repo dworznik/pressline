@@ -1,0 +1,212 @@
+// People, systems and containers (tickets #63 and #64). Every element that
+// encodes an ADR links to it; relationships that encode one name it in the
+// title. The published packages (@pressline/contract, @pressline/render,
+// @pressline/conformance) are labels on edges, never boxes (ticket #65).
+model {
+  customer = person 'Customer' {
+    description 'A person who buys a product bearing a Design.'
+  }
+  operator = person 'Operator' {
+    description '
+      The single person or organisation that deploys a Pressline instance and
+      owns the Printful and Stripe accounts it uses. One instance, one Operator.
+    '
+    link https://github.com/dworznik/pressline/blob/main/docs/adr/0001-single-operator.md 'ADR-0001'
+  }
+  engineDeveloper = person 'Engine developer' {
+    description '
+      Builds and runs an Engine and integrates it against the DesignSource
+      contract. Often the same person as the Operator wearing a different hat.
+    '
+  }
+
+  pressline = system 'Pressline' {
+    description '
+      Self-hostable bridge from an Engine to print-on-demand products. Owns
+      ordering, payment and fulfilment; never renders or stores image bytes.
+      Self-hosted: one deployable on Cloudflare Workers or Vercel.
+    '
+    link https://github.com/dworznik/pressline/blob/main/docs/adr/0001-single-operator.md 'ADR-0001'
+    link https://github.com/dworznik/pressline/blob/main/docs/adr/0002-engine-renders-pressline-validates.md 'ADR-0002'
+    link https://github.com/dworznik/pressline/blob/main/docs/adr/0013-monorepo-core-is-not-a-library.md 'ADR-0013'
+
+    app = container 'Pressline app' {
+      technology 'SvelteKit + Effect'
+      description '
+        The one deployable per platform. Storefront and Operator View are
+        SvelteKit routes; the Effect HttpApi is mounted from the server hook
+        and owns /api/* and /webhooks/*.
+      '
+      metadata { workspace 'pressline' }
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0011-effect-throughout.md 'ADR-0011'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0012-sveltekit-hosts-effect-api.md 'ADR-0012'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0013-monorepo-core-is-not-a-library.md 'ADR-0013'
+
+      storefront = component 'Storefront' {
+        technology 'SvelteKit routes'
+        description '
+          /order/[engine]/[designId], /orders/[id], thank-you. Choose an Offer
+          and its variant, choose destination country, see the Quote, proceed
+          to the PSP. The Quote is the fixed retail price of the Offer plus shipping.
+        '
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0010-fixed-retail-price-quote-on-storefront.md 'ADR-0010'
+      }
+      operatorView = component 'Operator View' {
+        technology 'SvelteKit routes, session cookie'
+        description '
+          Read-only authenticated pages: Orders, Transitions, Reconciliation
+          results, instance health. Configuration is never edited here.
+        '
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0014-config-in-repo-operator-view-read-only.md 'ADR-0014'
+      }
+      httpApi = component 'HttpApi' {
+        technology 'Effect @effect/platform HttpApi'
+        description '
+          /api/*: health, catalogue, designs, printfiles, quotes, orders,
+          operator, cron. Schema-first; the generated OpenAPI is what the CLI
+          and Engine developers use. A validated Printfile exists before any
+          Checkout session is created.
+        '
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0004-printfile-before-payment.md 'ADR-0004'
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0005-ensure-printfile-sync-or-202.md 'ADR-0005'
+      }
+      webhooks = component 'Webhook receivers' {
+        technology 'Effect HttpApi group'
+        description '
+          /webhooks/*: verify the signature, record the Inbound Event, re-fetch
+          the object from the provider, then transition. Webhooks are hints.
+        '
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0007-printful-api-v2.md 'ADR-0007'
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0009-order-state-machine.md 'ADR-0009'
+      }
+      reconciliation = component 'Reconciliation' {
+        technology 'Effect; Cloudflare Cron Trigger, Vercel Cron or the CLI'
+        description '
+          Scheduled comparison of every open Order against the PSP and the
+          Fulfilment Provider, producing Transitions for anything the webhooks
+          missed, and Alarms for the Operator.
+        '
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0009-order-state-machine.md 'ADR-0009'
+      }
+    }
+
+    ledger = datastore 'Ledger' {
+      technology 'SQLite: D1, libSQL or a file'
+      description '
+        Orders, Transitions, Inbound Events, emails, migrations. A platform
+        binding beside the app. Every write is a single statement or a batch.
+      '
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0008-sqlite-dialect-d1-and-libsql.md 'ADR-0008'
+    }
+
+    cli = container '@pressline/cli' {
+      technology 'Node, Effect CLI'
+      description '
+        Operator CLI: doctor, catalogue search and check, webhooks register,
+        orders, reconcile, printfile check. Talks to the operator API with the
+        operator token.
+      '
+      metadata { workspace 'cli' }
+    }
+
+    docsSite = container 'Docs site' {
+      technology 'Astro Starlight'
+      description '
+        Operator guide, Engine developer guide, print preparation, reference,
+        contributor guide and this Architecture section. Static; not part of
+        the running instance, so it is not drawn.
+      '
+      metadata { workspace 'docs' }
+    }
+  }
+
+  engine = system 'Engine' {
+    description '
+      An external application, controlled by the Operator, that produces
+      Designs and implements DesignSource. Hosts Printfiles and Previews at
+      immutable URLs. An instance may be wired to several Engines; all are
+      trusted.
+    '
+    style { color sky }
+    link https://github.com/dworznik/pressline/blob/main/docs/adr/0002-engine-renders-pressline-validates.md 'ADR-0002'
+    link https://github.com/dworznik/pressline/blob/main/docs/adr/0003-engine-hosts-printfiles-pull-protocol.md 'ADR-0003'
+
+    app = container 'Engine app' {
+      technology 'Any HTTP service; apps/sample-engine is the reference (SvelteKit)'
+      description '
+        Makes Designs and serves the three DesignSource endpoints: health,
+        design, printfile. The sample Engine renders from a template or an AI
+        adapter and hosts what it renders.
+      '
+      metadata { workspace 'sample-engine' }
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0002-engine-renders-pressline-validates.md 'ADR-0002'
+    }
+    fileStore = datastore 'FileStore' {
+      technology 'fs locally, R2 on Cloudflare, Blob on Vercel'
+      description '
+        Where the Engine hosts Printfiles and Previews at immutable URLs,
+        served under /files/*.
+      '
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0003-engine-hosts-printfiles-pull-protocol.md 'ADR-0003'
+    }
+  }
+
+  fulfilmentProvider = external 'Fulfilment Provider' {
+    description '
+      Prints and ships Orders. Printful is the only shipped implementation.
+    '
+  }
+  psp = external 'PSP' {
+    description '
+      Takes the money of the Customer on its hosted Checkout page and adds tax.
+      Stripe Checkout is the only shipped implementation.
+    '
+  }
+  mailer = external 'Mailer' {
+    description '
+      Delivers Customer emails and Operator Alarms. Resend is the only shipped
+      implementation.
+    '
+  }
+
+  // People
+  customer -> engine.app 'makes a Design'
+  customer -> pressline.app.storefront 'chooses an Offer, variant and country, sees the Quote'
+  customer -> psp 'pays on the hosted Checkout page'
+  mailer -> customer 'order confirmation, shipped with tracking'
+  mailer -> operator 'Alarms'
+  operator -> pressline.app.operatorView 'inspects Orders, Transitions, Reconciliation results'
+  operator -> pressline.cli 'runs doctor, webhooks register, reconcile'
+  engineDeveloper -> engine.app 'builds and runs; implements DesignSource with @pressline/contract and @pressline/render'
+  engineDeveloper -> pressline.app.httpApi 'integrates against the Catalogue and Printfile Spec endpoints; checks with @pressline/conformance'
+
+  // Pressline -> Engine (DesignSource)
+  pressline.app.storefront -> engine.app 'fetches the Design: Sellable, Preview, Eligibility, Mockups (@pressline/contract)'
+  pressline.app.httpApi -> engine.app 'requests the Printfile for a Spec Hash and validates it by headers, never pixels (ADR-0002, ADR-0004)'
+
+  // Pressline -> providers
+  pressline.app.httpApi -> fulfilmentProvider 'shipping rates, Provider Cost Estimate, submits the provider order with the Printfile URL'
+  pressline.app.httpApi -> psp 'creates the Checkout session after Printfile validation (ADR-0004)'
+  psp -> pressline.app.webhooks 'session completed, refund, dispute'
+  fulfilmentProvider -> pressline.app.webhooks 'provider order status'
+  pressline.app.webhooks -> psp 're-fetches the session before any Transition (ADR-0007)'
+  pressline.app.webhooks -> fulfilmentProvider 're-fetches the provider order; submits it once paid'
+  pressline.app.webhooks -> mailer 'order confirmation, shipped with tracking'
+  pressline.app.reconciliation -> psp 're-fetches every open Order'
+  pressline.app.reconciliation -> fulfilmentProvider 're-fetches every open Order'
+  pressline.app.reconciliation -> mailer 'Alarms to the Operator'
+
+  // Ledger
+  pressline.app.storefront -> pressline.ledger 'reads Orders'
+  pressline.app.operatorView -> pressline.ledger 'reads'
+  pressline.app.httpApi -> pressline.ledger 'Orders, Transitions'
+  pressline.app.webhooks -> pressline.ledger 'Inbound Events, Transitions (ADR-0009)'
+  pressline.app.reconciliation -> pressline.ledger 'Transitions, Cause reconciliation (ADR-0009)'
+
+  // CLI
+  pressline.cli -> pressline.app.httpApi 'operator API'
+
+  // Engine internals and the provider fetch
+  engine.app -> engine.fileStore 'writes Printfiles and Previews'
+  fulfilmentProvider -> engine.fileStore 'fetches the Printfile URL, possibly months later (ADR-0003)'
+}

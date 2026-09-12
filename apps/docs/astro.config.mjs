@@ -1,7 +1,7 @@
 import starlight from '@astrojs/starlight';
 import { defineConfig, passthroughImageService } from 'astro/config';
 
-// pressline.dev (ticket #26): a static Starlight site. Deploy the `dist/`
+// The docs site (ticket #26): a static Starlight site. Deploy the `dist/`
 // output anywhere static; GitHub Pages publishes it at /pressline (DOCS_BASE),
 // the custom domain serves it from /. Markdown links are site-absolute; scripts/apply-base.mjs
 // prefixes them after the build when a base is set (Astro's Markdown processor has no hook for it).
@@ -56,6 +56,17 @@ export default defineConfig({
             { label: 'CLI', slug: 'reference/cli' },
             { label: 'JSON API (OpenAPI)', slug: 'reference/api' },
             { label: 'Configuration', slug: 'reference/config' },
+          ],
+        },
+        {
+          label: 'Architecture',
+          items: [
+            { label: 'Overview', slug: 'architecture/overview' },
+            { label: 'Landscape', slug: 'architecture/landscape' },
+            { label: 'Containers', slug: 'architecture/containers' },
+            { label: 'Effect service layer', slug: 'architecture/service-layer' },
+            { label: 'Order flow', slug: 'architecture/order-flow' },
+            { label: 'Reconciliation', slug: 'architecture/reconciliation' },
           ],
         },
         {

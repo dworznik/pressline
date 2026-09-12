@@ -1,0 +1,17 @@
+// Element kinds for the Pressline model. Vocabulary is CONTEXT.md's; kinds
+// follow C4: person, system, external (a system Pressline talks to by role),
+// container, component, datastore.
+specification {
+  element person {
+    style { shape person }
+  }
+  element system
+  element external {
+    style { color muted }
+  }
+  element container
+  element component
+  element datastore {
+    style { shape storage; color slate }
+  }
+}

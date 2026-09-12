@@ -20,8 +20,9 @@
     "test:watch": "vitest",
     "build": "pnpm -r --if-present build",
     "adr:check": "node scripts/check-adrs.mjs",
+    "architecture:check": "pnpm --filter pressline-docs architecture:validate",
     "e2e": "pnpm --filter pressline e2e",
-    "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm test && pnpm build"
+    "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm architecture:check && pnpm test && pnpm build"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260911.1",

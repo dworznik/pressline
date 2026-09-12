@@ -3,7 +3,7 @@
 Self-hostable, open-source bridge from an image-generating app to physical print-on-demand products. Printful fulfils, Stripe Checkout takes payment, no Shopify in between.
 
 - Project: pressline.dev · Demo: pressline.store
-- Glossary: [`CONTEXT.md`](./CONTEXT.md) · Decisions: [`docs/adr/`](./docs/adr) · Spec: [`docs/SPEC.md`](./docs/SPEC.md) · Tickets: [#1](https://github.com/dworznik/pressline/issues/1)
+- Glossary: [`CONTEXT.md`](./CONTEXT.md) · Decisions: [`docs/adr/`](./docs/adr) · Architecture: [C4 views](https://dworznik.github.io/pressline/architecture/overview/) from [`docs/architecture/`](./docs/architecture) · Spec: [`docs/SPEC.md`](./docs/SPEC.md) · Tickets: [#1](https://github.com/dworznik/pressline/issues/1)
 
 ## Layout
 
@@ -22,7 +22,7 @@ deploy/               one-click templates for Cloudflare and Vercel
 
 ```
 pnpm install          # also wires git hooks
-pnpm verify           # format · lint · typecheck · adr · test · build
+pnpm verify           # format · lint · typecheck · adr · architecture · test · build
 ```
 
 Licence: MIT for code, CC BY 4.0 for docs.

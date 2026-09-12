@@ -3,12 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "pressline.dev: operator guide, Engine developer guide, print preparation reference, contributor guide, CLI reference, OpenAPI",
+  "description": "The docs site: operator guide, Engine developer guide, print preparation reference, contributor guide, CLI reference, OpenAPI, architecture",
   "scripts": {
     "dev": "astro dev --port 4321",
-    "build": "pnpm --filter pressline openapi && astro build && node scripts/apply-base.mjs",
+    "build": "pnpm --filter pressline openapi && pnpm architecture:build && astro build && node scripts/apply-base.mjs",
     "preview": "astro preview",
-    "check": "astro check"
+    "check": "astro check",
+    "test": "vitest run",
+    "architecture:dev": "likec4 start ../../docs/architecture",
+    "architecture:build": "node scripts/build-architecture.mjs",
+    "architecture:validate": "likec4 validate ../../docs/architecture"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.0",
@@ -16,7 +20,10 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.6",
+    "@types/node": "^24.13.4",
+    "likec4": "1.59.3",
     "pressline": "workspace:*",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.0"
   }
 }

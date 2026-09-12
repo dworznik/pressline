@@ -37,8 +37,11 @@ never ships.
 To cut a release:
 
 1. Bump `version` in all four `packages/*/package.json` to the same value, on `main`.
-2. Draft a GitHub Release whose tag is `v<that version>` (`v0.2.0`, or `v0.2.0-rc.1`).
-3. Publish the release. `.github/workflows/release.yml` takes it from there: it
+2. Run the `release` workflow by hand from the Actions tab. This publishes
+   nothing: it rehearses the publish and fails if any package would not
+   authenticate. Do this before drafting the release — see below for why.
+3. Draft a GitHub Release whose tag is `v<that version>` (`v0.2.0`, or `v0.2.0-rc.1`).
+4. Publish the release. `.github/workflows/release.yml` takes it from there: it
    checks the tag against the four manifests, runs `pnpm verify`, and then
    `pnpm --recursive publish`.
 
@@ -50,6 +53,15 @@ the commit and workflow that built it. Each package must therefore be registered
 as a trusted publisher on npmjs.com — pointing at this repository and the
 `release.yml` workflow — which npm only allows once a package already exists, so
 the very first publish of a _new_ package has to be done by hand.
+
+Whether a package is registered lives on npmjs.com, and nothing in this
+repository can read it. That matters because packages publish in dependency
+order: a missing registration takes the release down part-way, with `contract`
+on the registry and its dependents not. Hence step 2. pnpm builds its publish
+options — the token exchange included — before it honors `--dry-run`, so the
+rehearsal authenticates for real while publishing nothing, and fails loudly if
+a package would have been skipped. It also fails when every version is already
+published, because then it proved nothing: bump the versions first.
 
 Two things not to change without knowing why:
 

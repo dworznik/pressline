@@ -15,7 +15,9 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Pressline',
-      logo: { src: './src/assets/mark.svg' },
+      // Starlight renders the logo as <img>, so the SVG is its own document and
+      // currentColor resolves to black. Two rendered variants instead.
+      logo: { light: './src/assets/mark-light.svg', dark: './src/assets/mark-dark.svg' },
       favicon: '/favicon.svg',
       head: [
         { tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' } },

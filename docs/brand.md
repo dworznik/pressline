@@ -7,12 +7,13 @@ no text inside it.
 
 ## Where it appears
 
-| Surface           | File                                                                      | Fill                                     |
-| ----------------- | ------------------------------------------------------------------------- | ---------------------------------------- |
-| The bridge        | `apps/pressline/static/favicon.*`                                         | `#26262b`, `#f2f2f0` in dark             |
-| The Operator View | the same files                                                            | the same                                 |
-| Sample Engine     | `apps/sample-engine/static/favicon.svg`                                   | `#7a7a85` — same geometry, a quieter ink |
-| Docs site         | `apps/docs/public/favicon.*`, header logo `apps/docs/src/assets/mark.svg` | `currentColor` in the header             |
+| Surface           | File                                                                                              | Fill                                     |
+| ----------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| The bridge        | `apps/pressline/static/favicon.*`                                                                 | `#26262b`, `#f2f2f0` in dark             |
+| The Operator View | the same files                                                                                    | the same                                 |
+| Sample Engine     | `apps/sample-engine/static/favicon.svg`                                                           | `#7a7a85` — same geometry, a quieter ink |
+| Docs site         | `apps/docs/public/favicon.*`, header logo `apps/docs/src/assets/mark-light.svg` / `mark-dark.svg` | `#26262b` / `#f2f2f0` per theme          |
+| Architecture app  | the docs site's favicon, linked by `scripts/build-architecture.mjs`                               | as the docs site                         |
 
 The Storefront is the **Operator's** shop, so the mark there is only a default:
 `branding.faviconUrl` overrides it, falling back to `branding.logoUrl`. The
@@ -21,7 +22,12 @@ Operator View is ours and always shows the mark.
 ## Rules
 
 - **Never redraw it by hand.** `apps/docs/src/assets/mark.svg` is the canonical
-  geometry with `fill="currentColor"`; regenerate any raster from it.
+  geometry with `fill="currentColor"`; regenerate any raster or recolored
+  variant from it.
+- **`currentColor` only works inline.** Starlight renders its logo as an `<img>`,
+  which makes the SVG its own document, so `currentColor` resolves to black
+  instead of inheriting the page. That is why the docs header ships two rendered
+  variants rather than the canonical source.
 - **Below 20 px, the 64-grid source goes soft** — dots land on half pixels and
   the two smallest vanish. `favicon.ico` already carries a pixel-snapped 16 px
   bitmap for exactly this, which is why the `.ico` is still linked alongside the

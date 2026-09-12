@@ -23,7 +23,8 @@ const stubFetch: typeof fetch = async (input, init) => {
   const req = new Request(input, init)
   seen.push(req)
   const url = new URL(req.url)
-  let key = url.pathname.replace(/^\/v2\//, '').replaceAll('/', '_')
+  // v2 paths are `/v2/orders/…`; the cancel route is v1's `/orders/…` (see the adapter).
+  let key = url.pathname.replace(/^\/(?:v2\/)?/, '').replaceAll('/', '_')
   if (key === 'shipping-rates') {
     // Country-specific stub: XX is a destination Printful cannot ship to.
     const body = (await req.clone().json()) as { recipient?: { country_code?: string } }
@@ -436,5 +437,9 @@ describe('Printful adapter: operator tools (tickets #16, #17)', () => {
     expect(await run(Effect.flatMap(FulfillmentProvider, (p) => p.cancelOrder('123')))).toBe(
       'not_cancelable',
     )
+    // Deliberately v1: v2's DELETE archives rather than cancels, which hides the
+    // order from v2 while its external_id stays taken (#77, #97).
+    expect(new URL(seen.at(-1)!.url).pathname).toBe('/orders/123')
+    expect(seen.at(-1)!.method).toBe('DELETE')
   })
 })

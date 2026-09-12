@@ -631,14 +631,18 @@ export const makePrintful = (options: PrintfulOptions) =>
           Effect.map(({ data }) => toProviderOrder(data)),
         ),
 
+      // The **v1** route, deliberately. v2's DELETE does not cancel, it archives: the
+      // order disappears from every v2 read while keeping its external_id reserved
+      // (#77), and a confirmed order it will not touch at all. v2's own docs point
+      // here to cancel. v1 cancels a draft or a pending order and returns the charge.
       cancelOrder: (id) =>
-        HttpClientRequest.del(`/v2/orders/${encodeURIComponent(id)}`).pipe(
+        HttpClientRequest.del(`/orders/${encodeURIComponent(id)}`).pipe(
           client.execute,
           Effect.flatMap((res) =>
             res.status >= 200 && res.status < 300
               ? Effect.succeed('canceled' as const)
-              : // Printful refuses to delete an order it has started on (409); that is an answer, not a failure.
-                res.status === 409
+              : // Too late to cancel (already in production) is an answer, not a failure.
+                res.status === 409 || res.status === 400
                 ? Effect.succeed('not_cancelable' as const)
                 : failStatus(res),
           ),

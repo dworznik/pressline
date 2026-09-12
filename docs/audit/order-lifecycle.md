@@ -169,8 +169,10 @@ before anything is built on them.
 5. Printful webhook ordering, at-least-once and deduplication guarantees. None
    are stated; only `retries` and the backoff.
 6. Whether Printful follows redirects when fetching a Printfile, its timeout,
-   and which size limit binds the order path (50 MB and 200 MB are both
-   documented, in different places).
+   and which size limit binds the order path. Three numbers are documented and
+   none is tied to an order: 200 MB and 20 000 × 20 000 px for the File
+   library, and 50 MB for the mockup generator. Sourced in the Printfile
+   requirements audit (#108), which lands with #87.
 7. Whether Stripe's `charge.disputed` stays true after a win. This decides
    whether #95 is noisy or merely thin.
 8. Whether a Stripe test clock affects Checkout Session expiry. The feature is

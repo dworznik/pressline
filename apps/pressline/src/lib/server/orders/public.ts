@@ -31,6 +31,8 @@ export const PublicOrder = Schema.Struct({
     Schema.Struct({ carrier: Schema.optional(Schema.String), url: Schema.optional(Schema.String) }),
   ),
   createdAt: Schema.Int,
+  /** Demo Mode: the print order was created and canceled straight away; the pages explain it. */
+  demo: Schema.Boolean,
 });
 export type PublicOrder = typeof PublicOrder.Type;
 
@@ -82,5 +84,6 @@ export const publicOrder = (id: string, token: string) =>
           }
         : {}),
       createdAt: order.createdAt,
+      demo: config.demo,
     } satisfies PublicOrder;
   });

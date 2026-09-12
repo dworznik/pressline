@@ -119,8 +119,17 @@ describe('Demo Mode', () => {
     });
     expect(d.order.providerOrderId).toBeDefined();
     expect(app.providerOrders().at(-1)).toMatchObject({ externalId: id, status: 'canceled' });
-    // Everything else is real: the Customer still gets the confirmation.
-    expect((await app.sentMail()).map((m) => m.to)).toEqual(['anna@example.com']);
+    // Everything else is real: the Customer still gets the confirmation, and it says what happened.
+    const mail = await app.sentMail();
+    expect(mail.map((m) => m.to)).toEqual(['anna@example.com']);
+    expect(mail[0]!.text).toContain('demo shop');
+    expect(mail[0]!.text).not.toContain('sending it to print');
+    // The thank-you and status pages read the same fact from the public Order.
+    const token = new URL((await app.pspSessions()).at(-1)!.input.successUrl).searchParams.get(
+      't',
+    )!;
+    const pub = await app.json<{ demo: boolean; state: string }>(`/api/orders/${id}?t=${token}`);
+    expect(pub.body).toMatchObject({ demo: true, state: 'canceled' });
   });
 
   it('makes the Operator View readable without a credential, while actions still need the token', async () => {

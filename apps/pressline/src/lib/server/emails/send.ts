@@ -121,6 +121,7 @@ const contextFor = (orderId: string) =>
       ...(previewUrl ? { previewUrl } : {}),
       statusUrl: `${origin}/orders/${order.id}?t=${encodeURIComponent(order.statusToken)}`,
       currency: order.currency,
+      demo: config.demo,
     };
     return { order, ctx };
   });

@@ -106,16 +106,16 @@ Printful publishes **20** webhook events. We subscribe to nine.
 
 ### Drafts, confirmation and cancellation
 
-| Printful says                                                                                                                                                                  | Our handling                                                                                                              | Gap |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | --- |
-| Costs calculate **asynchronously**; while `calculation_status` is `calculating` every money field including `currency` is `null`                                               | Wire schema accepts nulls; `submit` polls for about 7 s before confirming, and answers `retry_later` if still calculating | —   |
-| An order **cannot be confirmed** while costs are calculating or have failed. The exact error is **undocumented**                                                               | We match on the message text, and treat that 400 as retryable                                                             | —   |
-| `external_id` limits are documented **only for v1**: 32 characters, and unique per store. v2's schema states no constraints                                                    | We strip the UUID's hyphens to 32 and restore them on the way back (#76)                                                  | —   |
-| Whether a deleted order's `external_id` is released is **undocumented**. **Empirically it stays reserved forever**                                                             | A retry after a delete can never create again                                                                             | #77 |
-| Confirmation may be accepted **before** the file is processed; an invalid file later reverts the order to `failed`                                                             | Handled by #84's mapping: a post-confirmation `failed` becomes `on_hold` with the reason                                  | —   |
-| **`DELETE /v2/orders/{id}` deletes, it does not cancel**, and only for `draft`, `failed` or `cancelled` and not yet charged. To cancel, v2's own docs say use the **v1** route | Our cancel path calls v2 DELETE, so a confirmed order cannot be cancelled and the Operator is told to contact Printful    | #97 |
-| Rate limit 120 requests per 60 s, `retry-after` on 429, with lower limits for shipping rates and the mockup generator                                                          | 429 is retryable but `retry-after` is ignored and the headers are unread                                                  | #98 |
-| All Orders v2 endpoints still return the **legacy** error body, not RFC 9457                                                                                                   | Our `ErrorWire` parses the legacy shape                                                                                   | —   |
+| Printful says                                                                                                                                                                                                                                                      | Our handling                                                                                                                                | Gap      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Costs calculate **asynchronously**; while `calculation_status` is `calculating` every money field including `currency` is `null`                                                                                                                                   | Wire schema accepts nulls; `submit` polls for about 7 s before confirming, and answers `retry_later` if still calculating                   | —        |
+| An order **cannot be confirmed** while costs are calculating or have failed. The exact error is **undocumented**                                                                                                                                                   | We match on the message text, and treat that 400 as retryable                                                                               | —        |
+| `external_id` limits are documented **only for v1**: 32 characters, and unique per store. v2's schema states no constraints                                                                                                                                        | We strip the UUID's hyphens to 32 and restore them on the way back (#76)                                                                    | —        |
+| Whether a deleted order's `external_id` is released is **undocumented**. It stays reserved, because the order is not deleted but archived (below)                                                                                                                  | A retry after a v2 DELETE could never create again. Now that we cancel through v1 instead, this affects only orders archived before the fix | #77      |
+| Confirmation may be accepted **before** the file is processed; an invalid file later reverts the order to `failed`                                                                                                                                                 | Handled by #84's mapping: a post-confirmation `failed` becomes `on_hold` with the reason                                                    | —        |
+| v2's docs warn `DELETE /v2/orders/{id}` **deletes**, and say to cancel through the **v1** route. **Empirically it archives**: after a 204 the order is gone from every v2 read, but v1 still returns it with `status: archived`, and its `external_id` stays taken | Fixed: the cancel path now calls v1, which genuinely cancels a draft or a pending order. This is also the root cause of #77                 | #97, #77 |
+| Rate limit 120 requests per 60 s, `retry-after` on 429, with lower limits for shipping rates and the mockup generator                                                                                                                                              | 429 is retryable but `retry-after` is ignored and the headers are unread                                                                    | #98      |
+| All Orders v2 endpoints still return the **legacy** error body, not RFC 9457                                                                                                                                                                                       | Our `ErrorWire` parses the legacy shape                                                                                                     | —        |
 
 ## Checked and found sound
 
@@ -141,6 +141,12 @@ Worth recording so they are not re-audited.
   identical bytes.
 - **`complete` is never treated as paid**, which is exactly Stripe's own
   guidance for delayed-notification methods.
+- **v2's DELETE archives rather than deletes**, which their own docs get wrong.
+  Tested during this audit: a draft created with an `external_id`, deleted with a
+  204, then read back. v2 answers 404 by internal id and by external id, while v1
+  returns the order with `status: archived`, and creating again with the same
+  `external_id` fails with "already used by store". That is the whole of #77: the
+  order was never gone, only hidden from v2.
 
 ## Open questions
 
@@ -151,8 +157,9 @@ before anything is built on them.
 2. Whether `inreview` is cancellable. The v2 spec says both things in one file.
 3. Whether placement validation (`status`, `status_explanation`) is populated in
    the create response or only later.
-4. Whether a hard-deleted Printful order 404s on read, and whether cancelled
-   orders are listed.
+4. Whether cancelled orders are listed by `GET /v2/orders`. (The other half of
+   this question — whether a hard-deleted order 404s — is answered above: there
+   is no hard delete.)
 5. Printful webhook ordering, at-least-once and deduplication guarantees. None
    are stated; only `retries` and the backoff.
 6. Whether Printful follows redirects when fetching a Printfile, its timeout,
@@ -168,16 +175,16 @@ before anything is built on them.
 Each is a sub-issue of #85 carrying the provider reference, the current
 behaviour, a proposed fix and the test that would prove it.
 
-| #    | Gap                                                                                |
-| ---- | ---------------------------------------------------------------------------------- |
-| #92  | A partial refund is invisible: no Transition, no Alarm, the ledger still says paid |
-| #93  | `checkout.session.async_payment_failed` is not subscribed                          |
-| #94  | Checkout Session creation sends no `Idempotency-Key`                               |
-| #95  | Disputes are a single boolean; the Alarm likely repeats forever                    |
-| #97  | We cannot cancel a confirmed Printful order: v2 DELETE deletes                     |
-| #98  | Printful 429 ignores `retry-after`                                                 |
-| #99  | Approval holds, refunds and several shipment events are unsubscribed               |
-| #100 | ADR-0009's "Printful does not report delivery" premise is now false                |
+| #    | Gap                                                                           |
+| ---- | ----------------------------------------------------------------------------- |
+| #92  | A partial refund was invisible: no Transition, no Alarm. **Fixed**            |
+| #93  | `checkout.session.async_payment_failed` is not subscribed                     |
+| #94  | Checkout Session creation sends no `Idempotency-Key`                          |
+| #95  | Disputes are a single boolean; the Alarm likely repeats forever               |
+| #97  | We could not cancel a confirmed Printful order: v2 DELETE archives. **Fixed** |
+| #98  | Printful 429 ignores `retry-after`                                            |
+| #99  | Approval holds, refunds and several shipment events are unsubscribed          |
+| #100 | ADR-0009's "Printful does not report delivery" premise is now false           |
 
 Still open from before the audit: #77 (a deleted draft's `external_id` stays
 reserved), #78 (Review Mode), #87 (Printfile validation checks less than the

@@ -4,7 +4,7 @@ import { Db } from '../db/db'
 import { Engines } from '../design/engines'
 import { listUnsentEmails, sendOrderEmail } from '../emails/send'
 import { catalogCheck } from '../operator/tools'
-import { listOrders, transition, type Order } from '../orders/orders'
+import { annotate, listOrders, transition, type Order } from '../orders/orders'
 import { submitOrder } from '../orders/submit'
 import type { DesignSource } from '../services/design-source'
 import { FulfillmentProvider } from '../services/fulfillment-provider'
@@ -269,10 +269,35 @@ const refundsAndDisputes = (run: Run) =>
           message: 'payment is disputed at the PSP',
         })
       }
-      if (!status.right.refunded) continue
+      // `refunded` is the PSP's "fully refunded" flag and stays false for a partial
+      // refund, so the amount is the only signal that money went back (#92).
       const amount = status.right.amountRefunded
+      if (amount <= 0) continue
+      const captured = order.amountTotal ?? order.retail + order.shipping
+      const partial = amount < captured
       if (run.dryRun) {
-        r.notes.push(`${order.id}: would record a refund of ${amount}`)
+        r.notes.push(`${order.id}: would record a ${partial ? 'partial ' : ''}refund of ${amount}`)
+        continue
+      }
+      // A partial refund does not make the Order refunded: the goods still ship, and
+      // the ledger has one `refunded` state. Record it as a same-state Transition,
+      // written once per amount, so a further refund is a new row and an unchanged
+      // one is silent (no nightly repeat).
+      if (partial) {
+        const noted = yield* annotate(
+          order.id,
+          'reconciliation',
+          paymentIntentId,
+          `partially refunded ${amount} of ${captured} at the PSP`,
+        ).pipe(Effect.orElseSucceed(() => false))
+        if (noted) {
+          r.repaired++
+          run.alarms.push({
+            kind: 'refund',
+            orderId: order.id,
+            message: `partial refund of ${amount} of ${captured} recorded; the Order still ships`,
+          })
+        }
         continue
       }
       const moved = yield* transition(order.id, 'refunded', 'reconciliation', paymentIntentId, {

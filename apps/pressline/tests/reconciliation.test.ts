@@ -261,6 +261,61 @@ describe('Reconciliation repairs', () => {
     ])
   })
 
+  it('records a partial refund without making the Order refunded, and only once per amount', async () => {
+    // Stripe's `refunded` flag stays false for a partial refund, so the amount is
+    // the only signal. Before #92 this Order was examined and silently skipped.
+    app = await boot({ createRetryableFailures: 100 })
+    const a = await checkout(app)
+    await pay(app, a.session, 'pi_partial')
+    const captured = (await detail(app, a.orderId)).order.amountTotal!
+    app.setPspPayment('pi_partial', {
+      refunded: false,
+      amountRefunded: 1000,
+      disputed: false,
+    })
+
+    let report = await reconcile(app)
+    expect(report.alarms).toEqual([
+      {
+        kind: 'refund',
+        orderId: a.orderId,
+        message: `partial refund of 1000 of ${captured} recorded; the Order still ships`,
+      },
+    ])
+    const after = await detail(app, a.orderId)
+    // Still paid: a partial refund is a fact about the money, not the fulfillment.
+    expect(after.order.state).toBe('paid')
+    expect(after.transitions.at(-1)).toMatchObject({
+      from: 'paid',
+      to: 'paid',
+      cause: 'reconciliation',
+      note: `partially refunded 1000 of ${captured} at the PSP`,
+    })
+
+    // Nothing changed at the PSP: no second Transition, no second Alarm.
+    report = await reconcile(app)
+    expect(report.alarms).toEqual([])
+    const again = await detail(app, a.orderId)
+    expect(again.transitions).toHaveLength(after.transitions.length)
+
+    // A further partial refund is a new amount, so a new row and a new Alarm.
+    app.setPspPayment('pi_partial', { refunded: false, amountRefunded: 1500, disputed: false })
+    report = await reconcile(app)
+    expect(report.alarms).toHaveLength(1)
+    expect((await detail(app, a.orderId)).transitions.at(-1)).toMatchObject({
+      note: `partially refunded 1500 of ${captured} at the PSP`,
+    })
+
+    // Refunded in full afterwards: now the Order really is refunded.
+    app.setPspPayment('pi_partial', {
+      refunded: true,
+      amountRefunded: captured,
+      disputed: false,
+    })
+    await reconcile(app)
+    expect((await detail(app, a.orderId)).order.state).toBe('refunded')
+  })
+
   it('records refunds and disputes the Operator handled at the PSP', async () => {
     // The provider is unreachable, so every Order below stays paid (not yet stale).
     app = await boot({ createRetryableFailures: 100 })

@@ -93,7 +93,7 @@ export default ts.config(
     },
   },
   {
-    files: ['scripts/**/*.mjs', 'apps/*/scripts/**/*.ts'],
+    files: ['scripts/**/*.mjs', 'apps/*/scripts/**/*.{ts,mjs}'],
     rules: { 'no-console': 'off' },
   },
 );

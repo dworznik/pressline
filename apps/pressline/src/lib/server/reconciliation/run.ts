@@ -17,7 +17,7 @@ import {
   settle,
   type InboundOutcome,
 } from '../webhooks/inbound';
-import { applyPrintfulEvent, stateFor } from '../webhooks/printful';
+import { PROVIDER_FAILED_NOTE, applyPrintfulEvent, stateFor } from '../webhooks/printful';
 import { applyPaid, applyStripeEvent } from '../webhooks/stripe';
 
 /**
@@ -190,7 +190,7 @@ const providerCatchUp = (run: Run) =>
         r.notes.push(`${order.id}: provider unavailable (${fetched.left.message})`);
         continue;
       }
-      const target = stateFor(fetched.right.status);
+      const target = stateFor(fetched.right.status, order.state);
       if (target && target !== order.state) {
         if (run.dryRun) {
           r.notes.push(`${order.id}: would move ${order.state} → ${target}`);
@@ -220,6 +220,9 @@ const providerCatchUp = (run: Run) =>
           orderId: order.id,
           message: 'provider has the order on hold',
         });
+      }
+      if (fetched.right.status === 'failed') {
+        run.alarms.push({ kind: 'on_hold', orderId: order.id, message: PROVIDER_FAILED_NOTE });
       }
     }
     for (const order of yield* listOrders({ state: 'submit_failed', limit: PAGE })) {

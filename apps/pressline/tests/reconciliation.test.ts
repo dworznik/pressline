@@ -222,6 +222,23 @@ describe('Reconciliation repairs', () => {
     );
   });
 
+  it('a confirmed order the provider then fails (payment, file) goes on_hold and alarms', async () => {
+    app = await boot();
+    const { orderId, session } = await checkout(app);
+    await pay(app, session);
+    const providerOrderId = (await detail(app, orderId)).order.providerOrderId!;
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const report = await reconcile(app);
+    expect((await detail(app, orderId)).order.state).toBe('on_hold');
+    expect(report.alarms).toEqual([
+      {
+        kind: 'on_hold',
+        orderId,
+        message: expect.stringContaining('provider reports the order failed'),
+      },
+    ]);
+  });
+
   it('records refunds and disputes the Operator handled at the PSP', async () => {
     // The provider is unreachable, so every Order below stays paid (not yet stale).
     app = await boot({ createRetryableFailures: 100 });

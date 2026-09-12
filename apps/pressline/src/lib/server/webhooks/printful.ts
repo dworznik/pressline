@@ -37,7 +37,11 @@ const result = (outcome: InboundOutcome, note?: string): Result =>
   note ? { outcome, note } : { outcome };
 
 /** Provider status → the Order state it implies (ADR-0009). `partial` collapses into shipped. */
-export const stateFor = (status: ProviderOrder['status']): OrderState | undefined => {
+/** The ledger state a provider status stands for. `from` matters for `failed`: before confirmation it is a failed submission; after it (payment, file) it is the Operator's to sort out, so `on_hold`. */
+export const stateFor = (
+  status: ProviderOrder['status'],
+  from?: OrderState,
+): OrderState | undefined => {
   switch (status) {
     case 'pending':
     case 'inreview':
@@ -53,12 +57,18 @@ export const stateFor = (status: ProviderOrder['status']): OrderState | undefine
     case 'canceled':
       return 'cancelled';
     case 'failed':
-      return 'submit_failed';
+      return from === 'submitted' || from === 'in_production' || from === 'on_hold'
+        ? 'on_hold'
+        : 'submit_failed';
     case 'draft':
     case 'unknown':
       return undefined;
   }
 };
+
+/** What the Operator reads on the Transition when the provider fails a confirmed order. */
+export const PROVIDER_FAILED_NOTE =
+  'provider reports the order failed (payment or file): fix it at the provider, or cancel';
 
 const recordTransition = (
   order: Order,
@@ -135,10 +145,13 @@ export const applyPrintfulEvent = (
         `provider order ${providerOrder.id} belongs to ${providerOrder.externalId}`,
       );
     }
-    const target = stateFor(providerOrder.status);
+    const target = stateFor(providerOrder.status, order.state);
     if (!target) return result('ignored', `provider status=${providerOrder.status}`);
 
     let patch: OrderPatch = { providerOrderId: providerOrder.id };
+    if (providerOrder.status === 'failed' && target === 'on_hold') {
+      patch = { ...patch, note: PROVIDER_FAILED_NOTE };
+    }
     const shipmentEvent = event.type.startsWith('shipment_');
     if (shipmentEvent || target === 'shipped' || target === 'fulfilled') {
       // Tracking is part of the fact we are recording, so a transient failure here is retried too.

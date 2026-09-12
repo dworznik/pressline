@@ -5,7 +5,7 @@ import type { PublicOrder } from '$lib/server/orders/public';
 import type { Quote } from '$lib/server/quote/quote';
 import { catalog, offers } from './fixtures/catalogue';
 import { png } from './fixtures/images';
-import { makeTestApp, type TestApp } from './harness';
+import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
 const design: DesignResponse = {
   id: 'design-portrait-1',
@@ -129,6 +129,29 @@ describe('POST /webhooks/printful', () => {
       data: { order: { id: providerOrderId, external_id: orderId } },
     });
     expect((await stateOf(app, orderId, token)).state).toBe('in_production');
+  });
+
+  it('order_failed after confirmation (payment, file) → on_hold with a note for the Operator, never submit_failed', async () => {
+    app = await boot();
+    const { orderId, token, providerOrderId } = await submittedOrder(app);
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const { body } = await app.printfulWebhook({
+      type: 'order_failed',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    });
+    expect(body.outcome).toBe('applied');
+    expect((await stateOf(app, orderId, token)).state).toBe('on_hold');
+    const detail = (
+      await app.json<{ transitions: ReadonlyArray<{ to: string; note?: string | null }> }>(
+        `/api/operator/orders/${orderId}`,
+        { headers: { authorization: `Bearer ${OPERATOR_TOKEN}` } },
+      )
+    ).body;
+    expect(detail.transitions.at(-1)).toMatchObject({
+      to: 'on_hold',
+      note: expect.stringContaining('provider reports the order failed'),
+    });
   });
 
   it('shipment_sent → shipped with tracking number, carrier and URL', async () => {

@@ -4,6 +4,6 @@ import { defineConfig } from './src/lib/server/config/schema';
 // Secrets live in the platform environment; see .env.example.
 export default defineConfig({
   name: 'Pressline',
-  currency: 'EUR',
+  currency: 'USD',
   engines: [{ slug: 'sample', baseUrl: 'http://localhost:5174' }],
 });

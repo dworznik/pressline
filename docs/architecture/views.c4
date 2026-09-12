@@ -19,7 +19,7 @@ views {
 
   view containersB of pressline {
     title 'Candidate B: split by entry point'
-    description 'Storefront, HttpApi, webhooks, Reconciliation, Operator View, Ledger; the sample Engine and its FileStore; the CLI.'
+    description 'DECIDED on #64. Storefront, HttpApi, webhooks, Reconciliation, Operator View, Ledger; the Engine app and its FileStore; the CLI. Packages stay as relationship labels.'
     include
       customer, operator, engineDeveloper,
       pressline.app, pressline.app.*, pressline.ledger, pressline.cli,

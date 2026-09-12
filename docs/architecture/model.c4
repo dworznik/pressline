@@ -107,11 +107,11 @@ model {
     '
     style { color sky }
 
-    app = container 'Sample Engine' {
-      technology 'SvelteKit'
+    app = container 'Engine app' {
+      technology 'any HTTP service; apps/sample-engine is the reference, SvelteKit'
       description '
-        apps/sample-engine: the reference Engine. Makes a Design from a template or an
-        AI adapter, serves the three DesignSource endpoints.
+        Makes Designs and serves the three DesignSource endpoints (health, design,
+        printfile). The sample Engine renders from a template or an AI adapter.
       '
     }
     fileStore = datastore 'FileStore' {

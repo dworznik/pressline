@@ -76,6 +76,60 @@ export const getWebHandler = (platform: App.Platform | undefined): Promise<WebHa
   return cached
 }
 
+export type RuntimeEnv = typeof Env.Type
+
+/** Every environment variable this app reads, taken from the schema so a test cannot drift from it. */
+export const ENV_KEYS = Object.keys(Env.fields) as ReadonlyArray<keyof RuntimeEnv>
+
+/**
+ * Env → layer options, as pure functions so the wiring can be tested without
+ * booting the app. `STRIPE_WEBHOOK_SECRET` once sat in the schema and reached
+ * no layer, so every webhook was rejected on a correctly configured instance
+ * (#75); `tests/runtime-wiring.test.ts` now fails if any declared secret stops
+ * reaching the layer that needs it.
+ */
+export const printfulOptions = (env: RuntimeEnv) =>
+  env.PRINTFUL_TOKEN
+    ? {
+        token: env.PRINTFUL_TOKEN,
+        ...(env.PRINTFUL_WEBHOOK_SECRET ? { webhookSecret: env.PRINTFUL_WEBHOOK_SECRET } : {}),
+        ...(env.PRINTFUL_WEBHOOK_PUBLIC_KEY
+          ? { webhookPublicKey: env.PRINTFUL_WEBHOOK_PUBLIC_KEY }
+          : {}),
+      }
+    : undefined
+
+export const stripeOptions = (env: RuntimeEnv) =>
+  env.STRIPE_SECRET_KEY
+    ? {
+        secretKey: env.STRIPE_SECRET_KEY,
+        ...(env.STRIPE_WEBHOOK_SECRET ? { webhookSecret: env.STRIPE_WEBHOOK_SECRET } : {}),
+      }
+    : undefined
+
+export const resendOptions = (
+  env: RuntimeEnv,
+  email: { readonly from?: string | undefined; readonly replyTo?: string | undefined } | undefined,
+) =>
+  env.RESEND_API_KEY && email?.from
+    ? {
+        apiKey: env.RESEND_API_KEY,
+        from: email.from,
+        ...(email.replyTo ? { replyTo: email.replyTo } : {}),
+      }
+    : undefined
+
+export const operatorSecrets = (env: RuntimeEnv) => ({
+  // Without OPERATOR_TOKEN the operator API refuses everything (an empty token never matches).
+  token: env.OPERATOR_TOKEN ?? '',
+  // SESSION_SECRET falls back to the operator token, so rotating the token also ends sessions.
+  sessionSecret: env.SESSION_SECRET ?? env.OPERATOR_TOKEN ?? '',
+  ...(env.CRON_SECRET ? { cronSecret: env.CRON_SECRET } : {}),
+})
+
+export const mailerKind = (env: RuntimeEnv) =>
+  env.RESEND_API_KEY ? 'resend' : env.MAILER === 'console' ? 'console' : 'none'
+
 const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebHandler> => {
   const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>
   const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' })
@@ -88,25 +142,14 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
     return { slug: e.slug, baseUrl: e.baseUrl, secret: typeof secret === 'string' ? secret : '' }
   })
 
-  const RealProvider = env.PRINTFUL_TOKEN
-    ? layerPrintful({
-        token: env.PRINTFUL_TOKEN,
-        ...(env.PRINTFUL_WEBHOOK_SECRET ? { webhookSecret: env.PRINTFUL_WEBHOOK_SECRET } : {}),
-        ...(env.PRINTFUL_WEBHOOK_PUBLIC_KEY
-          ? { webhookPublicKey: env.PRINTFUL_WEBHOOK_PUBLIC_KEY }
-          : {}),
-      })
-    : layerFulfillmentProviderMemory
+  const printful = printfulOptions(env)
+  const RealProvider = printful ? layerPrintful(printful) : layerFulfillmentProviderMemory
   // Demo Mode: drafts are real, confirmation is a cancellation (ticket #18).
   const FulfillmentProviderLive = rawConfig.demo
     ? demoFulfillmentProvider(RealProvider)
     : RealProvider
-  const PspLive = env.STRIPE_SECRET_KEY
-    ? layerStripe({
-        secretKey: env.STRIPE_SECRET_KEY,
-        ...(env.STRIPE_WEBHOOK_SECRET ? { webhookSecret: env.STRIPE_WEBHOOK_SECRET } : {}),
-      })
-    : layerPspMemory
+  const stripe = stripeOptions(env)
+  const PspLive = stripe ? layerStripe(stripe) : layerPspMemory
   // Resend when a key and a sender are configured; `console` for local runs; else `none`.
   if (
     (env.RESEND_API_KEY && !rawConfig.email?.from) ||
@@ -116,27 +159,16 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
       'Mailer misconfigured: RESEND_API_KEY and pressline.config.ts email.from must be set together',
     )
   }
-  const MailerLive =
-    env.RESEND_API_KEY && rawConfig.email?.from
-      ? layerResend({
-          apiKey: env.RESEND_API_KEY,
-          from: rawConfig.email.from,
-          ...(rawConfig.email.replyTo ? { replyTo: rawConfig.email.replyTo } : {}),
-        })
-      : env.MAILER === 'console'
-        ? layerMailerConsole
-        : layerMailerNone
-
-  const mailerKind = env.RESEND_API_KEY ? 'resend' : env.MAILER === 'console' ? 'console' : 'none'
-  // Without OPERATOR_TOKEN the operator API refuses everything (an empty token never matches).
-  const OperatorSecretsLive = Layer.succeed(OperatorSecrets, {
-    token: env.OPERATOR_TOKEN ?? '',
-    sessionSecret: env.SESSION_SECRET ?? env.OPERATOR_TOKEN ?? '',
-    ...(env.CRON_SECRET ? { cronSecret: env.CRON_SECRET } : {}),
-  })
+  const resend = resendOptions(env, rawConfig.email)
+  const MailerLive = resend
+    ? layerResend(resend)
+    : env.MAILER === 'console'
+      ? layerMailerConsole
+      : layerMailerNone
+  const OperatorSecretsLive = Layer.succeed(OperatorSecrets, operatorSecrets(env))
 
   const InstanceFactsLive = Layer.succeed(InstanceFacts, {
-    mailer: mailerKind,
+    mailer: mailerKind(env),
     secrets: {
       printful: !!env.PRINTFUL_TOKEN,
       stripe: !!env.STRIPE_SECRET_KEY,

@@ -20,10 +20,10 @@ Pressline: a self-hostable bridge from an image-generating app (an Engine) to pr
 
 ### Load-bearing constraints (each has an ADR)
 
-- Single-operator, never multi-tenant. No `tenantId` anywhere (ADR-0001; lint-enforced).
-- The bridge never renders or decodes pixels and never stores image bytes; the Engine hosts immutable Printfile and Preview URLs (ADR-0002, 0003; lint-enforced import ban in `apps/pressline`).
+- Single-operator, never multi-tenant. No `tenantId` anywhere (ADR-0001; enforced by `scripts/check-bans.mjs`).
+- The bridge never renders or decodes pixels and never stores image bytes; the Engine hosts immutable Printfile and Preview URLs (ADR-0002, 0003; import ban in `apps/pressline` enforced by `scripts/check-bans.mjs`).
 - A validated Printfile exists before any Stripe session is created (ADR-0004).
-- SQLite dialect only (D1 / libSQL / file); every write is a single statement or a `batch`; `withTransaction` is banned (ADR-0008; lint-enforced).
+- SQLite dialect only (D1 / libSQL / file); every write is a single statement or a `batch`; `withTransaction` is banned (ADR-0008; enforced by `scripts/check-bans.mjs`).
 - Effect throughout: `@effect/platform` HTTP mounted inside one SvelteKit app per platform (ADR-0011, 0012).
 - Configuration is a typed file plus platform secrets; the Operator View is read-only (ADR-0014).
 - Webhooks are hints: verify, record the Inbound Event, re-fetch, then transition (ADR-0007, 0009).
@@ -33,6 +33,13 @@ Pressline: a self-hostable bridge from an image-generating app (an Engine) to pr
 - `pnpm install` wires git hooks (`.githooks/`: lint-staged on commit, conventional subject line).
 - `pnpm verify` runs format, lint, typecheck, ADR check, tests, build; CI runs the same steps.
 - `pnpm adr:check` guards ADR numbering and frontmatter; new ADRs take the next number.
+
+### Tooling (ADR-0017)
+
+- **oxlint, not ESLint**: `typescript-eslint` refuses to load against TypeScript 7. `pnpm lint` is `oxlint && node scripts/check-bans.mjs`; that script carries the three ADR bans because oxlint has no `no-restricted-syntax` and no Svelte parser. Do not reintroduce ESLint.
+- **`.svelte` files are not linted**, only type-checked by `svelte-check`.
+- **TypeScript is not uniform**: root and `packages/*` on 7; the SvelteKit apps on 6 plus 7 aliased as `@typescript/native` with `svelte-check --tsgo`; `apps/docs` on 6 alone because `astro check` needs an API the native compiler lacks. Do not unify it.
+- **Prettier writes no semicolons** (`semi: false`).
 
 ### Branches
 

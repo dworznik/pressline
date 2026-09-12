@@ -1,32 +1,32 @@
-import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform';
-import { Effect, Layer, Schema } from 'effect';
-import { Mailer, MailerError, type MailerService } from './mailer';
+import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
+import { Effect, Layer, Schema } from 'effect'
+import { Mailer, MailerError, type MailerService } from './mailer'
 
 /**
  * Resend adapter: the shipped Mailer (ticket #12). One HTTP call per email,
  * with the Order/kind as idempotency key so a retried send never doubles.
  */
 export interface ResendOptions {
-  readonly apiKey: string;
+  readonly apiKey: string
   /** `Shop Name <orders@shop.example>`; the domain must be verified in Resend. */
-  readonly from: string;
-  readonly replyTo?: string;
-  readonly baseUrl?: string;
+  readonly from: string
+  readonly replyTo?: string
+  readonly baseUrl?: string
 }
 
-const SentWire = Schema.Struct({ id: Schema.String });
+const SentWire = Schema.Struct({ id: Schema.String })
 const ErrorWire = Schema.Struct({
   message: Schema.optional(Schema.String),
   name: Schema.optional(Schema.String),
   error: Schema.optional(Schema.String),
-});
+})
 
 export const makeResend = (options: ResendOptions) =>
   Effect.gen(function* () {
     const client = (yield* HttpClient.HttpClient).pipe(
       HttpClient.mapRequest(HttpClientRequest.bearerToken(options.apiKey)),
-    );
-    const base = (options.baseUrl ?? 'https://api.resend.com').replace(/\/$/, '');
+    )
+    const base = (options.baseUrl ?? 'https://api.resend.com').replace(/\/$/, '')
 
     const service: MailerService = {
       send: (email) =>
@@ -88,8 +88,8 @@ export const makeResend = (options: ResendOptions) =>
               }),
           }),
         ),
-    };
-    return service;
-  });
+    }
+    return service
+  })
 
-export const layerResend = (options: ResendOptions) => Layer.effect(Mailer, makeResend(options));
+export const layerResend = (options: ResendOptions) => Layer.effect(Mailer, makeResend(options))

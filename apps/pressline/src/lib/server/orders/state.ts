@@ -1,4 +1,4 @@
-import { Schema } from 'effect';
+import { Schema } from 'effect'
 
 /** Order states (ADR-0009). */
 export const OrderState = Schema.Literal(
@@ -13,8 +13,8 @@ export const OrderState = Schema.Literal(
   'fulfilled',
   'canceled',
   'refunded',
-);
-export type OrderState = typeof OrderState.Type;
+)
+export type OrderState = typeof OrderState.Type
 
 /** What made a Transition happen (CONTEXT.md → Cause). */
 export const Cause = Schema.Literal(
@@ -23,8 +23,8 @@ export const Cause = Schema.Literal(
   'printful_webhook',
   'cli',
   'reconciliation',
-);
-export type Cause = typeof Cause.Type;
+)
+export type Cause = typeof Cause.Type
 
 /** Fulfillment is over: nothing more will ship. Purge eligibility, not "no edges": a refund can still be recorded after `fulfilled`. */
 export const TERMINAL: ReadonlySet<OrderState> = new Set([
@@ -32,7 +32,7 @@ export const TERMINAL: ReadonlySet<OrderState> = new Set([
   'fulfilled',
   'canceled',
   'refunded',
-]);
+])
 
 const EDGES: Readonly<Record<OrderState, ReadonlyArray<OrderState>>> = {
   checkout_open: ['expired', 'paid', 'canceled'],
@@ -47,8 +47,7 @@ const EDGES: Readonly<Record<OrderState, ReadonlyArray<OrderState>>> = {
   fulfilled: ['refunded'],
   canceled: ['refunded'],
   refunded: [],
-};
+}
 
 /** The state machine's answer to "may an Order go from A to B?" */
-export const canTransition = (from: OrderState, to: OrderState): boolean =>
-  EDGES[from].includes(to);
+export const canTransition = (from: OrderState, to: OrderState): boolean => EDGES[from].includes(to)

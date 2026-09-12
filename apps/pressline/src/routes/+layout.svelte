@@ -1,13 +1,13 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
-  import { page } from '$app/state';
-  import { copy } from '$lib/copy';
-  import type { LayoutData } from './$types';
+  import type { Snippet } from 'svelte'
+  import { page } from '$app/state'
+  import { copy } from '$lib/copy'
+  import type { LayoutData } from './$types'
 
-  let { data, children }: { data: LayoutData; children: Snippet } = $props();
-  const b = $derived(data.branding);
+  let { data, children }: { data: LayoutData; children: Snippet } = $props()
+  const b = $derived(data.branding)
   // The Operator View has its own chrome; the Storefront gets the Operator's brand.
-  const storefront = $derived(!page.url.pathname.startsWith('/operator'));
+  const storefront = $derived(!page.url.pathname.startsWith('/operator'))
 </script>
 
 <svelte:head>

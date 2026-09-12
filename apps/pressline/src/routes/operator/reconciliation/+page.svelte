@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
-  import { resolve } from '$app/paths';
-  import type { ActionData, PageData } from './$types';
-  let { data, form }: { data: PageData; form: ActionData } = $props();
-  const r = $derived(data.report);
-  const when = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  import { enhance } from '$app/forms'
+  import { resolve } from '$app/paths'
+  import type { ActionData, PageData } from './$types'
+  let { data, form }: { data: PageData; form: ActionData } = $props()
+  const r = $derived(data.report)
+  const when = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
 </script>
 
 <svelte:head><title>Operator · Reconciliation</title></svelte:head>

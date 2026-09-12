@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/state';
-  import { copy } from '$lib/copy';
+  import { page } from '$app/state'
+  import { copy } from '$lib/copy'
 </script>
 
 <main class="error">

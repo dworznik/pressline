@@ -1,5 +1,5 @@
-import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url'
+import { defineConfig } from 'vitest/config'
 
 // Seam 1: the HTTP surface of the bridge with in-memory layers (docs/SPEC.md →
 // Testing Decisions). Tests boot the Effect web handler directly; SvelteKit is
@@ -19,4 +19,4 @@ export default defineConfig({
       '@pressline/cli': new URL('../../packages/cli/src/index.ts', import.meta.url).pathname,
     },
   },
-});
+})

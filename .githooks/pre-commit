@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Runs lint-staged (eslint --fix, prettier, ADR check) on staged files.
+# Runs lint-staged (prettier, oxlint, ADR check) on staged files.
 # Enabled by `git config core.hooksPath .githooks`, wired by the root
 # `prepare` script on `pnpm install`. Bypass with `git commit --no-verify`.
 set -e

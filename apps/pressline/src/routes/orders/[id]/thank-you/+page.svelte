@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
-  import { copy } from '$lib/copy';
-  import type { PageData } from './$types';
+  import { resolve } from '$app/paths'
+  import { copy } from '$lib/copy'
+  import type { PageData } from './$types'
 
-  let { data }: { data: PageData } = $props();
-  const order = $derived(data.order);
+  let { data }: { data: PageData } = $props()
+  const order = $derived(data.order)
   const statusHref = $derived(
     `${resolve('/orders/[id]', { id: data.order.id })}?t=${encodeURIComponent(data.token)}`,
-  );
+  )
   // Stripe redirects here as soon as payment succeeds; the webhook that marks
   // the Order paid may land a moment later, so "still confirming" is normal.
   // In Demo Mode every paid Order is canceled at once; say so instead of promising a shipment.
@@ -21,7 +21,7 @@
           : order.state === 'canceled' || order.state === 'refunded'
             ? 'canceled'
             : 'confirmed',
-  );
+  )
 </script>
 
 <svelte:head>

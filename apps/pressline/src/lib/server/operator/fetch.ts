@@ -1,4 +1,4 @@
-import { SESSION_COOKIE } from './session';
+import { SESSION_COOKIE } from './session'
 
 /** Operator View pages call the operator API with the session cookie they received. */
 export const operatorFetch = (
@@ -6,6 +6,6 @@ export const operatorFetch = (
   cookie: string | undefined,
   path: string,
   init: { method?: string } = {},
-) => fetch(path, { ...init, headers: cookie ? { cookie: `${SESSION_COOKIE}=${cookie}` } : {} });
+) => fetch(path, { ...init, headers: cookie ? { cookie: `${SESSION_COOKIE}=${cookie}` } : {} })
 
-export { SESSION_COOKIE };
+export { SESSION_COOKIE }

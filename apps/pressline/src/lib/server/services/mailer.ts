@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Schema } from 'effect';
+import { Context, Effect, Layer, Schema } from 'effect'
 
 /**
  * Mailer (CONTEXT.md): delivers Customer emails. Resend is the shipped
@@ -11,23 +11,23 @@ export class MailerError extends Schema.TaggedError<MailerError>()('MailerError'
 }) {}
 
 export interface Email {
-  readonly to: string;
-  readonly subject: string;
-  readonly html: string;
-  readonly text: string;
+  readonly to: string
+  readonly subject: string
+  readonly html: string
+  readonly text: string
   /** Lets the Mailer de-duplicate a retried send. */
-  readonly idempotencyKey?: string;
+  readonly idempotencyKey?: string
 }
 
 export interface MailerService {
   /** Resolves with the provider's message id when it has one. */
-  readonly send: (email: Email) => Effect.Effect<string | undefined, MailerError>;
+  readonly send: (email: Email) => Effect.Effect<string | undefined, MailerError>
 }
 
 export class Mailer extends Context.Tag('pressline/Mailer')<Mailer, MailerService>() {}
 
 /** Sends nothing. The production default until a real Mailer is configured. */
-export const layerMailerNone = Layer.succeed(Mailer, { send: () => Effect.succeed(undefined) });
+export const layerMailerNone = Layer.succeed(Mailer, { send: () => Effect.succeed(undefined) })
 
 /**
  * Dev-only stand-in. Logs an opaque delivery event: never the recipient or
@@ -37,7 +37,7 @@ export const layerMailerNone = Layer.succeed(Mailer, { send: () => Effect.succee
 export const layerMailerConsole = Layer.succeed(Mailer, {
   send: (email) =>
     Effect.sync(() => {
-      console.warn(`[mail] delivered 1 message (${email.html.length} bytes html)`);
-      return undefined;
+      console.warn(`[mail] delivered 1 message (${email.html.length} bytes html)`)
+      return undefined
     }),
-});
+})

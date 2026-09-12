@@ -1,7 +1,7 @@
 /** Hand-built PNG/JPEG headers for header-only validation tests. No real image data needed; PNG lives with the e2e seed. */
 
-export { png, type PngOptions } from '$lib/server/e2e/png';
-import { concat } from '$lib/server/e2e/png';
+export { png, type PngOptions } from '$lib/server/e2e/png'
+import { concat } from '$lib/server/e2e/png'
 
 /** A JPEG prefix: SOI, APP0, SOF0 with the given size, then padding. */
 export const jpeg = ({
@@ -9,9 +9,9 @@ export const jpeg = ({
   height,
   totalBytes,
 }: {
-  width: number;
-  height: number;
-  totalBytes?: number;
+  width: number
+  height: number
+  totalBytes?: number
 }) => {
   const sof = new Uint8Array([
     0xff,
@@ -33,14 +33,14 @@ export const jpeg = ({
     3,
     0x11,
     1,
-  ]);
+  ])
   const app0 = new Uint8Array([
     0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 1, 1, 0, 0, 1, 0, 1, 0, 0,
-  ]);
-  const head = concat([new Uint8Array([0xff, 0xd8]), app0, sof]);
-  const size = Math.max(totalBytes ?? head.length + 2, head.length + 2);
-  const pad = new Uint8Array(size - head.length);
-  pad[pad.length - 2] = 0xff;
-  pad[pad.length - 1] = 0xd9;
-  return concat([head, pad]);
-};
+  ])
+  const head = concat([new Uint8Array([0xff, 0xd8]), app0, sof])
+  const size = Math.max(totalBytes ?? head.length + 2, head.length + 2)
+  const pad = new Uint8Array(size - head.length)
+  pad[pad.length - 2] = 0xff
+  pad[pad.length - 1] = 0xd9
+  return concat([head, pad])
+}

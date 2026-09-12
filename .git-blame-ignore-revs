@@ -3,3 +3,6 @@
 
 # refactor: American English across the repository
 7d6cc71e361003394ba8b09d273de6683f81e8b8
+
+# chore(format): reformat the repo without semicolons
+10165f1fe088bfc878a604e7372ca32ced456ee0

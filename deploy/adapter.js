@@ -1,7 +1,7 @@
-import auto from '@sveltejs/adapter-auto';
-import cloudflare from '@sveltejs/adapter-cloudflare';
-import node from '@sveltejs/adapter-node';
-import vercel from '@sveltejs/adapter-vercel';
+import auto from '@sveltejs/adapter-auto'
+import cloudflare from '@sveltejs/adapter-cloudflare'
+import node from '@sveltejs/adapter-node'
+import vercel from '@sveltejs/adapter-vercel'
 
 /**
  * One deployable per platform (ADR-0012). `PRESSLINE_ADAPTER` picks the
@@ -15,13 +15,13 @@ export const pickAdapter = () => {
     case 'cloudflare':
       // The app's own build config: wrangler's find-up must not reach the repo-root
       // wrangler.toml, whose `main` is the hand-written Worker shim.
-      return cloudflare({ config: 'wrangler.build.toml' });
+      return cloudflare({ config: 'wrangler.build.toml' })
     case 'vercel':
       // Node runtime, not Edge: the SQLite drivers and Stripe's SDK need it (ticket #24).
-      return vercel({ runtime: 'nodejs22.x' });
+      return vercel({ runtime: 'nodejs22.x' })
     case 'node':
-      return node();
+      return node()
     default:
-      return auto();
+      return auto()
   }
-};
+}

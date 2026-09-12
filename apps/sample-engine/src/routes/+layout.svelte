@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
-  import type { Snippet } from 'svelte';
-  let { children }: { children: Snippet } = $props();
+  import { resolve } from '$app/paths'
+  import type { Snippet } from 'svelte'
+  let { children }: { children: Snippet } = $props()
 </script>
 
 <header class="top">

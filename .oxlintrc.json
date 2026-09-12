@@ -1,0 +1,41 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // oxlint rather than ESLint, deliberately: typescript-eslint declares
+  // `typescript >=4.8.4 <6.1.0` and refuses to load against this repo's
+  // TypeScript 7, and ESLint without that parser can only read the handful of
+  // .js/.mjs files here. oxlint brings its own parser and is indifferent to the
+  // TypeScript version. Do not swap ESLint back in.
+  //
+  // Two costs, knowingly accepted:
+  //   1. oxlint has no Svelte parser, so .svelte files are not linted at all.
+  //      `svelte-check` (in each app's `check` script) is what guards them now.
+  //   2. oxlint has no `no-restricted-syntax`, which carried the ADR-0008 ban.
+  //      The ADR bans moved to scripts/check-bans.mjs, which `pnpm lint` runs
+  //      and which covers .svelte too. That file is the enforcement now.
+  "categories": {
+    // Only `correctness`: pedantic and suspicious are mostly style preferences
+    // and would bury the ADR bans in noise.
+    "correctness": "error"
+  },
+  "rules": {
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "typescript/consistent-type-imports": "error"
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.mjs", "apps/*/scripts/**/*.{ts,mjs}"],
+      "rules": { "no-console": "off" }
+    }
+  ],
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.svelte-kit/**",
+    "**/.wrangler/**",
+    "**/.vercel/**",
+    "**/.astro/**",
+    "apps/docs/public/architecture/**",
+    "**/coverage/**"
+  ]
+}

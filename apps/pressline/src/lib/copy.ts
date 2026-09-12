@@ -84,4 +84,4 @@ export const copy = {
     poweredBy: 'Powered by Pressline',
   },
   error: { fallback: 'Something went wrong.' },
-} as const;
+} as const

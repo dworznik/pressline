@@ -1,11 +1,11 @@
-import type { CatalogOffer, DesignResponse } from '@pressline/contract';
-import { Effect, Schema } from 'effect';
-import { resolveCatalog } from '../catalog/catalog';
-import { STRIPE_TEST_CARD } from '../config/demo';
-import { Config } from '../config/schema';
-import { Db } from '../db/db';
-import { DesignSource } from '../services/design-source';
-import { Engines } from './engines';
+import type { CatalogOffer, DesignResponse } from '@pressline/contract'
+import { Effect, Schema } from 'effect'
+import { resolveCatalog } from '../catalog/catalog'
+import { STRIPE_TEST_CARD } from '../config/demo'
+import { Config } from '../config/schema'
+import { Db } from '../db/db'
+import { DesignSource } from '../services/design-source'
+import { Engines } from './engines'
 
 /** The configured Engine is disabled (protocol mismatch or unreachable). */
 export class EngineUnavailable extends Schema.TaggedError<EngineUnavailable>()(
@@ -23,39 +23,39 @@ export const eligibleOffers = (
   offers: ReadonlyArray<CatalogOffer>,
   rejected: ReadonlySet<string> = new Set(),
 ): ReadonlyArray<CatalogOffer> => {
-  const ratio = design.aspect.w / design.aspect.h;
-  const listed = design.offers ? new Set(design.offers) : undefined;
+  const ratio = design.aspect.w / design.aspect.h
+  const listed = design.offers ? new Set(design.offers) : undefined
   return offers.filter(
     (o) =>
       (listed === undefined || listed.has(o.slug)) &&
       !rejected.has(o.slug) &&
       (o.aspect === null || (ratio >= o.aspect.min && ratio <= o.aspect.max)),
-  );
-};
+  )
+}
 
 const rejectedOffers = (engine: string, designId: string) =>
   Effect.gen(function* () {
-    const db = yield* Db;
+    const db = yield* Db
     const rows = yield* db.all<{ offer_slug: string }>(
       'SELECT offer_slug FROM printfile_rejections WHERE engine = ? AND design_id = ?',
       [engine, designId],
-    );
-    return new Set(rows.map((r) => r.offer_slug));
-  }).pipe(Effect.orDie);
+    )
+    return new Set(rows.map((r) => r.offer_slug))
+  }).pipe(Effect.orDie)
 
 /** A Design as the Storefront sees it: the Engine's answer plus what can be bought. */
 export const loadDesign = (engine: string, designId: string) =>
   Effect.gen(function* () {
-    const engines = yield* Engines;
-    const status = yield* engines.recheck(engine);
+    const engines = yield* Engines
+    const status = yield* engines.recheck(engine)
     if (status && !status.enabled) {
-      return yield* new EngineUnavailable({ engine, reason: status.reason ?? 'disabled' });
+      return yield* new EngineUnavailable({ engine, reason: status.reason ?? 'disabled' })
     }
-    const source = yield* DesignSource;
-    const design = yield* source.getDesign(engine, designId);
-    const catalog = yield* resolveCatalog;
-    const rejected = yield* rejectedOffers(engine, designId);
-    const config = yield* Config;
+    const source = yield* DesignSource
+    const design = yield* source.getDesign(engine, designId)
+    const catalog = yield* resolveCatalog
+    const rejected = yield* rejectedOffers(engine, designId)
+    const config = yield* Config
     return {
       engine,
       design,
@@ -72,5 +72,5 @@ export const loadDesign = (engine: string, designId: string) =>
         ...(config.legal.privacyUrl ? { privacyUrl: config.legal.privacyUrl } : {}),
         ...(config.legal.contactEmail ? { contactEmail: config.legal.contactEmail } : {}),
       },
-    };
-  });
+    }
+  })

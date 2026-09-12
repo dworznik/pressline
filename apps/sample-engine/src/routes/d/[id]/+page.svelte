@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { PageData } from './$types';
-  let { data }: { data: PageData } = $props();
-  const d = $derived(data.design);
+  import type { PageData } from './$types'
+  let { data }: { data: PageData } = $props()
+  const d = $derived(data.design)
 </script>
 
 <svelte:head><title>{d.title} · Sample Engine</title></svelte:head>

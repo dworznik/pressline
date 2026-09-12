@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { PageData } from './$types';
-  let { data }: { data: PageData } = $props();
-  const h = $derived(data.health);
+  import type { PageData } from './$types'
+  let { data }: { data: PageData } = $props()
+  const h = $derived(data.health)
 </script>
 
 <svelte:head><title>Operator · Health</title></svelte:head>

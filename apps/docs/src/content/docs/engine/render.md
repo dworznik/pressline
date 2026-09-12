@@ -4,15 +4,15 @@ description: One call from an image and a Spec to a print-ready PNG, on Node or 
 ---
 
 ```ts
-import { render } from '@pressline/render';
-import { nodeBackend } from '@pressline/render/node'; // sharp
+import { render } from '@pressline/render'
+import { nodeBackend } from '@pressline/render/node' // sharp
 // or: const backend = await createWasmBackend({ modules, maxRawBytes }) from '@pressline/render/wasm'
 
 const png = await render(nodeBackend, { kind: 'svg', svg }, spec, {
   fit: 'cover', // or 'contain'
   background: 'transparent', // or { r, g, b }; the default follows spec.alpha
   align: { x: 'center', y: 'center' },
-});
+})
 ```
 
 The output always satisfies the Spec: exact dimensions, DPI in `pHYs`, sRGB declared, RGBA when alpha is allowed or required, RGB flattened onto the background when forbidden. Both backends share the same layout, compositing and PNG writer, so they produce the same structure; only decoding and scaling differ.

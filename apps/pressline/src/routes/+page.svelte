@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { copy } from '$lib/copy';
+  import { copy } from '$lib/copy'
 </script>
 
 <main class="home">

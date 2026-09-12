@@ -1,5 +1,5 @@
-import { AspectRange, OfferSlug, Slug } from '@pressline/contract';
-import { Context, Effect, Layer, ParseResult, Schema } from 'effect';
+import { AspectRange, OfferSlug, Slug } from '@pressline/contract'
+import { Context, Effect, Layer, ParseResult, Schema } from 'effect'
 
 /**
  * Operator configuration (ADR-0014): a typed file in the deployed repo,
@@ -8,8 +8,8 @@ import { Context, Effect, Layer, ParseResult, Schema } from 'effect';
 export const EngineConfig = Schema.Struct({
   slug: Slug,
   baseUrl: Schema.String.pipe(Schema.pattern(/^https?:\/\//)),
-});
-export type EngineConfig = typeof EngineConfig.Type;
+})
+export type EngineConfig = typeof EngineConfig.Type
 
 /** One sellable variant of an Offer: a Printful catalog variant (ADR-0006). */
 export const OfferVariantConfig = Schema.Struct({
@@ -20,8 +20,8 @@ export const OfferVariantConfig = Schema.Struct({
   size: Schema.optional(Schema.String),
   /** Product photo for this variant, used by the Storefront overlay Mockup. */
   imageUrl: Schema.optional(Schema.String),
-});
-export type OfferVariantConfig = typeof OfferVariantConfig.Type;
+})
+export type OfferVariantConfig = typeof OfferVariantConfig.Type
 
 /** Offer (CONTEXT.md): one sellable thing, one Placement, one price. */
 export const OfferConfig = Schema.Struct({
@@ -47,25 +47,25 @@ export const OfferConfig = Schema.Struct({
       ? true
       : `Offer "${o.slug}": aspect.min must be <= aspect.max`,
   ),
-);
-export type OfferConfig = typeof OfferConfig.Type;
+)
+export type OfferConfig = typeof OfferConfig.Type
 
 export const CatalogConfig = Schema.Struct({
   offers: Schema.Array(OfferConfig).pipe(
     Schema.filter((offers) => {
-      const seen = new Set<string>();
+      const seen = new Set<string>()
       for (const o of offers) {
-        if (seen.has(o.slug)) return `duplicate Offer slug "${o.slug}"`;
-        seen.add(o.slug);
+        if (seen.has(o.slug)) return `duplicate Offer slug "${o.slug}"`
+        seen.add(o.slug)
       }
-      return true;
+      return true
     }),
   ),
-});
-export type CatalogConfig = typeof CatalogConfig.Type;
+})
+export type CatalogConfig = typeof CatalogConfig.Type
 
 const DEFAULT_WITHDRAWAL_NOTICE =
-  'This item is made to your design. The 14-day right of withdrawal does not apply to personalized goods; defective or damaged items are replaced.';
+  'This item is made to your design. The 14-day right of withdrawal does not apply to personalized goods; defective or damaged items are replaced.'
 
 export const PresslineConfigSchema = Schema.Struct({
   /** Shown on the Storefront and in emails. */
@@ -160,8 +160,8 @@ export const PresslineConfigSchema = Schema.Struct({
     }),
     { default: () => ({ waitMs: 8_000 }) },
   ),
-});
-export type PresslineConfig = typeof PresslineConfigSchema.Type;
+})
+export type PresslineConfig = typeof PresslineConfigSchema.Type
 
 export class ConfigError extends Schema.TaggedError<ConfigError>()('ConfigError', {
   message: Schema.String,
@@ -175,29 +175,29 @@ export class ConfigError extends Schema.TaggedError<ConfigError>()('ConfigError'
 export const decodeConfig = (raw: unknown): Effect.Effect<PresslineConfig, ConfigError> =>
   Schema.decodeUnknown(PresslineConfigSchema, { errors: 'all' })(raw).pipe(
     Effect.mapError((e) => new ConfigError({ message: formatConfigError(raw, e) })),
-  );
+  )
 
 const formatConfigError = (raw: unknown, e: ParseResult.ParseError): string => {
-  const issues = ParseResult.ArrayFormatter.formatErrorSync(e);
+  const issues = ParseResult.ArrayFormatter.formatErrorSync(e)
   const lines = issues.map((issue) => {
-    const path = issue.path.map(String);
-    const where = path.join('.');
-    const offer = offerSlugAt(raw, path);
-    return offer ? `Offer "${offer}" (${where}): ${issue.message}` : `${where}: ${issue.message}`;
-  });
-  return `pressline.config.ts is invalid:\n${lines.map((l) => `  - ${l}`).join('\n')}`;
-};
+    const path = issue.path.map(String)
+    const where = path.join('.')
+    const offer = offerSlugAt(raw, path)
+    return offer ? `Offer "${offer}" (${where}): ${issue.message}` : `${where}: ${issue.message}`
+  })
+  return `pressline.config.ts is invalid:\n${lines.map((l) => `  - ${l}`).join('\n')}`
+}
 
 const offerSlugAt = (raw: unknown, path: ReadonlyArray<string>): string | undefined => {
-  if (path[0] !== 'catalog' || path[1] !== 'offers' || path[2] === undefined) return undefined;
-  const offers = (raw as { catalog?: { offers?: unknown[] } })?.catalog?.offers;
-  const offer = offers?.[Number(path[2])] as { slug?: unknown } | undefined;
-  return typeof offer?.slug === 'string' ? offer.slug : undefined;
-};
+  if (path[0] !== 'catalog' || path[1] !== 'offers' || path[2] === undefined) return undefined
+  const offers = (raw as { catalog?: { offers?: unknown[] } })?.catalog?.offers
+  const offer = offers?.[Number(path[2])] as { slug?: unknown } | undefined
+  return typeof offer?.slug === 'string' ? offer.slug : undefined
+}
 
 export class Config extends Context.Tag('pressline/Config')<Config, PresslineConfig>() {
-  static readonly layer = (raw: unknown) => Layer.effect(Config, decodeConfig(raw));
+  static readonly layer = (raw: unknown) => Layer.effect(Config, decodeConfig(raw))
 }
 
 /** Helper for config authors: `export default defineConfig({...})`. */
-export const defineConfig = (config: typeof PresslineConfigSchema.Encoded) => config;
+export const defineConfig = (config: typeof PresslineConfigSchema.Encoded) => config

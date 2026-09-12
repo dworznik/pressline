@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { page } from '$app/state';
-  import { resolve } from '$app/paths';
-  import type { Snippet } from 'svelte';
-  import type { LayoutData } from './$types';
-  let { data, children }: { data: LayoutData; children: Snippet } = $props();
-  const onLogin = $derived(page.url.pathname === '/operator/login');
+  import { page } from '$app/state'
+  import { resolve } from '$app/paths'
+  import type { Snippet } from 'svelte'
+  import type { LayoutData } from './$types'
+  let { data, children }: { data: LayoutData; children: Snippet } = $props()
+  const onLogin = $derived(page.url.pathname === '/operator/login')
 </script>
 
 <div class="operator">

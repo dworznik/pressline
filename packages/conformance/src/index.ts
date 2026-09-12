@@ -7,4 +7,4 @@ export {
   type Check,
   type ConformanceOptions,
   type ConformanceReport,
-} from './suite.js';
+} from './suite.js'

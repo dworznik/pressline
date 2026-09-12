@@ -1,4 +1,4 @@
-import { runReconciliation } from './run';
+import { runReconciliation } from './run'
 
 /**
  * The scheduled entry for platforms that call into the process instead of
@@ -6,4 +6,4 @@ import { runReconciliation } from './run';
  * which the Cloudflare deploy (#23) wires to run this effect on the same
  * services layer the HTTP handler uses. Vercel Cron uses `GET /api/cron/reconcile`.
  */
-export const scheduledReconciliation = runReconciliation('cron');
+export const scheduledReconciliation = runReconciliation('cron')

@@ -7,9 +7,9 @@ import {
   type PrintfileReady,
   type PrintfileRendering,
   type PrintfileSpec,
-} from '@pressline/contract';
-import { Effect, Layer, Ref } from 'effect';
-import { DesignSource, DesignSourceError, UnknownEngine } from './design-source';
+} from '@pressline/contract'
+import { Effect, Layer, Ref } from 'effect'
+import { DesignSource, DesignSourceError, UnknownEngine } from './design-source'
 import {
   FulfillmentProvider,
   FulfillmentProviderError,
@@ -24,8 +24,8 @@ import {
   type ShippingRate,
   type ShippingRateRequest,
   type VariantPrices,
-} from './fulfillment-provider';
-import { Mailer, MailerError, type Email } from './mailer';
+} from './fulfillment-provider'
+import { Mailer, MailerError, type Email } from './mailer'
 import {
   Psp,
   PspError,
@@ -34,7 +34,7 @@ import {
   type CheckoutSessionDetails,
   type CheckoutSessionInput,
   type PaymentStatus,
-} from './psp';
+} from './psp'
 
 /**
  * In-memory implementations of every external service. The test harness
@@ -46,40 +46,40 @@ import {
 /** How the in-memory Engine answers ensure-Printfile for one Design. */
 export type MemoryPrintfileAnswer =
   | {
-      readonly kind: 'ready';
-      readonly url: string;
-      readonly bytes?: number;
-      readonly sha256?: string;
-      readonly contentType?: PrintfileReady['contentType'];
-      readonly specHash?: string;
-      readonly width?: number;
-      readonly height?: number;
+      readonly kind: 'ready'
+      readonly url: string
+      readonly bytes?: number
+      readonly sha256?: string
+      readonly contentType?: PrintfileReady['contentType']
+      readonly specHash?: string
+      readonly width?: number
+      readonly height?: number
     }
-  /** Answer `rendering` this many times, then as `then`. */
+  /** Answer `rendering` this many times, then as `next`. */
   | {
-      readonly kind: 'rendering';
-      readonly times: number;
-      readonly then: MemoryPrintfileAnswer;
-      readonly retryAfterMs?: number;
+      readonly kind: 'rendering'
+      readonly times: number
+      readonly next: MemoryPrintfileAnswer
+      readonly retryAfterMs?: number
     }
   | {
-      readonly kind: 'rejected';
-      readonly code: PrintfileRejected['code'];
-      readonly message?: string;
-    };
+      readonly kind: 'rejected'
+      readonly code: PrintfileRejected['code']
+      readonly message?: string
+    }
 
 export interface MemoryEngine {
-  readonly protocolVersion?: string;
+  readonly protocolVersion?: string
   /** Unreachable: every call fails as a transport error. */
-  readonly down?: boolean;
-  readonly designs?: Readonly<Record<string, DesignResponse>>;
+  readonly down?: boolean
+  readonly designs?: Readonly<Record<string, DesignResponse>>
   /** Per Design ID; default answers `ready` with a synthetic URL. */
-  readonly printfiles?: Readonly<Record<string, MemoryPrintfileAnswer>>;
+  readonly printfiles?: Readonly<Record<string, MemoryPrintfileAnswer>>
 }
 
 export interface DesignSourceMemoryOptions {
-  readonly protocolVersion?: string;
-  readonly engines?: Readonly<Record<string, MemoryEngine>>;
+  readonly protocolVersion?: string
+  readonly engines?: Readonly<Record<string, MemoryEngine>>
 }
 
 /**
@@ -88,12 +88,12 @@ export interface DesignSourceMemoryOptions {
  */
 export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) =>
   Effect.gen(function* () {
-    const calls = yield* Ref.make(0);
-    const remaining = new Map<string, number>();
+    const calls = yield* Ref.make(0)
+    const remaining = new Map<string, number>()
     const engineOf = (slug: string): Effect.Effect<MemoryEngine, UnknownEngine> => {
-      const e = options.engines?.[slug];
-      return e ? Effect.succeed(e) : Effect.fail(new UnknownEngine({ engine: slug }));
-    };
+      const e = options.engines?.[slug]
+      return e ? Effect.succeed(e) : Effect.fail(new UnknownEngine({ engine: slug }))
+    }
     const reachable = (slug: string, e: MemoryEngine) =>
       e.down
         ? Effect.fail(
@@ -103,7 +103,7 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
               retryable: true,
             }),
           )
-        : Effect.void;
+        : Effect.void
     const answer = (
       engine: string,
       designId: string,
@@ -114,15 +114,15 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
         case 'rejected':
           return Effect.fail(
             new PrintfileRejected({ code: render.code, message: render.message ?? render.code }),
-          );
+          )
         case 'rendering': {
-          const key = `${engine}/${designId}`;
-          const left = remaining.get(key) ?? render.times;
+          const key = `${engine}/${designId}`
+          const left = remaining.get(key) ?? render.times
           if (left > 0) {
-            remaining.set(key, left - 1);
-            return Effect.succeed({ status: 'rendering', retryAfterMs: render.retryAfterMs ?? 10 });
+            remaining.set(key, left - 1)
+            return Effect.succeed({ status: 'rendering', retryAfterMs: render.retryAfterMs ?? 10 })
           }
-          return answer(engine, designId, spec, render.then);
+          return answer(engine, designId, spec, render.next)
         }
         case 'ready':
           return specHash(spec).pipe(
@@ -137,9 +137,9 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
               contentType: render.contentType ?? 'image/png',
               specHash: render.specHash ?? hash,
             })),
-          );
+          )
       }
-    };
+    }
     const layer = Layer.succeed(DesignSource, {
       health: (slug) =>
         engineOf(slug).pipe(
@@ -153,8 +153,8 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
           Effect.tap((e) => reachable(slug, e)),
           Effect.tap(() => Ref.update(calls, (n) => n + 1)),
           Effect.flatMap((e) => {
-            const d = e.designs?.[designId];
-            return d ? Effect.succeed(d) : Effect.fail(new DesignNotFound({ designId }));
+            const d = e.designs?.[designId]
+            return d ? Effect.succeed(d) : Effect.fail(new DesignNotFound({ designId }))
           }),
         ),
       ensurePrintfile: (slug, designId, spec) =>
@@ -168,28 +168,28 @@ export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) 
               PrintfileReady | PrintfileRendering,
               DesignNotFound | PrintfileRejected
             > => {
-              if (!e.designs?.[designId]) return Effect.fail(new DesignNotFound({ designId }));
+              if (!e.designs?.[designId]) return Effect.fail(new DesignNotFound({ designId }))
               const answerFor: MemoryPrintfileAnswer = e.printfiles?.[designId] ?? {
                 kind: 'ready',
                 url: `https://engine.test/files/${designId}/${spec.placement}.png`,
-              };
-              return answer(slug, designId, spec, answerFor);
+              }
+              return answer(slug, designId, spec, answerFor)
             },
           ),
         ),
-    });
-    return { layer, calls: Ref.get(calls) };
-  });
+    })
+    return { layer, calls: Ref.get(calls) }
+  })
 
 export const layerDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) =>
-  Layer.unwrapEffect(Effect.map(makeDesignSourceMemory(options), (m) => m.layer));
+  Layer.unwrapEffect(Effect.map(makeDesignSourceMemory(options), (m) => m.layer))
 
 /** The in-memory PSP's idea of a webhook body; the signature header must be `memory:valid`. */
 export interface MemoryWebhookBody {
-  readonly id: string;
-  readonly type: string;
-  readonly created?: number;
-  readonly sessionId?: string;
+  readonly id: string
+  readonly type: string
+  readonly created?: number
+  readonly sessionId?: string
 }
 
 /**
@@ -199,32 +199,32 @@ export interface MemoryWebhookBody {
  */
 const parsePspWebhook = (rawBody: string) => {
   try {
-    const body = JSON.parse(rawBody) as MemoryWebhookBody;
+    const body = JSON.parse(rawBody) as MemoryWebhookBody
     return Effect.succeed({
       id: body.id,
       type: body.type,
       created: body.created ?? Math.floor(Date.now() / 1000),
       ...(body.sessionId ? { sessionId: body.sessionId } : {}),
-    });
+    })
   } catch {
-    return Effect.fail(new WebhookRejected({ message: 'not JSON' }));
+    return Effect.fail(new WebhookRejected({ message: 'not JSON' }))
   }
-};
+}
 
 export interface PspMemoryOptions {
   /** Where the hosted page "lives": a fake PSP URL (tests) or straight back to the success URL (e2e). */
-  readonly hostedPage?: 'psp' | 'success';
+  readonly hostedPage?: 'psp' | 'success'
 }
 
 export const makePspMemory = (options: PspMemoryOptions = {}) =>
   Effect.gen(function* () {
     const ref = yield* Ref.make<
       ReadonlyArray<{ input: CheckoutSessionInput; session: CheckoutSession }>
-    >([]);
-    const details = new Map<string, CheckoutSessionDetails>();
-    const payments = new Map<string, PaymentStatus>();
-    let down = false;
-    let pspWebhookUrl = 'https://pressline.test/webhooks/stripe';
+    >([])
+    const details = new Map<string, CheckoutSessionDetails>()
+    const payments = new Map<string, PaymentStatus>()
+    let down = false
+    let pspWebhookUrl = 'https://pressline.test/webhooks/stripe'
     const layer = Layer.succeed(Psp, {
       health: () =>
         down
@@ -242,8 +242,8 @@ export const makePspMemory = (options: PspMemoryOptions = {}) =>
             ),
       getWebhookStatus: () => Effect.succeed({ configured: true, url: pspWebhookUrl }),
       expireCheckoutSession: (id) => {
-        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
-        const current = details.get(id);
+        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+        const current = details.get(id)
         if (!current)
           return Effect.fail(
             new PspError({
@@ -251,15 +251,15 @@ export const makePspMemory = (options: PspMemoryOptions = {}) =>
               retryable: false,
               status: 404,
             }),
-          );
-        details.set(id, { ...current, status: 'expired' });
-        return Effect.void;
+          )
+        details.set(id, { ...current, status: 'expired' })
+        return Effect.void
       },
       registerWebhook: (url) => {
-        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
-        if (url === pspWebhookUrl) return Effect.succeed({ status: 'verified' as const, url });
-        pspWebhookUrl = url;
-        return Effect.succeed({ status: 'created' as const, url, secret: 'whsec_memory' });
+        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+        if (url === pspWebhookUrl) return Effect.succeed({ status: 'verified' as const, url })
+        pspWebhookUrl = url
+        return Effect.succeed({ status: 'created' as const, url, secret: 'whsec_memory' })
       },
       createCheckoutSession: (input) =>
         down
@@ -272,7 +272,7 @@ export const makePspMemory = (options: PspMemoryOptions = {}) =>
                     ? input.successUrl
                     : `https://checkout.stripe.test/c/pay/cs_test_${all.length + 1}`,
                 expiresAt: input.expiresAt,
-              };
+              }
               details.set(session.id, {
                 id: session.id,
                 status: 'open',
@@ -281,12 +281,12 @@ export const makePspMemory = (options: PspMemoryOptions = {}) =>
                 currency: input.currency,
                 consentAccepted: false,
                 customer: {},
-              });
-              return [session, [...all, { input, session }]];
+              })
+              return [session, [...all, { input, session }]]
             }),
       getCheckoutSession: (id) => {
-        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }));
-        const d = details.get(id);
+        if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
+        const d = details.get(id)
         return d
           ? Effect.succeed(d)
           : Effect.fail(
@@ -295,21 +295,21 @@ export const makePspMemory = (options: PspMemoryOptions = {}) =>
                 retryable: false,
                 status: 404,
               }),
-            );
+            )
       },
       verifyWebhook: (rawBody, signature) =>
         signature !== 'memory:valid'
           ? Effect.fail(new WebhookRejected({ message: 'bad signature' }))
           : parsePspWebhook(rawBody),
       parseWebhook: parsePspWebhook,
-    });
+    })
     return {
       layer,
       sessions: Ref.get(ref),
       setDown: (d: boolean) => void (down = d),
       /** What the PSP reports for a payment intent (refunds, disputes). */
       setPayment: (paymentIntentId: string, status: PaymentStatus) => {
-        payments.set(paymentIntentId, status);
+        payments.set(paymentIntentId, status)
       },
       /** What a later re-fetch of this session returns (e.g. after the Customer paid). */
       setSession: (id: string, patch: Partial<CheckoutSessionDetails>) => {
@@ -319,49 +319,49 @@ export const makePspMemory = (options: PspMemoryOptions = {}) =>
           paymentStatus: 'unpaid' as const,
           consentAccepted: false,
           customer: {},
-        };
-        details.set(id, { ...current, ...patch });
+        }
+        details.set(id, { ...current, ...patch })
       },
-    };
-  });
+    }
+  })
 
-export const layerPspMemory = Layer.unwrapEffect(Effect.map(makePspMemory(), (m) => m.layer));
+export const layerPspMemory = Layer.unwrapEffect(Effect.map(makePspMemory(), (m) => m.layer))
 
 export interface MemoryCatalog {
-  readonly products: ReadonlyArray<CatalogProduct>;
-  readonly variants: ReadonlyArray<CatalogVariant>;
-  readonly printAreas: Readonly<Record<number, ReadonlyArray<PlacementPrintArea>>>;
+  readonly products: ReadonlyArray<CatalogProduct>
+  readonly variants: ReadonlyArray<CatalogVariant>
+  readonly printAreas: Readonly<Record<number, ReadonlyArray<PlacementPrintArea>>>
   /** Shipping rates by destination country code; a country absent here cannot be shipped to. */
-  readonly shippingRates?: Readonly<Record<string, ReadonlyArray<ShippingRate>>>;
+  readonly shippingRates?: Readonly<Record<string, ReadonlyArray<ShippingRate>>>
   /** Operator cost per variant. */
-  readonly prices?: Readonly<Record<number, VariantPrices>>;
+  readonly prices?: Readonly<Record<number, VariantPrices>>
   /** How the provider behaves when Pressline submits orders. */
   readonly orders?: {
     /** Fail the next N create calls with a retryable error. */
-    readonly createRetryableFailures?: number;
+    readonly createRetryableFailures?: number
     /** Reject every create with a non-retryable error (address problem, bad file). */
-    readonly createRejects?: string;
+    readonly createRejects?: string
     /** Fail the next N confirm calls with a retryable error. */
-    readonly confirmRetryableFailures?: number;
+    readonly confirmRetryableFailures?: number
     /** The draft reports costs still calculating for its first N reads (create and get), and confirm is refused meanwhile, as Printful does. */
-    readonly costsCalculatingReads?: number;
+    readonly costsCalculatingReads?: number
     /** Draft comes back with this country instead of the recipient's (simulates a mismatch). */
-    readonly draftCountryOverride?: string;
+    readonly draftCountryOverride?: string
     /** Draft comes back holding this variant instead of the requested one. */
-    readonly draftVariantOverride?: number;
+    readonly draftVariantOverride?: number
     /** Draft comes back with a failed placement explanation. */
-    readonly placementFailure?: string;
-  };
+    readonly placementFailure?: string
+  }
 }
 
-export const emptyCatalog: MemoryCatalog = { products: [], variants: [], printAreas: {} };
+export const emptyCatalog: MemoryCatalog = { products: [], variants: [], printAreas: {} }
 
 const notFound = (what: string, id: number) =>
   new FulfillmentProviderError({
     message: `${what} ${id} not found`,
     retryable: false,
     status: 404,
-  });
+  })
 
 /**
  * Serves a seeded catalog and counts every call, so HTTP-seam tests can
@@ -370,16 +370,16 @@ const notFound = (what: string, id: number) =>
 const parseProviderWebhook = (rawBody: string) => {
   try {
     const b = JSON.parse(rawBody) as {
-      type: string;
-      occurred_at?: string;
+      type: string
+      occurred_at?: string
       data?: {
-        order?: { id: number | string; external_id?: string };
-        shipment?: { id: number | string };
-      };
-    };
+        order?: { id: number | string; external_id?: string }
+        shipment?: { id: number | string }
+      }
+    }
     const occurredAt = b.occurred_at
       ? Math.floor(Date.parse(b.occurred_at) / 1000)
-      : Math.floor(Date.now() / 1000);
+      : Math.floor(Date.now() / 1000)
     const event: ProviderWebhookEvent = {
       id: `${b.type}|${b.occurred_at ?? ''}|${b.data?.order?.id ?? ''}|${b.data?.shipment?.id ?? ''}`,
       type: b.type,
@@ -387,45 +387,45 @@ const parseProviderWebhook = (rawBody: string) => {
       ...(b.data?.order ? { providerOrderId: String(b.data.order.id) } : {}),
       ...(b.data?.order?.external_id ? { orderExternalId: b.data.order.external_id } : {}),
       ...(b.data?.shipment ? { shipmentId: String(b.data.shipment.id) } : {}),
-    };
-    return Effect.succeed(event);
+    }
+    return Effect.succeed(event)
   } catch {
-    return Effect.fail(new ProviderWebhookRejected({ message: 'not JSON' }));
+    return Effect.fail(new ProviderWebhookRejected({ message: 'not JSON' }))
   }
-};
+}
 
 export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCatalog) =>
   Effect.map(Ref.make(0), (calls) => {
-    const providerOrders = new Map<string, ProviderOrder>();
-    const shipments = new Map<string, ReadonlyArray<ProviderShipment>>();
-    let providerWebhookUrl = 'https://pressline.test/webhooks/printful';
-    let createFailuresLeft = catalog.orders?.createRetryableFailures ?? 0;
-    let confirmFailuresLeft = catalog.orders?.confirmRetryableFailures ?? 0;
-    let costsCalculatingLeft = catalog.orders?.costsCalculatingReads ?? 0;
+    const providerOrders = new Map<string, ProviderOrder>()
+    const shipments = new Map<string, ReadonlyArray<ProviderShipment>>()
+    let providerWebhookUrl = 'https://pressline.test/webhooks/printful'
+    let createFailuresLeft = catalog.orders?.createRetryableFailures ?? 0
+    let confirmFailuresLeft = catalog.orders?.confirmRetryableFailures ?? 0
+    let costsCalculatingLeft = catalog.orders?.costsCalculatingReads ?? 0
     /** While the counter runs, every read shows the draft with costs still calculating. */
     const stillCalculating = (o: ProviderOrder): ProviderOrder => {
-      if (costsCalculatingLeft <= 0 || !o.costs) return o;
-      costsCalculatingLeft -= 1;
-      return { ...o, costs: { ...o.costs, calculating: true } };
-    };
+      if (costsCalculatingLeft <= 0 || !o.costs) return o
+      costsCalculatingLeft -= 1
+      return { ...o, costs: { ...o.costs, calculating: true } }
+    }
     const counted = <A>(what: string, id: number, item: A | undefined) =>
       Ref.update(calls, (n) => n + 1).pipe(
         Effect.flatMap(() => (item ? Effect.succeed(item) : notFound(what, id))),
-      );
+      )
     return {
       layer: Layer.succeed(FulfillmentProvider, {
         health: () => Effect.void,
         getWebhookStatus: () => Effect.succeed({ configured: true, url: providerWebhookUrl }),
         registerWebhook: (url) => {
           if (url === providerWebhookUrl)
-            return Effect.succeed({ status: 'verified' as const, url });
-          providerWebhookUrl = url;
+            return Effect.succeed({ status: 'verified' as const, url })
+          providerWebhookUrl = url
           return Effect.succeed({
             status: 'created' as const,
             url,
             secret: '6d656d6f7279',
             publicKey: 'memory-public-key',
-          });
+          })
         },
         listCatalogProducts: () => Effect.succeed(catalog.products),
         listCatalogVariants: (productId) =>
@@ -460,7 +460,7 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
         createOrderDraft: (d: ProviderOrderDraft) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.flatMap(() => {
-              const cfg = catalog.orders ?? {};
+              const cfg = catalog.orders ?? {}
               if (cfg.createRejects) {
                 return Effect.fail(
                   new FulfillmentProviderError({
@@ -468,19 +468,19 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
                     retryable: false,
                     status: 400,
                   }),
-                );
+                )
               }
               if (createFailuresLeft > 0) {
-                createFailuresLeft -= 1;
+                createFailuresLeft -= 1
                 return Effect.fail(
                   new FulfillmentProviderError({
                     message: 'provider 503',
                     retryable: true,
                     status: 503,
                   }),
-                );
+                )
               }
-              const id = String(1000 + providerOrders.size);
+              const id = String(1000 + providerOrders.size)
               const order: ProviderOrder = {
                 id,
                 externalId: d.externalId,
@@ -504,16 +504,16 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
                   total: 1569,
                   calculating: false,
                 },
-              };
-              providerOrders.set(id, order);
-              return Effect.succeed(stillCalculating(order));
+              }
+              providerOrders.set(id, order)
+              return Effect.succeed(stillCalculating(order))
             }),
           ),
         confirmOrder: (id) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.flatMap(() => {
-              const o = providerOrders.get(id);
-              if (!o) return notFound('provider order', Number(id));
+              const o = providerOrders.get(id)
+              if (!o) return notFound('provider order', Number(id))
               if (costsCalculatingLeft > 0) {
                 return Effect.fail(
                   new FulfillmentProviderError({
@@ -522,51 +522,51 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
                     retryable: true,
                     status: 400,
                   }),
-                );
+                )
               }
               if (confirmFailuresLeft > 0) {
-                confirmFailuresLeft -= 1;
+                confirmFailuresLeft -= 1
                 return Effect.fail(
                   new FulfillmentProviderError({
                     message: 'provider 503',
                     retryable: true,
                     status: 503,
                   }),
-                );
+                )
               }
-              const confirmed: ProviderOrder = { ...o, status: 'pending' };
-              providerOrders.set(id, confirmed);
-              return Effect.succeed(confirmed);
+              const confirmed: ProviderOrder = { ...o, status: 'pending' }
+              providerOrders.set(id, confirmed)
+              return Effect.succeed(confirmed)
             }),
           ),
         getOrder: (id) => {
-          const o = providerOrders.get(id);
-          return counted('provider order', Number(id), o && stillCalculating(o));
+          const o = providerOrders.get(id)
+          return counted('provider order', Number(id), o && stillCalculating(o))
         },
         cancelOrder: (id) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.flatMap(() => {
-              const o = providerOrders.get(id);
-              if (!o) return notFound('provider order', Number(id));
+              const o = providerOrders.get(id)
+              if (!o) return notFound('provider order', Number(id))
               if (o.status === 'inprocess' || o.status === 'partial' || o.status === 'fulfilled') {
-                return Effect.succeed('not_cancelable' as const);
+                return Effect.succeed('not_cancelable' as const)
               }
-              providerOrders.set(id, { ...o, status: 'canceled' });
-              return Effect.succeed('canceled' as const);
+              providerOrders.set(id, { ...o, status: 'canceled' })
+              return Effect.succeed('canceled' as const)
             }),
           ),
         updateOrderRecipient: (id, recipient) =>
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.flatMap(() => {
-              const o = providerOrders.get(id);
-              if (!o) return notFound('provider order', Number(id));
+              const o = providerOrders.get(id)
+              if (!o) return notFound('provider order', Number(id))
               if (o.status !== 'draft' && o.status !== 'failed' && o.status !== 'onhold') {
                 return Effect.fail(
                   new FulfillmentProviderError({
                     message: `provider order ${id} is ${o.status}; the recipient can no longer be changed`,
                     retryable: false,
                   }),
-                );
+                )
               }
               const updated: ProviderOrder = {
                 ...o,
@@ -575,9 +575,9 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
                   countryCode: recipient.countryCode,
                   ...(recipient.stateCode ? { stateCode: recipient.stateCode } : {}),
                 },
-              };
-              providerOrders.set(id, updated);
-              return Effect.succeed(updated);
+              }
+              providerOrders.set(id, updated)
+              return Effect.succeed(updated)
             }),
           ),
         getShippingRates: (req: ShippingRateRequest) =>
@@ -592,23 +592,23 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
       providerOrders: () => [...providerOrders.values()],
       /** Move a provider order (simulates Printful's dashboard or production). */
       setProviderOrderStatus: (id: string, status: ProviderOrder['status']) => {
-        const o = providerOrders.get(id);
-        if (o) providerOrders.set(id, { ...o, status });
+        const o = providerOrders.get(id)
+        if (o) providerOrders.set(id, { ...o, status })
       },
       /** What the provider reports as shipments for one of its orders. */
       setProviderShipments: (id: string, list: ReadonlyArray<ProviderShipment>) => {
-        shipments.set(id, list);
+        shipments.set(id, list)
       },
-    };
-  });
+    }
+  })
 
 export const layerFulfillmentProviderMemory = Layer.unwrapEffect(
   Effect.map(makeFulfillmentProviderMemory(), (m) => m.layer),
-);
+)
 
 /** Records sends so tests can read what was sent; can be switched to fail every send. */
 export const makeMailerMemory = Effect.map(Ref.make<ReadonlyArray<Email>>([]), (ref) => {
-  let down = false;
+  let down = false
   return {
     layer: Layer.succeed(Mailer, {
       send: (email) =>
@@ -618,5 +618,5 @@ export const makeMailerMemory = Effect.map(Ref.make<ReadonlyArray<Email>>([]), (
     }),
     sent: Ref.get(ref),
     setDown: (d: boolean) => void (down = d),
-  };
-});
+  }
+})

@@ -1,6 +1,6 @@
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { defineConfig } from '@playwright/test';
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { defineConfig } from '@playwright/test'
 
 /**
  * Storefront e2e (ticket #19) on the HTTP-seam harness: the built app runs
@@ -26,4 +26,4 @@ export default defineConfig({
     timeout: 180_000,
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
-});
+})

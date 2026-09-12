@@ -1,7 +1,7 @@
-import { HttpApiBuilder } from '@effect/platform';
-import { Effect } from 'effect';
-import { resolveCatalog } from '../catalog/catalog';
-import { CatalogUnavailable, PresslineApi } from './api';
+import { HttpApiBuilder } from '@effect/platform'
+import { Effect } from 'effect'
+import { resolveCatalog } from '../catalog/catalog'
+import { CatalogUnavailable, PresslineApi } from './api'
 
 /** `GET /api/offers`: public, no credentials, so Engines can pre-render. */
 export const CatalogLive = HttpApiBuilder.group(PresslineApi, 'catalog', (handlers) =>
@@ -14,4 +14,4 @@ export const CatalogLive = HttpApiBuilder.group(PresslineApi, 'catalog', (handle
       }),
     ),
   ),
-);
+)

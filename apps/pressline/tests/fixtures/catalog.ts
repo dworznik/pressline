@@ -1,4 +1,4 @@
-import type { MemoryCatalog } from '$lib/server/services/memory';
+import type { MemoryCatalog } from '$lib/server/services/memory'
 
 /** Provider-side catalog the Operator's Offers point at (shapes as the adapter returns them). */
 export const catalog: MemoryCatalog = {
@@ -93,7 +93,7 @@ export const catalog: MemoryCatalog = {
       placementSurcharge: { 'default/digital': 0 },
     },
   },
-};
+}
 
 /** Operator config matching the catalog above. */
 export const offers = [
@@ -116,4 +116,4 @@ export const offers = [
     aspect: { min: 0.7, max: 0.8 },
     variants: { '18x24': { catalogVariantId: 1349, label: '18×24 in' } },
   },
-];
+]

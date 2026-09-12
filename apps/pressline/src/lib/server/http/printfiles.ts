@@ -1,7 +1,7 @@
-import { HttpApiBuilder } from '@effect/platform';
-import { ensurePrintfile } from '../printfile/ensure';
-import { PresslineApi } from './api';
-import { toApiError } from './errors';
+import { HttpApiBuilder } from '@effect/platform'
+import { ensurePrintfile } from '../printfile/ensure'
+import { PresslineApi } from './api'
+import { toApiError } from './errors'
 
 /** Ensure-Printfile endpoints (ticket #6): POST waits within the bound, GET only reports. */
 export const PrintfilesLive = HttpApiBuilder.group(PresslineApi, 'printfiles', (handlers) =>
@@ -23,4 +23,4 @@ export const PrintfilesLive = HttpApiBuilder.group(PresslineApi, 'printfiles', (
         }),
       ),
     ),
-);
+)

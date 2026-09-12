@@ -5,6 +5,16 @@ import { getRuntime } from '$lib/server/runtime'
 import { defaultTemplate, sanitize } from '$lib/template'
 import type { Actions, PageServerLoad } from './$types'
 
+/**
+ * One form field as text. `FormData.get` answers `string | File | null`, and
+ * `String(aFile)` is the literal "[object File]", so a multipart request could
+ * put that through as a value. A non-string field is simply absent instead.
+ */
+const text = (form: FormData, field: string, fallback = '') => {
+  const value = form.get(field)
+  return typeof value === 'string' ? value : fallback
+}
+
 export const load: PageServerLoad = async ({ platform }) => {
   const { settings } = await getRuntime(platform)
   return {
@@ -19,11 +29,11 @@ export const actions: Actions = {
   finalize: async ({ request, platform }) => {
     const form = await request.formData()
     const template = sanitize({
-      text: String(form.get('text') ?? ''),
-      textColor: String(form.get('textColor') ?? ''),
-      background: form.get('transparent') ? 'none' : String(form.get('background') ?? ''),
-      shape: String(form.get('shape') ?? '') as never,
-      shapeColor: String(form.get('shapeColor') ?? ''),
+      text: text(form, 'text'),
+      textColor: text(form, 'textColor'),
+      background: form.get('transparent') ? 'none' : text(form, 'background'),
+      shape: text(form, 'shape') as never,
+      shapeColor: text(form, 'shapeColor'),
     })
     const { engine } = await getRuntime(platform)
     const design = await finalize(engine, { template })
@@ -34,7 +44,7 @@ export const actions: Actions = {
     const { engine, settings } = await getRuntime(platform)
     if (!settings.openAiKey)
       return fail(400, { message: 'AI generation is not enabled on this Engine.' })
-    const prompt = String((await request.formData()).get('prompt') ?? '').slice(0, 500)
+    const prompt = text(await request.formData(), 'prompt').slice(0, 500)
     if (!prompt) return fail(400, { message: 'Describe the image first.' })
     const image = await openAiAdapter(settings.openAiKey)
       .generate(prompt)

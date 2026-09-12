@@ -2,6 +2,16 @@ import { fail, redirect } from '@sveltejs/kit'
 import { SESSION_COOKIE } from '$lib/server/operator/session'
 import type { Actions, PageServerLoad } from './$types'
 
+/**
+ * One form field as text. `FormData.get` answers `string | File | null`, and
+ * `String(aFile)` is the literal "[object File]", so a multipart request could
+ * put that through as a value. A non-string field is simply absent instead.
+ */
+const text = (form: FormData, field: string, fallback = '') => {
+  const value = form.get(field)
+  return typeof value === 'string' ? value : fallback
+}
+
 export const load: PageServerLoad = ({ url }) => ({
   next: url.searchParams.get('next') ?? '/operator',
 })
@@ -10,7 +20,7 @@ export const load: PageServerLoad = ({ url }) => ({
 export const actions: Actions = {
   default: async ({ request, fetch, cookies, url }) => {
     const form = await request.formData()
-    const token = String(form.get('token') ?? '')
+    const token = text(form, 'token')
     const res = await fetch('/api/operator/session', {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
@@ -25,7 +35,7 @@ export const actions: Actions = {
       secure: url.protocol === 'https:',
       expires: new Date(expiresAt),
     })
-    const next = String(form.get('next') ?? '/operator')
+    const next = text(form, 'next', '/operator')
     redirect(303, next.startsWith('/operator') ? next : '/operator')
   },
 }

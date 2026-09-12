@@ -237,4 +237,14 @@ export const migrations: ReadonlyArray<Migration> = [
       `UPDATE reconciliation_runs SET report = replace(report, '"catalogue', '"catalog')`,
     ],
   },
+  {
+    version: 13,
+    name: 'orders_provider_attempt',
+    statements: [
+      // Which submission attempt the provider's external id encodes (#77). No
+      // provider releases an external id, not even for a canceled order, so
+      // resubmitting after a cancellation needs a fresh one.
+      `ALTER TABLE orders ADD COLUMN provider_attempt INTEGER NOT NULL DEFAULT 0`,
+    ],
+  },
 ]

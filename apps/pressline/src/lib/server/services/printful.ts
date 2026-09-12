@@ -295,11 +295,57 @@ const ORDER_STATUSES: ReadonlySet<string> = new Set([
  * UUID. Send it without hyphens and put them back on the way in, so the rest
  * of the bridge keeps talking in Order ids.
  */
-const toExternalId = (orderId: string) => orderId.replaceAll('-', '')
-const fromExternalId = (externalId: string) =>
-  /^[0-9a-f]{32}$/i.test(externalId)
-    ? externalId.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
-    : externalId
+const HEX32 = /^[0-9a-f]{32}$/i
+const hyphenate = (hex: string) =>
+  hex.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
+
+/**
+ * The Order ID as 22 characters. Printful's external id allows exactly
+ * base64url's alphabet, so a UUID's 16 bytes encode losslessly and leave ten
+ * of the 32 characters for an attempt suffix.
+ */
+const toBase64Url = (orderId: string) => {
+  const hex = orderId.replaceAll('-', '')
+  let binary = ''
+  for (let i = 0; i < hex.length; i += 2) {
+    binary += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16))
+  }
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+}
+
+const fromBase64Url = (encoded: string) => {
+  const binary = atob(encoded.replaceAll('-', '+').replaceAll('_', '/'))
+  let hex = ''
+  for (let i = 0; i < binary.length; i++) {
+    hex += binary.charCodeAt(i).toString(16).padStart(2, '0')
+  }
+  return hyphenate(hex)
+}
+
+const ATTEMPTED = /^([A-Za-z0-9_-]{22})-(\d+)$/
+
+/**
+ * Attempt 0 is the Order ID without its hyphens: exactly 32 characters, which
+ * is Printful's limit, and the form every Order created before #77 already
+ * carries, so those keep resolving. A later attempt encodes the same Order ID
+ * in base64url and appends the attempt, because Printful never releases an
+ * external id — not even a canceled order's — so a resubmission cannot reuse
+ * the first.
+ */
+const toExternalId = (orderId: string, attempt = 0) =>
+  attempt === 0 ? orderId.replaceAll('-', '') : `${toBase64Url(orderId)}-${attempt}`
+
+/** Back to the Order ID, whichever form arrived. The attempt is not part of the answer. */
+const fromExternalId = (externalId: string) => {
+  if (HEX32.test(externalId)) return hyphenate(externalId)
+  const attempted = ATTEMPTED.exec(externalId)
+  if (!attempted) return externalId
+  try {
+    return fromBase64Url(attempted[1]!)
+  } catch {
+    return externalId
+  }
+}
 
 const toProviderOrder = (o: typeof OrderWire.Type): ProviderOrder => {
   const costs = o.costs ?? undefined
@@ -582,9 +628,9 @@ export const makePrintful = (options: PrintfulOptions) =>
           ),
         ),
 
-      findOrderByExternalId: (externalId) =>
+      findOrderByExternalId: (externalId, attempt) =>
         get(
-          `/v2/orders/@${encodeURIComponent(toExternalId(externalId))}`,
+          `/v2/orders/@${encodeURIComponent(toExternalId(externalId, attempt))}`,
           Envelope(OrderWire),
         ).pipe(
           Effect.map(({ data }) => toProviderOrder(data)),
@@ -598,7 +644,7 @@ export const makePrintful = (options: PrintfulOptions) =>
         post(
           '/v2/orders',
           {
-            external_id: toExternalId(d.externalId),
+            external_id: toExternalId(d.externalId, d.attempt),
             shipping: d.shippingMethod,
             recipient: toRecipientWire(d.recipient),
             order_items: [

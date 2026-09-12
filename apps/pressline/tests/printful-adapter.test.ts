@@ -216,6 +216,47 @@ describe('Printful v2 adapter', () => {
       ).toBeUndefined()
     })
 
+    it('encodes a later attempt inside the 32-character external id, reversibly (#77)', async () => {
+      const orderId = '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b'
+      // Attempt 0 is the plain Order ID without hyphens: unchanged, so Orders
+      // created before #77 still resolve.
+      await run(Effect.flatMap(FulfillmentProvider, (p) => p.findOrderByExternalId(orderId)))
+      expect(new URL(seen.at(-1)!.url).pathname).toBe(
+        '/v2/orders/@0192a1b2c3d47e5f8a9b0c1d2e3f4a5b',
+      )
+
+      // A later attempt cannot reuse it: Printful never releases an external id.
+      await run(Effect.flatMap(FulfillmentProvider, (p) => p.findOrderByExternalId(orderId, 2)))
+      const attempted = decodeURIComponent(
+        new URL(seen.at(-1)!.url).pathname.replace('/v2/orders/@', ''),
+      )
+      expect(attempted).not.toBe('0192a1b2c3d47e5f8a9b0c1d2e3f4a5b')
+      expect(attempted.length).toBeLessThanOrEqual(32)
+      expect(attempted).toMatch(/^[A-Za-z0-9_-]+$/) // Printful's charset
+      expect(attempted).toMatch(/-2$/)
+
+      // And it reverses: a webhook carrying that id resolves to the same Order.
+      const body = JSON.stringify({
+        type: 'order_updated',
+        occurred_at: '2026-09-12T09:15:05Z',
+        retries: 0,
+        store_id: 10,
+        data: { order: { id: 123, external_id: attempted, status: 'pending' } },
+      })
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(FulfillmentProvider, (p) =>
+          p.verifyWebhook(body, {
+            signature: createHmac('sha256', Buffer.from(FIXTURE_HMAC_KEY, 'hex'))
+              .update(body)
+              .digest('hex'),
+            publicKey: 'SbF/9d/uWguI',
+          }),
+        ).pipe(Effect.provide(stubLayer())),
+      )
+      expect(exit._tag).toBe('Success')
+      if (exit._tag === 'Success') expect(exit.value.orderExternalId).toBe(orderId)
+    })
+
     it('creates a draft with the recipient, the catalog variant and the Printfile on the placement', async () => {
       const draft = await run(
         Effect.flatMap(FulfillmentProvider, (p) =>

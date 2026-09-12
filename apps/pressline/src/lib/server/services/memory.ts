@@ -343,6 +343,8 @@ export interface MemoryCatalog {
     readonly createRejects?: string;
     /** Fail the next N confirm calls with a retryable error. */
     readonly confirmRetryableFailures?: number;
+    /** The draft reports costs still calculating for its first N reads (create and get), and confirm is refused meanwhile, as Printful does. */
+    readonly costsCalculatingReads?: number;
     /** Draft comes back with this country instead of the recipient's (simulates a mismatch). */
     readonly draftCountryOverride?: string;
     /** Draft comes back holding this variant instead of the requested one. */
@@ -399,6 +401,13 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
     let providerWebhookUrl = 'https://pressline.test/webhooks/printful';
     let createFailuresLeft = catalog.orders?.createRetryableFailures ?? 0;
     let confirmFailuresLeft = catalog.orders?.confirmRetryableFailures ?? 0;
+    let costsCalculatingLeft = catalog.orders?.costsCalculatingReads ?? 0;
+    /** While the counter runs, every read shows the draft with costs still calculating. */
+    const stillCalculating = (o: ProviderOrder): ProviderOrder => {
+      if (costsCalculatingLeft <= 0 || !o.costs) return o;
+      costsCalculatingLeft -= 1;
+      return { ...o, costs: { ...o.costs, calculating: true } };
+    };
     const counted = <A>(what: string, id: number, item: A | undefined) =>
       Ref.update(calls, (n) => n + 1).pipe(
         Effect.flatMap(() => (item ? Effect.succeed(item) : notFound(what, id))),
@@ -497,7 +506,7 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
                 },
               };
               providerOrders.set(id, order);
-              return Effect.succeed(order);
+              return Effect.succeed(stillCalculating(order));
             }),
           ),
         confirmOrder: (id) =>
@@ -505,6 +514,16 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
             Effect.flatMap(() => {
               const o = providerOrders.get(id);
               if (!o) return notFound('provider order', Number(id));
+              if (costsCalculatingLeft > 0) {
+                return Effect.fail(
+                  new FulfillmentProviderError({
+                    message:
+                      'provider 400: Order cannot be confirmed. Cost calculations still running, try again after costs have been calculated.',
+                    retryable: true,
+                    status: 400,
+                  }),
+                );
+              }
               if (confirmFailuresLeft > 0) {
                 confirmFailuresLeft -= 1;
                 return Effect.fail(
@@ -522,7 +541,7 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
           ),
         getOrder: (id) => {
           const o = providerOrders.get(id);
-          return counted('provider order', Number(id), o);
+          return counted('provider order', Number(id), o && stillCalculating(o));
         },
         cancelOrder: (id) =>
           Ref.update(calls, (n) => n + 1).pipe(

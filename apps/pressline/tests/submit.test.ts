@@ -107,6 +107,26 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
     ]);
   });
 
+  it('waits for the provider to finish pricing the draft before confirming it', async () => {
+    app = await boot({ costsCalculatingReads: 2 }); // create + first re-read say "calculating"
+    const { orderId, token, ack } = await payFor(app);
+    expect(ack.status).toBe(200);
+    expect(ack.body.outcome).toMatch(/^applied:submit=submitted/);
+    expect(await stateOf(app, orderId, token)).toBe('submitted');
+    expect(app.providerOrders()).toHaveLength(1);
+    expect(app.providerOrders()[0]!.status).toBe('pending');
+  });
+
+  it('gives up on a draft still pricing after the polling window: retry_later, the Order stays paid', async () => {
+    app = await boot({ costsCalculatingReads: 100 });
+    const { orderId, token, ack } = await payFor(app);
+    expect(ack.status).toBe(200);
+    expect(ack.body.outcome).toMatch(/^applied:submit=retry_later/);
+    expect(await stateOf(app, orderId, token)).toBe('paid');
+    expect(app.providerOrders()).toHaveLength(1);
+    expect(app.providerOrders()[0]!.status).toBe('draft'); // never confirmed while calculating
+  }, 20_000);
+
   it('re-run after a confirm failure reuses the existing draft: no second draft, then confirmed', async () => {
     app = await boot({ confirmRetryableFailures: 5 }); // more than one handler's retries (1 + 3), fewer than two
     const { orderId, token, sessionId, ack } = await payFor(app);

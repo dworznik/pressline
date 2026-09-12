@@ -2,12 +2,25 @@
   "name": "@pressline/contract",
   "version": "0.1.0",
   "description": "The DesignSource protocol: Printfile Spec, Spec Hash, request/response schemas and a typed client for Engines and Pressline",
+  "keywords": [
+    "pressline",
+    "designsource",
+    "protocol",
+    "printfile",
+    "print-on-demand",
+    "effect",
+    "schema"
+  ],
   "license": "MIT",
   "type": "module",
+  "homepage": "https://pressline.0xff.sh",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dworznik/pressline",
+    "url": "git+https://github.com/dworznik/pressline.git",
     "directory": "packages/contract"
+  },
+  "bugs": {
+    "url": "https://github.com/dworznik/pressline/issues"
   },
   "exports": {
     ".": {
@@ -17,9 +30,13 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",

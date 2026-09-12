@@ -241,7 +241,7 @@ importers:
         specifier: ^0.108.2
         version: 0.108.2(@effect/cluster@0.60.2(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/workflow@0.19.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(@effect/rpc@0.76.2(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/sql@0.52.1(@effect/experimental@0.61.1(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(@effect/platform@0.97.2(effect@3.22.2))(effect@3.22.2))(effect@3.22.2)
       '@pressline/contract':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../contract
       effect:
         specifier: ^3.22.2

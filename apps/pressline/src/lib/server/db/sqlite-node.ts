@@ -1,6 +1,6 @@
-import Database from 'better-sqlite3';
-import { Effect, Layer, type Scope } from 'effect';
-import { Db, DbError, type DbService, type SqlParam } from './db';
+import Database from 'better-sqlite3'
+import { Effect, Layer, type Scope } from 'effect'
+import { Db, DbError, type DbService, type SqlParam } from './db'
 
 /**
  * Db driver for local development and CI: a SQLite file (or ':memory:') via
@@ -13,29 +13,29 @@ export const makeSqliteNode = (path: string): Effect.Effect<DbService, DbError, 
     const db = yield* Effect.acquireRelease(
       Effect.try({
         try: () => {
-          const d = new Database(path);
-          d.pragma('journal_mode = WAL');
-          d.pragma('busy_timeout = 5000');
-          return d;
+          const d = new Database(path)
+          d.pragma('journal_mode = WAL')
+          d.pragma('busy_timeout = 5000')
+          return d
         },
         catch: (e) => new DbError({ message: `open ${path}: ${String(e)}` }),
       }),
       (d) => Effect.sync(() => d.close()),
-    );
+    )
 
-    const fail = (sql: string) => (e: unknown) => new DbError({ message: String(e), sql });
-    const params = (p?: ReadonlyArray<SqlParam>) => (p ?? []) as SqlParam[];
+    const fail = (sql: string) => (e: unknown) => new DbError({ message: String(e), sql })
+    const params = (p?: ReadonlyArray<SqlParam>) => (p ?? []) as SqlParam[]
 
     const runSync = (sql: string, p?: ReadonlyArray<SqlParam>) => {
-      const stmt = db.prepare(sql);
-      return stmt.reader ? (stmt.all(...params(p)), 0) : Number(stmt.run(...params(p)).changes);
-    };
+      const stmt = db.prepare(sql)
+      return stmt.reader ? (stmt.all(...params(p)), 0) : Number(stmt.run(...params(p)).changes)
+    }
 
     const applyBatch = db.transaction(
       (statements: ReadonlyArray<{ sql: string; params?: ReadonlyArray<SqlParam> }>) => {
-        for (const s of statements) runSync(s.sql, s.params);
+        for (const s of statements) runSync(s.sql, s.params)
       },
-    );
+    )
 
     return {
       run: (sql, p) => Effect.try({ try: () => runSync(sql, p), catch: fail(sql) }),
@@ -46,7 +46,7 @@ export const makeSqliteNode = (path: string): Effect.Effect<DbService, DbError, 
           try: () => applyBatch(statements),
           catch: fail(statements.map((s) => s.sql).join('; ')),
         }),
-    } satisfies DbService;
-  });
+    } satisfies DbService
+  })
 
-export const layerSqliteNode = (path: string) => Layer.scoped(Db, makeSqliteNode(path));
+export const layerSqliteNode = (path: string) => Layer.scoped(Db, makeSqliteNode(path))

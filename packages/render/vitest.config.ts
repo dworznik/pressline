@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
@@ -6,4 +6,4 @@ export default defineConfig({
     alias: { '@pressline/contract': new URL('../contract/src/index.ts', import.meta.url).pathname },
   },
   test: { name: 'render', include: ['tests/**/*.test.ts'], environment: 'node' },
-});
+})

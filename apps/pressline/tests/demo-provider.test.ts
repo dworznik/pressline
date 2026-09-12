@@ -1,12 +1,12 @@
-import { Effect, Layer } from 'effect';
-import { describe, expect, it } from 'vitest';
-import { demoFulfillmentProvider } from '$lib/server/services/demo';
+import { Effect, Layer } from 'effect'
+import { describe, expect, it } from 'vitest'
+import { demoFulfillmentProvider } from '$lib/server/services/demo'
 import {
   FulfillmentProvider,
   FulfillmentProviderError,
   type FulfillmentProviderService,
-} from '$lib/server/services/fulfillment-provider';
-import { layerFulfillmentProviderMemory } from '$lib/server/services/memory';
+} from '$lib/server/services/fulfillment-provider'
+import { layerFulfillmentProviderMemory } from '$lib/server/services/memory'
 
 /**
  * Printful deletes a canceled draft, so it cannot be fetched afterwards. The
@@ -16,7 +16,7 @@ import { layerFulfillmentProviderMemory } from '$lib/server/services/memory';
 const layerDeletingOnCancel = Layer.effect(
   FulfillmentProvider,
   Effect.map(FulfillmentProvider, (p): FulfillmentProviderService => {
-    const deleted = new Set<string>();
+    const deleted = new Set<string>()
     return {
       ...p,
       cancelOrder: (id) =>
@@ -31,15 +31,15 @@ const layerDeletingOnCancel = Layer.effect(
               }),
             )
           : p.getOrder(id),
-    };
+    }
   }),
-).pipe(Layer.provide(layerFulfillmentProviderMemory));
+).pipe(Layer.provide(layerFulfillmentProviderMemory))
 
 describe('Demo Mode provider', () => {
   it('confirming a draft cancels it and still answers with the order, although the provider has deleted it', async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const p = yield* FulfillmentProvider;
+        const p = yield* FulfillmentProvider
         const draft = yield* p.createOrderDraft({
           externalId: '01a09567-00cb-7424-aaa8-547f582bc7b6',
           shippingMethod: 'STANDARD',
@@ -58,13 +58,13 @@ describe('Demo Mode provider', () => {
             printfileUrl: 'https://engine.test/files/heron/front.png',
           },
           currency: 'EUR',
-        });
-        const confirmed = yield* p.confirmOrder(draft.id);
-        const afterwards = yield* p.getOrder(draft.id).pipe(Effect.either);
-        return { draft, confirmed, afterwards };
+        })
+        const confirmed = yield* p.confirmOrder(draft.id)
+        const afterwards = yield* p.getOrder(draft.id).pipe(Effect.either)
+        return { draft, confirmed, afterwards }
       }).pipe(Effect.provide(demoFulfillmentProvider(layerDeletingOnCancel))),
-    );
-    expect(result.confirmed).toMatchObject({ id: result.draft.id, status: 'canceled' });
-    expect(result.afterwards._tag).toBe('Left');
-  });
-});
+    )
+    expect(result.confirmed).toMatchObject({ id: result.draft.id, status: 'canceled' })
+    expect(result.afterwards._tag).toBe('Left')
+  })
+})

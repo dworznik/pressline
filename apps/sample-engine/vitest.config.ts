@@ -1,5 +1,5 @@
-import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url'
+import { defineConfig } from 'vitest/config'
 
 // The sample Engine's tests are the conformance suite run in-process (docs/SPEC.md seam 4).
 export default defineConfig({
@@ -22,4 +22,4 @@ export default defineConfig({
         .pathname,
     },
   },
-});
+})

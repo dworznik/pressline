@@ -1,6 +1,6 @@
-export { render, rawBytesFor, fitsBudget } from './render.js';
-export { encodePng } from './png.js';
-export { layout } from './compose.js';
+export { render, rawBytesFor, fitsBudget } from './render.js'
+export { encodePng } from './png.js'
+export { layout } from './compose.js'
 export {
   RenderError,
   RenderRefused,
@@ -9,4 +9,4 @@ export {
   type RenderOptions,
   type Rgb,
   type Rgba,
-} from './types.js';
+} from './types.js'

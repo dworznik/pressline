@@ -1,5 +1,5 @@
-import { Effect, Layer } from 'effect';
-import { FulfillmentProvider, type FulfillmentProviderService } from './fulfillment-provider';
+import { Effect, Layer } from 'effect'
+import { FulfillmentProvider, type FulfillmentProviderService } from './fulfillment-provider'
 
 /**
  * Demo Mode (CONTEXT.md): the real fulfillment provider, except that confirming
@@ -21,4 +21,4 @@ export const demoFulfillmentProvider = <E, R>(inner: Layer.Layer<FulfillmentProv
             ),
           ),
     })),
-  ).pipe(Layer.provide(inner));
+  ).pipe(Layer.provide(inner))

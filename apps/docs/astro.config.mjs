@@ -1,11 +1,11 @@
-import starlight from '@astrojs/starlight';
-import { defineConfig, passthroughImageService } from 'astro/config';
+import starlight from '@astrojs/starlight'
+import { defineConfig, passthroughImageService } from 'astro/config'
 
 // The docs site (ticket #26): a static Starlight site. Deploy the `dist/`
 // output anywhere static; GitHub Pages publishes it at /pressline (DOCS_BASE),
 // a custom domain would serve it from /. Markdown links are site-absolute; scripts/apply-base.mjs
 // prefixes them after the build when a base is set (Astro's Markdown processor has no hook for it).
-const base = (process.env['DOCS_BASE'] ?? '/').replace(/\/$/, '') || '/';
+const base = (process.env['DOCS_BASE'] ?? '/').replace(/\/$/, '') || '/'
 
 export default defineConfig({
   site: process.env['DOCS_SITE'] ?? 'https://dworznik.github.io',
@@ -80,4 +80,4 @@ export default defineConfig({
       ],
     }),
   ],
-});
+})

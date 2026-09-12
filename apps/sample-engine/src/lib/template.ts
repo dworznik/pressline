@@ -5,21 +5,21 @@
  * 12×16 in. Text is emitted as outlines from the bundled font (`font.ts`),
  * never as `<text>`, so no host font is ever needed.
  */
-import type { Font } from 'opentype.js';
-import { displayFont } from './font';
+import type { Font } from 'opentype.js'
+import { displayFont } from './font'
 
 export interface Template {
-  readonly text: string;
-  readonly textColor: string;
+  readonly text: string
+  readonly textColor: string
   /** A hex color, or `none` for a transparent background: the garment shows through. */
-  readonly background: string;
-  readonly shape: 'circle' | 'square' | 'triangle' | 'none';
-  readonly shapeColor: string;
+  readonly background: string
+  readonly shape: 'circle' | 'square' | 'triangle' | 'none'
+  readonly shapeColor: string
 }
 
-export const WIDTH = 900;
-export const HEIGHT = 1200;
-export const ASPECT = { w: 3, h: 4 } as const;
+export const WIDTH = 900
+export const HEIGHT = 1200
+export const ASPECT = { w: 3, h: 4 } as const
 
 /** Sized for a tee: one graphic in the upper two thirds, a caption under it, nothing behind. */
 export const defaultTemplate: Template = {
@@ -28,10 +28,10 @@ export const defaultTemplate: Template = {
   background: 'none',
   shape: 'circle',
   shapeColor: '#ffd166',
-};
+}
 
-const HEX = /^#[0-9a-fA-F]{6}$/;
-const color = (c: string, fallback: string) => (HEX.test(c) ? c : fallback);
+const HEX = /^#[0-9a-fA-F]{6}$/
+const color = (c: string, fallback: string) => (HEX.test(c) ? c : fallback)
 
 /** Clamp free input into something the SVG can hold. */
 export const sanitize = (t: Partial<Template>): Template => ({
@@ -42,44 +42,44 @@ export const sanitize = (t: Partial<Template>): Template => ({
     ? (t.shape as Template['shape'])
     : 'circle',
   shapeColor: color(t.shapeColor ?? '', defaultTemplate.shapeColor),
-});
+})
 
 // Composition: the shape sits in a 600-unit box centered at (450, 470), the
 // caption's baseline is at 900. At 150 dpi on the tee that is an 8 in graphic
 // with the caption just under it, which reads as one print on the garment.
-const CX = 450;
-const CY = 470;
-const HALF = 300;
+const CX = 450
+const CY = 470
+const HALF = 300
 
 const shapeMarkup = (t: Template) => {
   switch (t.shape) {
     case 'circle':
-      return `<circle cx="${CX}" cy="${CY}" r="${HALF}" fill="${t.shapeColor}"/>`;
+      return `<circle cx="${CX}" cy="${CY}" r="${HALF}" fill="${t.shapeColor}"/>`
     case 'square':
-      return `<rect x="${CX - HALF}" y="${CY - HALF}" width="${HALF * 2}" height="${HALF * 2}" rx="48" fill="${t.shapeColor}"/>`;
+      return `<rect x="${CX - HALF}" y="${CY - HALF}" width="${HALF * 2}" height="${HALF * 2}" rx="48" fill="${t.shapeColor}"/>`
     case 'triangle':
-      return `<polygon points="${CX},${CY - HALF} ${CX + HALF},${CY + HALF} ${CX - HALF},${CY + HALF}" fill="${t.shapeColor}"/>`;
+      return `<polygon points="${CX},${CY - HALF} ${CX + HALF},${CY + HALF} ${CX - HALF},${CY + HALF}" fill="${t.shapeColor}"/>`
     case 'none':
-      return '';
+      return ''
   }
-};
+}
 
-const TEXT_SIZE = 104;
-const TEXT_MAX_WIDTH = 780;
-const TEXT_BASELINE = 900;
+const TEXT_SIZE = 104
+const TEXT_MAX_WIDTH = 780
+const TEXT_BASELINE = 900
 
 /** The caption as a filled path: centered, shrunk to fit the width when long. */
 const textMarkup = (t: Template, font: Font) => {
-  if (!t.text.trim()) return '';
-  const natural = font.getAdvanceWidth(t.text, TEXT_SIZE);
-  const size = natural > TEXT_MAX_WIDTH ? (TEXT_SIZE * TEXT_MAX_WIDTH) / natural : TEXT_SIZE;
-  const width = font.getAdvanceWidth(t.text, size);
-  const d = font.getPath(t.text, CX - width / 2, TEXT_BASELINE, size).toPathData(2);
-  return `<path d="${d}" fill="${t.textColor}"/>`;
-};
+  if (!t.text.trim()) return ''
+  const natural = font.getAdvanceWidth(t.text, TEXT_SIZE)
+  const size = natural > TEXT_MAX_WIDTH ? (TEXT_SIZE * TEXT_MAX_WIDTH) / natural : TEXT_SIZE
+  const width = font.getAdvanceWidth(t.text, size)
+  const d = font.getPath(t.text, CX - width / 2, TEXT_BASELINE, size).toPathData(2)
+  return `<path d="${d}" fill="${t.textColor}"/>`
+}
 
 export const toSvg = (input: Partial<Template>, font: Font = displayFont()): string => {
-  const t = sanitize(input);
+  const t = sanitize(input)
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">`,
     t.background === 'none'
@@ -88,5 +88,5 @@ export const toSvg = (input: Partial<Template>, font: Font = displayFont()): str
     shapeMarkup(t),
     textMarkup(t, font),
     `</svg>`,
-  ].join('');
-};
+  ].join('')
+}

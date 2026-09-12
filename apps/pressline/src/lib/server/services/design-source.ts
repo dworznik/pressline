@@ -3,10 +3,10 @@ import type {
   PrintfileReady,
   PrintfileRendering,
   PrintfileSpec,
-} from '@pressline/contract';
-import { DesignNotFound, PrintfileRejected } from '@pressline/contract';
-import { Context, Schema } from 'effect';
-import type { Effect } from 'effect';
+} from '@pressline/contract'
+import { DesignNotFound, PrintfileRejected } from '@pressline/contract'
+import { Context, Schema } from 'effect'
+import type { Effect } from 'effect'
 
 /**
  * DesignSource (CONTEXT.md): the contract an Engine implements, seen from
@@ -29,12 +29,12 @@ export interface DesignSourceService {
   /** `GET /health` on the Engine; used at startup and by `doctor`. */
   readonly health: (
     engine: string,
-  ) => Effect.Effect<{ readonly protocolVersion: string }, DesignSourceError | UnknownEngine>;
+  ) => Effect.Effect<{ readonly protocolVersion: string }, DesignSourceError | UnknownEngine>
   /** `GET /designs/{id}` */
   readonly getDesign: (
     engine: string,
     designId: string,
-  ) => Effect.Effect<DesignResponse, DesignNotFound | DesignSourceError | UnknownEngine>;
+  ) => Effect.Effect<DesignResponse, DesignNotFound | DesignSourceError | UnknownEngine>
   /** `POST /designs/{id}/printfile`: sync-or-202 (ADR-0005). */
   readonly ensurePrintfile: (
     engine: string,
@@ -43,7 +43,7 @@ export interface DesignSourceService {
   ) => Effect.Effect<
     PrintfileReady | PrintfileRendering,
     DesignNotFound | PrintfileRejected | DesignSourceError | UnknownEngine
-  >;
+  >
 }
 
 export class DesignSource extends Context.Tag('pressline/DesignSource')<
@@ -51,4 +51,4 @@ export class DesignSource extends Context.Tag('pressline/DesignSource')<
   DesignSourceService
 >() {}
 
-export { DesignNotFound, PrintfileRejected };
+export { DesignNotFound, PrintfileRejected }

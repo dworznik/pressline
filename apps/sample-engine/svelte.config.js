@@ -1,5 +1,5 @@
-import { pickAdapter } from '../../deploy/adapter.js';
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import { pickAdapter } from '../../deploy/adapter.js'
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte'
 
 /** @type {import('@sveltejs/kit').Config} */
 export default {
@@ -17,4 +17,4 @@ export default {
       '@pressline/conformance': '../../packages/conformance/src/index.ts',
     },
   },
-};
+}

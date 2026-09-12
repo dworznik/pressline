@@ -1,20 +1,20 @@
-import { FetchHttpClient } from '@effect/platform';
-import { Effect, Layer, Schema } from 'effect';
-import rawConfig from '../../../pressline.config';
-import { assertDemoSafe } from './config/demo';
-import { Config } from './config/schema';
-import { InstanceFacts } from './operator/instance';
-import { OperatorSecrets } from './operator/auth';
-import { layerDbForPlatform } from './db/layer';
-import { makeWebHandler, type WebHandler } from './http/handler';
-import { layerDesignSourceHttp } from './services/design-source-http';
-import { layerMailerConsole, layerMailerNone } from './services/mailer';
-import { layerResend } from './services/resend';
-import { demoFulfillmentProvider } from './services/demo';
-import { layerFulfillmentProviderMemory, layerPspMemory } from './services/memory';
-import { layerPrintful } from './services/printful';
-import { layerStripe } from './services/stripe';
-import { e2eConfig } from './e2e/config';
+import { FetchHttpClient } from '@effect/platform'
+import { Effect, Layer, Schema } from 'effect'
+import rawConfig from '../../../pressline.config'
+import { assertDemoSafe } from './config/demo'
+import { Config } from './config/schema'
+import { InstanceFacts } from './operator/instance'
+import { OperatorSecrets } from './operator/auth'
+import { layerDbForPlatform } from './db/layer'
+import { makeWebHandler, type WebHandler } from './http/handler'
+import { layerDesignSourceHttp } from './services/design-source-http'
+import { layerMailerConsole, layerMailerNone } from './services/mailer'
+import { layerResend } from './services/resend'
+import { demoFulfillmentProvider } from './services/demo'
+import { layerFulfillmentProviderMemory, layerPspMemory } from './services/memory'
+import { layerPrintful } from './services/printful'
+import { layerStripe } from './services/stripe'
+import { e2eConfig } from './e2e/config'
 
 /**
  * Secrets and platform settings (ADR-0014): validated like any other boundary.
@@ -38,11 +38,11 @@ const Env = Schema.Struct({
   MAILER: Schema.optionalWith(Schema.Literal('none', 'console'), {
     default: () => 'none' as const,
   }),
-});
+})
 
 /** `ENGINE_SECRET_<SLUG>` with the slug upper-cased and dashes as underscores, e.g. `ENGINE_SECRET_MY_ENGINE`. */
 export const engineSecretVar = (slug: string) =>
-  `ENGINE_SECRET_${slug.toUpperCase().replaceAll('-', '_')}`;
+  `ENGINE_SECRET_${slug.toUpperCase().replaceAll('-', '_')}`
 
 /**
  * Production wiring, memoised per isolate (ADR-0012). Platform bindings (D1,
@@ -50,43 +50,43 @@ export const engineSecretVar = (slug: string) =>
  * provider layers per environment. Until the provider tickets land, the
  * DesignSource and PSP are the in-memory stand-ins.
  */
-let cached: Promise<WebHandler> | undefined;
+let cached: Promise<WebHandler> | undefined
 
 /** Decided when the bundle was built (vite.config.ts `define`), never by the runtime environment. */
-const isE2E = () => __PRESSLINE_E2E__;
+const isE2E = () => __PRESSLINE_E2E__
 /** The config this process runs with: the Operator's file, or the e2e seed's when Playwright drives it. */
-const effectiveConfig = () => (isE2E() ? { ...rawConfig, ...e2eConfig } : rawConfig);
+const effectiveConfig = () => (isE2E() ? { ...rawConfig, ...e2eConfig } : rawConfig)
 
 /** For page loaders that need config outside the Effect runtime (branding). */
-export const currentConfig = () => effectiveConfig();
+export const currentConfig = () => effectiveConfig()
 
 /** Demo Mode makes the Operator View public (reads only); the page guard steps aside. */
-export const isDemo = (): boolean => effectiveConfig().demo ?? false;
+export const isDemo = (): boolean => effectiveConfig().demo ?? false
 
 /** The cookie-signing secret, for the SvelteKit guard (same source as the runtime). */
 export const operatorSessionSecret = (platform: App.Platform | undefined): string => {
-  const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
-  const s = rawEnv['SESSION_SECRET'] ?? rawEnv['OPERATOR_TOKEN'];
-  return typeof s === 'string' ? s : '';
-};
+  const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>
+  const s = rawEnv['SESSION_SECRET'] ?? rawEnv['OPERATOR_TOKEN']
+  return typeof s === 'string' ? s : ''
+}
 
 export const getWebHandler = (platform: App.Platform | undefined): Promise<WebHandler> => {
-  if (cached) return cached;
-  cached = buildWebHandler(platform);
-  return cached;
-};
+  if (cached) return cached
+  cached = buildWebHandler(platform)
+  return cached
+}
 
 const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebHandler> => {
-  const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>;
-  const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' });
-  const DbLive = await layerDbForPlatform(env, platform);
-  assertDemoSafe(rawConfig.demo ?? false, env.STRIPE_SECRET_KEY);
+  const rawEnv = (platform?.env ?? process.env) as Record<string, unknown>
+  const env = Schema.decodeUnknownSync(Env)(rawEnv, { onExcessProperty: 'ignore' })
+  const DbLive = await layerDbForPlatform(env, platform)
+  assertDemoSafe(rawConfig.demo ?? false, env.STRIPE_SECRET_KEY)
   // Engines without a secret configured are wired with an empty one: the
   // startup health check then reports them as disabled rather than failing boot.
   const engines = rawConfig.engines.map((e) => {
-    const secret = rawEnv[engineSecretVar(e.slug)];
-    return { slug: e.slug, baseUrl: e.baseUrl, secret: typeof secret === 'string' ? secret : '' };
-  });
+    const secret = rawEnv[engineSecretVar(e.slug)]
+    return { slug: e.slug, baseUrl: e.baseUrl, secret: typeof secret === 'string' ? secret : '' }
+  })
 
   const RealProvider = env.PRINTFUL_TOKEN
     ? layerPrintful({
@@ -96,17 +96,17 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
           ? { webhookPublicKey: env.PRINTFUL_WEBHOOK_PUBLIC_KEY }
           : {}),
       })
-    : layerFulfillmentProviderMemory;
+    : layerFulfillmentProviderMemory
   // Demo Mode: drafts are real, confirmation is a cancellation (ticket #18).
   const FulfillmentProviderLive = rawConfig.demo
     ? demoFulfillmentProvider(RealProvider)
-    : RealProvider;
+    : RealProvider
   const PspLive = env.STRIPE_SECRET_KEY
     ? layerStripe({
         secretKey: env.STRIPE_SECRET_KEY,
         ...(env.STRIPE_WEBHOOK_SECRET ? { webhookSecret: env.STRIPE_WEBHOOK_SECRET } : {}),
       })
-    : layerPspMemory;
+    : layerPspMemory
   // Resend when a key and a sender are configured; `console` for local runs; else `none`.
   if (
     (env.RESEND_API_KEY && !rawConfig.email?.from) ||
@@ -114,7 +114,7 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
   ) {
     throw new Error(
       'Mailer misconfigured: RESEND_API_KEY and pressline.config.ts email.from must be set together',
-    );
+    )
   }
   const MailerLive =
     env.RESEND_API_KEY && rawConfig.email?.from
@@ -125,15 +125,15 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
         })
       : env.MAILER === 'console'
         ? layerMailerConsole
-        : layerMailerNone;
+        : layerMailerNone
 
-  const mailerKind = env.RESEND_API_KEY ? 'resend' : env.MAILER === 'console' ? 'console' : 'none';
+  const mailerKind = env.RESEND_API_KEY ? 'resend' : env.MAILER === 'console' ? 'console' : 'none'
   // Without OPERATOR_TOKEN the operator API refuses everything (an empty token never matches).
   const OperatorSecretsLive = Layer.succeed(OperatorSecrets, {
     token: env.OPERATOR_TOKEN ?? '',
     sessionSecret: env.SESSION_SECRET ?? env.OPERATOR_TOKEN ?? '',
     ...(env.CRON_SECRET ? { cronSecret: env.CRON_SECRET } : {}),
-  });
+  })
 
   const InstanceFactsLive = Layer.succeed(InstanceFacts, {
     mailer: mailerKind,
@@ -146,11 +146,11 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
       sessionSecret: !!env.SESSION_SECRET,
       cron: !!env.CRON_SECRET,
     },
-  });
+  })
 
   if (isE2E()) {
     // Only reachable in a Playwright build: the seed module is not in any other bundle.
-    const { e2eServices } = await import('./e2e/seed');
+    const { e2eServices } = await import('./e2e/seed')
     return makeWebHandler(
       Layer.mergeAll(
         Config.layer(effectiveConfig()),
@@ -159,7 +159,7 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
         DbLive,
         e2eServices,
       ),
-    );
+    )
   }
 
   const services = Layer.mergeAll(
@@ -175,7 +175,7 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
     // One outbound HTTP client for the Engine client, Printful and Printfile validation.
     Layer.provideMerge(FetchHttpClient.layer),
     Layer.tapErrorCause((c) => Effect.logError('boot failed', c)),
-  );
+  )
 
-  return makeWebHandler(services);
-};
+  return makeWebHandler(services)
+}

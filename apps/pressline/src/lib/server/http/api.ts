@@ -1,29 +1,29 @@
-import { HttpApi, HttpApiEndpoint, HttpApiGroup } from '@effect/platform';
+import { HttpApi, HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
 import {
   CatalogOffer,
   CatalogResponse,
   DesignNotFound,
   DesignResponse,
   Slug,
-} from '@pressline/contract';
-import { Schema } from 'effect';
-import { EngineUnavailable } from '../design/design';
-import { EngineStatus } from '../design/engines';
-import { CheckoutRequest, CheckoutStarted, CheckoutUnavailable } from '../checkout/checkout';
-import { OrderNotFound } from '../orders/orders';
-import { PublicOrder } from '../orders/public';
-import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure';
-import { OperatorAuth, Unauthorized } from '../operator/auth';
-import { InstanceHealth, OrderDetail, OrderList, OrderListQuery } from '../operator/read';
-import { ReconciliationReport } from '../reconciliation/run';
+} from '@pressline/contract'
+import { Schema } from 'effect'
+import { EngineUnavailable } from '../design/design'
+import { EngineStatus } from '../design/engines'
+import { CheckoutRequest, CheckoutStarted, CheckoutUnavailable } from '../checkout/checkout'
+import { OrderNotFound } from '../orders/orders'
+import { PublicOrder } from '../orders/public'
+import { PrintfileUnavailable, StoredPrintfile } from '../printfile/ensure'
+import { OperatorAuth, Unauthorized } from '../operator/auth'
+import { InstanceHealth, OrderDetail, OrderList, OrderListQuery } from '../operator/read'
+import { ReconciliationReport } from '../reconciliation/run'
 import {
   ActionRefused,
   ActionResult,
   CreateOrderRequest,
   PurgeRequest,
   PurgeResult,
-} from '../operator/actions';
-import { Recipient } from '../orders/orders';
+} from '../operator/actions'
+import { Recipient } from '../orders/orders'
 import {
   CatalogCheckResult,
   CatalogSearchQuery,
@@ -33,18 +33,18 @@ import {
   ToolError,
   WebhookRegisterRequest,
   WebhookRegisterResult,
-} from '../operator/tools';
-import { ProviderWebhookRejected } from '../services/fulfillment-provider';
-import { WebhookRejected } from '../services/psp';
-import { ProviderWebhookProcessingFailed } from '../webhooks/printful';
-import { WebhookAck, WebhookProcessingFailed } from '../webhooks/stripe';
+} from '../operator/tools'
+import { ProviderWebhookRejected } from '../services/fulfillment-provider'
+import { WebhookRejected } from '../services/psp'
+import { ProviderWebhookProcessingFailed } from '../webhooks/printful'
+import { WebhookAck, WebhookProcessingFailed } from '../webhooks/stripe'
 import {
   Quote,
   QuoteInconsistent,
   QuoteNotFound,
   QuoteRequest,
   QuoteUnavailable,
-} from '../quote/quote';
+} from '../quote/quote'
 
 /**
  * The Effect HttpApi: JSON API, operator API, Engine-facing endpoints and
@@ -62,12 +62,12 @@ export const HealthResponse = Schema.Struct({
     offers: Schema.Number,
   }),
   engines: Schema.Array(EngineStatus),
-});
-export type HealthResponse = typeof HealthResponse.Type;
+})
+export type HealthResponse = typeof HealthResponse.Type
 
 export const HealthGroup = HttpApiGroup.make('health').add(
   HttpApiEndpoint.get('health', '/api/health').addSuccess(HealthResponse),
-);
+)
 
 /** The Catalog could not be resolved: misconfiguration or the provider is down. */
 export class CatalogUnavailable extends Schema.TaggedError<CatalogUnavailable>()(
@@ -79,7 +79,7 @@ export const CatalogGroup = HttpApiGroup.make('catalog').add(
   HttpApiEndpoint.get('offers', '/api/offers')
     .addSuccess(CatalogResponse)
     .addError(CatalogUnavailable, { status: 503 }),
-);
+)
 
 /** The Engine could not be reached for this request. */
 export class EngineError extends Schema.TaggedError<EngineError>()('EngineError', {
@@ -100,7 +100,7 @@ export const StorefrontInfo = Schema.Struct({
   termsUrl: Schema.optional(Schema.String),
   privacyUrl: Schema.optional(Schema.String),
   contactEmail: Schema.optional(Schema.String),
-});
+})
 
 export const DesignPage = Schema.Struct({
   engine: Schema.String,
@@ -109,10 +109,10 @@ export const DesignPage = Schema.Struct({
   offers: Schema.Array(CatalogOffer),
   currency: Schema.String,
   storefront: StorefrontInfo,
-});
-export type DesignPage = typeof DesignPage.Type;
+})
+export type DesignPage = typeof DesignPage.Type
 
-const DesignPath = Schema.Struct({ engine: Slug, designId: Schema.String });
+const DesignPath = Schema.Struct({ engine: Slug, designId: Schema.String })
 
 export const DesignsGroup = HttpApiGroup.make('designs').add(
   HttpApiEndpoint.get('design', '/api/designs/:engine/:designId')
@@ -122,18 +122,18 @@ export const DesignsGroup = HttpApiGroup.make('designs').add(
     .addError(EngineUnavailable, { status: 503 })
     .addError(EngineError, { status: 502 })
     .addError(CatalogUnavailable, { status: 503 }),
-);
+)
 
 /** Ensure-Printfile answers (ticket #6, ADR-0005). */
 export const PrintfileReadyState = Schema.Struct({
   status: Schema.Literal('ready'),
   printfile: StoredPrintfile,
-});
+})
 export const PrintfilePreparingState = Schema.Struct({
   status: Schema.Literal('preparing'),
   retryAfterMs: Schema.Int,
-});
-export const PrintfileSelection = Schema.Struct({ offer: Slug, variant: Slug });
+})
+export const PrintfileSelection = Schema.Struct({ offer: Slug, variant: Slug })
 
 export const PrintfilesGroup = HttpApiGroup.make('printfiles')
   .add(
@@ -161,7 +161,7 @@ export const PrintfilesGroup = HttpApiGroup.make('printfiles')
       .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })
       .addError(CatalogUnavailable, { status: 503 }),
-  );
+  )
 
 /** Quotes (ticket #7, ADR-0010). */
 export const QuotesGroup = HttpApiGroup.make('quotes')
@@ -181,7 +181,7 @@ export const QuotesGroup = HttpApiGroup.make('quotes')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addSuccess(Quote)
       .addError(QuoteNotFound, { status: 404 }),
-  );
+  )
 
 /** The PSP could not be reached or refused the session. */
 export class PspUnavailable extends Schema.TaggedError<PspUnavailable>()('PspUnavailable', {
@@ -208,7 +208,7 @@ export const OrdersGroup = HttpApiGroup.make('orders')
       .setUrlParams(Schema.Struct({ t: Schema.String }))
       .addSuccess(PublicOrder)
       .addError(OrderNotFound, { status: 404 }),
-  );
+  )
 
 /** Provider webhooks (ADR-0007): raw body in, signature verified by the adapter. */
 export const WebhooksGroup = HttpApiGroup.make('webhooks')
@@ -231,14 +231,14 @@ export const WebhooksGroup = HttpApiGroup.make('webhooks')
       .addSuccess(WebhookAck)
       .addError(ProviderWebhookRejected, { status: 400 })
       .addError(ProviderWebhookProcessingFailed, { status: 500 }),
-  );
+  )
 
 /** A session for the Operator View, issued against the bearer token. */
 export const OperatorSession = Schema.Struct({
   /** Cookie value (`<expiresAt>.<hmac>`); the browser stores it HttpOnly. */
   cookie: Schema.String,
   expiresAt: Schema.Int,
-});
+})
 
 /** Operator read API (ticket #14, ADR-0014): bearer token or session cookie; read-only. */
 export const OperatorGroup = HttpApiGroup.make('operator')
@@ -326,7 +326,7 @@ export const OperatorGroup = HttpApiGroup.make('operator')
       Schema.NullOr(ReconciliationReport),
     ),
   )
-  .middleware(OperatorAuth);
+  .middleware(OperatorAuth)
 
 /** Scheduled entry for Vercel Cron (Cloudflare uses the `scheduled` export instead, ADR-0012). */
 export const CronGroup = HttpApiGroup.make('cron').add(
@@ -334,7 +334,7 @@ export const CronGroup = HttpApiGroup.make('cron').add(
     .setHeaders(Schema.Struct({ authorization: Schema.optional(Schema.String) }))
     .addSuccess(ReconciliationReport)
     .addError(Unauthorized, { status: 401 }),
-);
+)
 
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)

@@ -4,9 +4,9 @@
  * Never edit an applied migration; add the next one.
  */
 export interface Migration {
-  readonly version: number;
-  readonly name: string;
-  readonly statements: ReadonlyArray<string>;
+  readonly version: number
+  readonly name: string
+  readonly statements: ReadonlyArray<string>
 }
 
 export const migrations: ReadonlyArray<Migration> = [
@@ -237,4 +237,4 @@ export const migrations: ReadonlyArray<Migration> = [
       `UPDATE reconciliation_runs SET report = replace(report, '"catalogue', '"catalog')`,
     ],
   },
-];
+]

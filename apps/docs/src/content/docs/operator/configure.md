@@ -29,7 +29,7 @@ export default defineConfig({
   legal: { termsUrl: '…', privacyUrl: '…', contactEmail: 'hello@example' },
   email: { from: 'My Shop <orders@example>', operator: 'me@example' },
   checkout: { publicUrl: 'https://shop.example' },
-});
+})
 ```
 
 - **Offers** point at Printful catalog variants; `pressline catalog search "staple"` prints a ready-made snippet with the variant IDs and the Printfile Spec each placement implies. `pressline catalog check` verifies every Offer resolves.

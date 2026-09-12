@@ -20,7 +20,7 @@ Conformant.
 The file check is Pressline's own validator from `@pressline/contract`, so what passes here passes in production. As a test helper:
 
 ```ts
-import { conformance } from '@pressline/conformance';
-const report = await conformance({ baseUrl, secret, designId, fetch: app.fetch });
-expect(report.ok).toBe(true);
+import { conformance } from '@pressline/conformance'
+const report = await conformance({ baseUrl, secret, designId, fetch: app.fetch })
+expect(report.ok).toBe(true)
 ```

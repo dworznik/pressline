@@ -1,5 +1,5 @@
-import { HttpApi, HttpApiEndpoint, HttpApiGroup } from '@effect/platform';
-import { Schema } from 'effect';
+import { HttpApi, HttpApiEndpoint, HttpApiGroup } from '@effect/platform'
+import { Schema } from 'effect'
 import {
   DesignId,
   DesignNotFound,
@@ -8,8 +8,8 @@ import {
   PrintfileReady,
   PrintfileRejected,
   PrintfileRendering,
-} from './protocol.js';
-import { PrintfileSpec } from './spec.js';
+} from './protocol.js'
+import { PrintfileSpec } from './spec.js'
 
 /**
  * The DesignSource protocol as an Effect HttpApi (ADR-0003, ADR-0005).
@@ -17,7 +17,7 @@ import { PrintfileSpec } from './spec.js';
  * implement it with `HttpApiBuilder`; any other Engine follows the paths and
  * schemas. Every request from Pressline carries `Authorization: Bearer <shared secret>`.
  */
-const DesignPath = Schema.Struct({ designId: DesignId });
+const DesignPath = Schema.Struct({ designId: DesignId })
 
 export const DesignsGroup = HttpApiGroup.make('designs')
   .add(
@@ -34,10 +34,10 @@ export const DesignsGroup = HttpApiGroup.make('designs')
       .addSuccess(PrintfileRendering, { status: 202 })
       .addError(DesignNotFound, { status: 404 })
       .addError(PrintfileRejected, { status: 422 }),
-  );
+  )
 
 export const HealthGroup = HttpApiGroup.make('health').add(
   HttpApiEndpoint.get('health', '/health').addSuccess(EngineHealth),
-);
+)
 
 export class EngineApi extends HttpApi.make('engine').add(DesignsGroup).add(HealthGroup) {}

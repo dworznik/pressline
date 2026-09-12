@@ -4,8 +4,8 @@
  * the sample never needs one.
  */
 export interface AiAdapter {
-  readonly name: string;
+  readonly name: string
   readonly generate: (
     prompt: string,
-  ) => Promise<{ bytes: Uint8Array; contentType: 'image/png' | 'image/jpeg' }>;
+  ) => Promise<{ bytes: Uint8Array; contentType: 'image/png' | 'image/jpeg' }>
 }

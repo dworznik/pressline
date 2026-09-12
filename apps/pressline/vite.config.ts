@@ -1,5 +1,5 @@
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { sveltekit } from '@sveltejs/kit/vite'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [sveltekit()],
@@ -11,4 +11,4 @@ export default defineConfig({
     // Which Db drivers the bundle may carry: the native better-sqlite3 module cannot ship to Workers.
     __PRESSLINE_ADAPTER__: JSON.stringify(process.env['PRESSLINE_ADAPTER'] ?? 'auto'),
   },
-});
+})

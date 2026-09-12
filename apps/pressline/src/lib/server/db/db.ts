@@ -1,5 +1,5 @@
-import { Context, Schema } from 'effect';
-import type { Effect } from 'effect';
+import { Context, Schema } from 'effect'
+import type { Effect } from 'effect'
 
 /**
  * The only persistence API in Pressline (ADR-0008): single statements and
@@ -7,11 +7,11 @@ import type { Effect } from 'effect';
  * applied atomically by every driver (D1 batch, libSQL batch, better-sqlite3
  * transaction). Drivers are injected per platform.
  */
-export type SqlParam = string | number | bigint | null | Uint8Array;
+export type SqlParam = string | number | bigint | null | Uint8Array
 
 export interface Statement {
-  readonly sql: string;
-  readonly params?: ReadonlyArray<SqlParam>;
+  readonly sql: string
+  readonly params?: ReadonlyArray<SqlParam>
 }
 
 export class DbError extends Schema.TaggedError<DbError>()('DbError', {
@@ -21,14 +21,14 @@ export class DbError extends Schema.TaggedError<DbError>()('DbError', {
 
 export interface DbService {
   /** Execute one statement; returns the number of changed rows. */
-  readonly run: (sql: string, params?: ReadonlyArray<SqlParam>) => Effect.Effect<number, DbError>;
+  readonly run: (sql: string, params?: ReadonlyArray<SqlParam>) => Effect.Effect<number, DbError>
   /** Query rows. */
   readonly all: <Row extends object = Record<string, unknown>>(
     sql: string,
     params?: ReadonlyArray<SqlParam>,
-  ) => Effect.Effect<ReadonlyArray<Row>, DbError>;
+  ) => Effect.Effect<ReadonlyArray<Row>, DbError>
   /** Apply statements atomically: all or nothing. */
-  readonly batch: (statements: ReadonlyArray<Statement>) => Effect.Effect<void, DbError>;
+  readonly batch: (statements: ReadonlyArray<Statement>) => Effect.Effect<void, DbError>
 }
 
 export class Db extends Context.Tag('pressline/Db')<Db, DbService>() {}

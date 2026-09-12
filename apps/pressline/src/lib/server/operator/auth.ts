@@ -1,15 +1,15 @@
-import { HttpApiMiddleware, HttpServerRequest } from '@effect/platform';
-import { Clock, Context, Effect, Layer, Schema } from 'effect';
-import { Config } from '../config/schema';
-import { timingSafeEqual } from '../security';
-import { SESSION_COOKIE, verifySession } from './session';
+import { HttpApiMiddleware, HttpServerRequest } from '@effect/platform'
+import { Clock, Context, Effect, Layer, Schema } from 'effect'
+import { Config } from '../config/schema'
+import { timingSafeEqual } from '../security'
+import { SESSION_COOKIE, verifySession } from './session'
 
 /** The Operator's single credential and the cookie-signing secret (from the platform env). */
 export interface OperatorSecretsValue {
-  readonly token: string;
-  readonly sessionSecret: string;
+  readonly token: string
+  readonly sessionSecret: string
   /** Bearer for the scheduled reconciliation route (Vercel Cron); unset disables the route. */
-  readonly cronSecret?: string;
+  readonly cronSecret?: string
 }
 export class OperatorSecrets extends Context.Tag('pressline/OperatorSecrets')<
   OperatorSecrets,
@@ -39,27 +39,27 @@ export class OperatorAuth extends HttpApiMiddleware.Tag<OperatorAuth>()('pressli
 export const OperatorAuthLive = Layer.effect(
   OperatorAuth,
   Effect.gen(function* () {
-    const secrets = yield* OperatorSecrets;
-    const config = yield* Config;
+    const secrets = yield* OperatorSecrets
+    const config = yield* Config
     return Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      const bearer = /^Bearer\s+(.+)$/i.exec(request.headers['authorization'] ?? '')?.[1];
+      const request = yield* HttpServerRequest.HttpServerRequest
+      const bearer = /^Bearer\s+(.+)$/i.exec(request.headers['authorization'] ?? '')?.[1]
       if (bearer !== undefined) {
         if (secrets.token && timingSafeEqual(bearer, secrets.token))
-          return { via: 'bearer' as const };
-        return yield* new Unauthorized({ message: 'bad operator token' });
+          return { via: 'bearer' as const }
+        return yield* new Unauthorized({ message: 'bad operator token' })
       }
-      const cookie = request.cookies[SESSION_COOKIE];
+      const cookie = request.cookies[SESSION_COOKIE]
       if (cookie !== undefined) {
-        const now = yield* Clock.currentTimeMillis;
-        const ok = yield* verifySession(secrets.sessionSecret, cookie, now);
-        if (!ok) return yield* new Unauthorized({ message: 'no valid operator session' });
-        return { via: 'cookie' as const };
+        const now = yield* Clock.currentTimeMillis
+        const ok = yield* verifySession(secrets.sessionSecret, cookie, now)
+        if (!ok) return yield* new Unauthorized({ message: 'no valid operator session' })
+        return { via: 'cookie' as const }
       }
       if (config.demo && (request.method === 'GET' || request.method === 'HEAD')) {
-        return { via: 'demo' as const };
+        return { via: 'demo' as const }
       }
-      return yield* new Unauthorized({ message: 'operator token or session required' });
-    });
+      return yield* new Unauthorized({ message: 'operator token or session required' })
+    })
   }),
-);
+)

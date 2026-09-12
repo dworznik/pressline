@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from 'vitest/config'
 
 // The architecture model suite (docs/architecture) runs here so `pnpm test`
 // at the root picks it up as a project. Loading the LikeC4 language services
@@ -10,4 +10,4 @@ export default defineConfig({
     testTimeout: 60_000,
     hookTimeout: 60_000,
   },
-});
+})

@@ -1,6 +1,6 @@
-import { orderReference } from '../orders/ids';
-import type { Order } from '../orders/orders';
-import type { Email } from '../services/mailer';
+import { orderReference } from '../orders/ids'
+import type { Order } from '../orders/orders'
+import type { Email } from '../services/mailer'
 
 /**
  * Customer emails (ticket #12): plain server-rendered HTML with a text
@@ -8,21 +8,21 @@ import type { Email } from '../services/mailer';
  * escaped here. Branding is the Operator's name and colors from config.
  */
 export interface EmailContext {
-  readonly shopName: string;
-  readonly logoUrl?: string;
-  readonly accent: string;
-  readonly accentText: string;
-  readonly termsUrl?: string;
-  readonly privacyUrl?: string;
-  readonly withdrawalNotice: string;
-  readonly contactEmail?: string;
-  readonly offerName: string;
-  readonly variantLabel: string;
-  readonly previewUrl?: string;
-  readonly statusUrl: string;
-  readonly currency: string;
+  readonly shopName: string
+  readonly logoUrl?: string
+  readonly accent: string
+  readonly accentText: string
+  readonly termsUrl?: string
+  readonly privacyUrl?: string
+  readonly withdrawalNotice: string
+  readonly contactEmail?: string
+  readonly offerName: string
+  readonly variantLabel: string
+  readonly previewUrl?: string
+  readonly statusUrl: string
+  readonly currency: string
   /** Demo Mode: say the order is canceled at once rather than promise production. */
-  readonly demo: boolean;
+  readonly demo: boolean
 }
 
 const esc = (s: string) =>
@@ -30,12 +30,12 @@ const esc = (s: string) =>
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+    .replaceAll('"', '&quot;')
 
 const money = (amount: number, currency: string) => {
-  const fmt = new Intl.NumberFormat('en', { style: 'currency', currency });
-  return fmt.format(amount / 10 ** (fmt.resolvedOptions().maximumFractionDigits ?? 2));
-};
+  const fmt = new Intl.NumberFormat('en', { style: 'currency', currency })
+  return fmt.format(amount / 10 ** (fmt.resolvedOptions().maximumFractionDigits ?? 2))
+}
 
 const shell = (title: string, body: string, ctx: EmailContext) => `<!doctype html>
 <html><body style="font-family: system-ui, sans-serif; color: #222; max-width: 36rem; margin: 0 auto; padding: 1.5rem;">
@@ -47,30 +47,30 @@ const shell = (title: string, body: string, ctx: EmailContext) => `<!doctype htm
   <h1 style="font-size: 1.4rem;">${esc(title)}</h1>
   ${body}
   <p style="color: #666; font-size: 0.9rem; margin-top: 2rem;">${esc(ctx.shopName)}${ctx.contactEmail ? ` · <a href="mailto:${esc(ctx.contactEmail)}">${esc(ctx.contactEmail)}</a>` : ''}${ctx.termsUrl ? ` · <a href="${esc(ctx.termsUrl)}">Terms</a>` : ''}${ctx.privacyUrl ? ` · <a href="${esc(ctx.privacyUrl)}">Privacy</a>` : ''}</p>
-</body></html>`;
+</body></html>`
 
-const ref = (order: Order) => orderReference(order.id);
+const ref = (order: Order) => orderReference(order.id)
 
 /** The one call to action, in the Operator's colors. */
 const button = (ctx: EmailContext) =>
-  `display: inline-block; padding: 0.6rem 1.2rem; border-radius: 6px; background: ${esc(ctx.accent)}; color: ${esc(ctx.accentText)}; text-decoration: none;`;
+  `display: inline-block; padding: 0.6rem 1.2rem; border-radius: 6px; background: ${esc(ctx.accent)}; color: ${esc(ctx.accentText)}; text-decoration: none;`
 
 export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
-  const to = order.recipient?.email ?? '';
-  const subject = `${ctx.shopName}: order ${ref(order)} confirmed`;
-  const total = order.amountTotal ?? order.retail + order.shipping;
+  const to = order.recipient?.email ?? ''
+  const subject = `${ctx.shopName}: order ${ref(order)} confirmed`
+  const total = order.amountTotal ?? order.retail + order.shipping
   const lines = [
     `${ctx.offerName} · ${ctx.variantLabel}`,
     `Total paid: ${money(total, ctx.currency)} (incl. shipping${order.amountTax ? ' and tax' : ''})`,
-  ];
+  ]
   const contact = ctx.demo
     ? 'This is a demo shop: the print order was created at the print provider and canceled straight away. Nothing is produced, shipped or charged.'
     : ctx.contactEmail
       ? `Need to change the size or address? Write to ${ctx.contactEmail} straight away; production starts soon.`
-      : 'Need to change the size or address? Reply to this email straight away; production starts soon.';
+      : 'Need to change the size or address? Reply to this email straight away; production starts soon.'
   const intro = ctx.demo
     ? `We have your demo order ${ref(order)}; here is what a real order would look like.`
-    : `We have your order ${ref(order)} and are sending it to print.`;
+    : `We have your order ${ref(order)} and are sending it to print.`
   const html = shell(
     `Thanks, ${esc(order.recipient?.name?.split(/\s+/)[0] ?? 'there')}!`,
     `
@@ -81,7 +81,7 @@ export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
     <p>${esc(contact)}</p>
     <p style="font-size: 0.9rem; color: #555; border-top: 1px solid #ddd; padding-top: 0.75rem;">${esc(ctx.withdrawalNotice)}</p>`,
     ctx,
-  );
+  )
   const text = [
     `Thanks! ${intro}`,
     ...lines,
@@ -91,21 +91,21 @@ export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
     ctx.withdrawalNotice,
     '',
     ctx.shopName + (ctx.contactEmail ? ` · ${ctx.contactEmail}` : ''),
-  ].join('\n');
-  return { to, subject, html, text, idempotencyKey: `${order.id}:confirmation` };
-};
+  ].join('\n')
+  return { to, subject, html, text, idempotencyKey: `${order.id}:confirmation` }
+}
 
 export const shippedEmail = (order: Order, ctx: EmailContext): Email => {
-  const to = order.recipient?.email ?? '';
-  const subject = `${ctx.shopName}: order ${ref(order)} is on its way`;
-  const raw = order.tracking;
+  const to = order.recipient?.email ?? ''
+  const subject = `${ctx.shopName}: order ${ref(order)} is on its way`
+  const raw = order.tracking
   // Only web URLs are linked; the carrier link came from the provider.
-  const t = raw && raw.url && !/^https?:\/\//i.test(raw.url) ? { ...raw, url: undefined } : raw;
+  const t = raw && raw.url && !/^https?:\/\//i.test(raw.url) ? { ...raw, url: undefined } : raw
   const trackingLine = t?.url
     ? `Track your parcel${t.carrier ? ` with ${t.carrier}` : ''}: ${t.url}`
     : t?.number
       ? `Tracking number${t.carrier ? ` (${t.carrier})` : ''}: ${t.number}`
-      : 'Your parcel is on its way.';
+      : 'Your parcel is on its way.'
   const html = shell(
     'Your order has shipped',
     `
@@ -113,13 +113,13 @@ export const shippedEmail = (order: Order, ctx: EmailContext): Email => {
     <p>${t?.url ? `<a href="${esc(t.url)}">${esc(trackingLine)}</a>` : esc(trackingLine)}</p>
     <p><a href="${esc(ctx.statusUrl)}" style="${button(ctx)}">Order status</a></p>`,
     ctx,
-  );
+  )
   const text = [
     `Order ${ref(order)} (${ctx.offerName} · ${ctx.variantLabel}) has left the print house.`,
     trackingLine,
     `Order status: ${ctx.statusUrl}`,
     '',
     ctx.shopName + (ctx.contactEmail ? ` · ${ctx.contactEmail}` : ''),
-  ].join('\n');
-  return { to, subject, html, text, idempotencyKey: `${order.id}:shipped` };
-};
+  ].join('\n')
+  return { to, subject, html, text, idempotencyKey: `${order.id}:shipped` }
+}

@@ -1,6 +1,6 @@
-import { createClient, type Client, type InValue } from '@libsql/client';
-import { Effect, Layer, type Scope } from 'effect';
-import { Db, DbError, type DbService, type SqlParam } from './db';
+import { createClient, type Client, type InValue } from '@libsql/client'
+import { Effect, Layer, type Scope } from 'effect'
+import { Db, DbError, type DbService, type SqlParam } from './db'
 
 /**
  * Db driver for Vercel (Turso / libSQL over HTTP) and any `file:` URL. A
@@ -8,8 +8,8 @@ import { Db, DbError, type DbService, type SqlParam } from './db';
  * nothing (ADR-0008).
  */
 export const makeSqliteLibsql = (options: {
-  readonly url: string;
-  readonly authToken?: string;
+  readonly url: string
+  readonly authToken?: string
 }): Effect.Effect<DbService, DbError, Scope.Scope> =>
   Effect.gen(function* () {
     const client: Client = yield* Effect.acquireRelease(
@@ -22,10 +22,10 @@ export const makeSqliteLibsql = (options: {
         catch: (e) => new DbError({ message: `open ${options.url}: ${String(e)}` }),
       }),
       (c) => Effect.sync(() => c.close()),
-    );
+    )
     const fail = (sql: string) => (e: unknown) =>
-      new DbError({ message: e instanceof Error ? e.message : String(e), sql });
-    const args = (p?: ReadonlyArray<SqlParam>) => (p ?? []) as InValue[];
+      new DbError({ message: e instanceof Error ? e.message : String(e), sql })
+    const args = (p?: ReadonlyArray<SqlParam>) => (p ?? []) as InValue[]
     return {
       run: (sql, p) =>
         Effect.tryPromise({
@@ -40,16 +40,16 @@ export const makeSqliteLibsql = (options: {
       batch: (statements) =>
         Effect.tryPromise({
           try: async () => {
-            if (statements.length === 0) return;
+            if (statements.length === 0) return
             await client.batch(
               statements.map((s) => ({ sql: s.sql, args: args(s.params) })),
               'write',
-            );
+            )
           },
           catch: fail(statements.map((s) => s.sql).join('; ')),
         }),
-    } satisfies DbService;
-  });
+    } satisfies DbService
+  })
 
 export const layerSqliteLibsql = (options: { readonly url: string; readonly authToken?: string }) =>
-  Layer.scoped(Db, makeSqliteLibsql(options));
+  Layer.scoped(Db, makeSqliteLibsql(options))

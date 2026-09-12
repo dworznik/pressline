@@ -1,21 +1,21 @@
 <script lang="ts">
-  import { enhance } from '$app/forms';
-  import { toSvg, type Template } from '$lib/template';
-  import type { ActionData, PageData } from './$types';
+  import { enhance } from '$app/forms'
+  import { toSvg, type Template } from '$lib/template'
+  import type { ActionData, PageData } from './$types'
 
-  let { data, form }: { data: PageData; form: ActionData } = $props();
-  let t = $state<Template>({ ...data.template });
+  let { data, form }: { data: PageData; form: ActionData } = $props()
+  let t = $state<Template>({ ...data.template })
   // The background is either transparent (the garment shows through) or a color the picker holds.
-  let transparent = $state(data.template.background === 'none');
+  let transparent = $state(data.template.background === 'none')
   let backgroundColor = $state(
     data.template.background === 'none' ? '#0a7d5a' : data.template.background,
-  );
+  )
   const template = $derived<Template>({
     ...t,
     background: transparent ? 'none' : backgroundColor,
-  });
+  })
   // Shown as an image, never injected as markup: the browser treats it as a picture only.
-  const preview = $derived(`data:image/svg+xml,${encodeURIComponent(toSvg(template))}`);
+  const preview = $derived(`data:image/svg+xml,${encodeURIComponent(toSvg(template))}`)
 </script>
 
 <svelte:head><title>Sample Engine · Design something</title></svelte:head>

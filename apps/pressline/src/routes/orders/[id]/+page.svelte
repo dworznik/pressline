@@ -1,15 +1,15 @@
 <script lang="ts">
-  import { copy } from '$lib/copy';
-  import { formatMoney } from '$lib/money';
-  import type { PageData } from './$types';
+  import { copy } from '$lib/copy'
+  import { formatMoney } from '$lib/money'
+  import type { PageData } from './$types'
 
-  let { data }: { data: PageData } = $props();
-  const order = $derived(data.order);
-  const display = $derived(data.display);
-  const money = (amount: number) => formatMoney(amount, order.currency);
-  const steps = ['paid', 'making', 'shipped', 'done'] as const;
+  let { data }: { data: PageData } = $props()
+  const order = $derived(data.order)
+  const display = $derived(data.display)
+  const money = (amount: number) => formatMoney(amount, order.currency)
+  const steps = ['paid', 'making', 'shipped', 'done'] as const
   const reached = (step: (typeof steps)[number]) =>
-    steps.indexOf(step) <= steps.indexOf(display.step as never);
+    steps.indexOf(step) <= steps.indexOf(display.step as never)
 </script>
 
 <svelte:head>

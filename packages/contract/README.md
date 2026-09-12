@@ -9,7 +9,7 @@ import {
   EngineApi,
   makeEngineClient,
   PROTOCOL_VERSION,
-} from '@pressline/contract';
+} from '@pressline/contract'
 ```
 
 - `PrintfileSpec`, `canonicalize` (→ `Either<string, InvalidPrintfileSpec>`), `specHash` (→ `Effect<string, InvalidPrintfileSpec>`) — the Spec an Engine renders to and the hash both sides agree on (test vectors in `tests/spec-hash.test.ts`). Non-Effect code: `await Effect.runPromise(specHash(spec))`.

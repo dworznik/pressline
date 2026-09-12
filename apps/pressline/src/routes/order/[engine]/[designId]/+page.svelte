@@ -1,120 +1,119 @@
 <script lang="ts">
-  import { copy } from '$lib/copy';
-  import { COUNTRIES, STATE_REQUIRED } from '$lib/countries';
-  import type { PageData } from './$types';
-  const t = copy.design;
+  import { copy } from '$lib/copy'
+  import { COUNTRIES, STATE_REQUIRED } from '$lib/countries'
+  import type { PageData } from './$types'
+  const t = copy.design
 
-  let { data }: { data: PageData } = $props();
-  const design = $derived(data.page.design);
-  const offers = $derived(data.page.offers);
+  let { data }: { data: PageData } = $props()
+  const design = $derived(data.page.design)
+  const offers = $derived(data.page.offers)
   const money = $derived((amount: number) =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency: data.page.currency }).format(
       amount / 100,
     ),
-  );
+  )
 
   // Selection → ensure-Printfile (ticket #6): POST waits within the server's
   // bound; on 202 the page polls GET until ready. Nothing here decides prices
   // or eligibility: the server already did.
-  type Printfile = { url: string; width: number; height: number };
+  type Printfile = { url: string; width: number; height: number }
   type State =
     | { kind: 'idle' }
     | { kind: 'preparing'; retryAfterMs: number }
     | { kind: 'ready'; printfile: Printfile }
     | { kind: 'unavailable'; message: string }
-    | { kind: 'error'; message: string };
+    | { kind: 'error'; message: string }
 
-  let offerSlug = $state<string | undefined>(undefined);
-  let variantKey = $state<string | undefined>(undefined);
-  let printfile = $state<State>({ kind: 'idle' });
-  let attempt = 0;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  $effect(() => () => clearTimeout(timer)); // stop polling when the page goes away
+  let offerSlug = $state<string | undefined>(undefined)
+  let variantKey = $state<string | undefined>(undefined)
+  let printfile = $state<State>({ kind: 'idle' })
+  let attempt = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => clearTimeout(timer)) // stop polling when the page goes away
 
   // Narrow guards for the two bodies this island reads; the server validated
   // them with Schema already, this only protects against a wrong deploy pairing.
   const isReady = (b: unknown): b is { printfile: Printfile } =>
-    typeof b === 'object' && b !== null && 'printfile' in b;
+    typeof b === 'object' && b !== null && 'printfile' in b
   const isPreparing = (b: unknown): b is { retryAfterMs: number } =>
     typeof b === 'object' &&
     b !== null &&
-    typeof (b as { retryAfterMs?: unknown }).retryAfterMs === 'number';
+    typeof (b as { retryAfterMs?: unknown }).retryAfterMs === 'number'
   const hasMessage = (b: unknown): b is { message: string } =>
-    typeof b === 'object' && b !== null && typeof (b as { message?: unknown }).message === 'string';
+    typeof b === 'object' && b !== null && typeof (b as { message?: unknown }).message === 'string'
 
-  const offer = $derived(offers.find((o) => o.slug === offerSlug));
-  const variant = $derived(offer?.variants.find((v) => v.key === variantKey));
+  const offer = $derived(offers.find((o) => o.slug === offerSlug))
+  const variant = $derived(offer?.variants.find((v) => v.key === variantKey))
   // What to show on the left (ticket #19): the Engine's mockup for this Offer
   // when it has one (hot-linked, never stored, ADR-0003), else the Preview
   // laid over the variant's product photo, else the Preview alone.
-  const engineMockup = $derived(offer ? design.mockups?.[offer.slug] : undefined);
-  const overlayAspect = $derived(variant ? variant.spec.width / variant.spec.height : 1);
-  const base = $derived(`/api/designs/${data.page.engine}/${design.id}/printfile`);
+  const engineMockup = $derived(offer ? design.mockups?.[offer.slug] : undefined)
+  const overlayAspect = $derived(variant ? variant.spec.width / variant.spec.height : 1)
+  const base = $derived(`/api/designs/${data.page.engine}/${design.id}/printfile`)
 
   // Quote (ticket #7): re-fetched whenever the variant or destination changes.
   type Quote = {
-    id: string;
-    retail: number;
-    shipping: number;
-    total: number;
-    shippingMethod: { name: string; minDeliveryDays?: number; maxDeliveryDays?: number };
-  };
+    id: string
+    retail: number
+    shipping: number
+    total: number
+    shippingMethod: { name: string; minDeliveryDays?: number; maxDeliveryDays?: number }
+  }
   type QuoteState =
     | { kind: 'idle' }
     | { kind: 'loading' }
     | { kind: 'ready'; quote: Quote }
     | { kind: 'unavailable'; message: string }
-    | { kind: 'error'; message: string };
-  let country = $state('');
-  let stateCode = $state('');
-  let quote = $state<QuoteState>({ kind: 'idle' });
-  let quoteAttempt = 0;
-  const needsState = $derived(STATE_REQUIRED.has(country));
+    | { kind: 'error'; message: string }
+  let country = $state('')
+  let stateCode = $state('')
+  let quote = $state<QuoteState>({ kind: 'idle' })
+  let quoteAttempt = 0
+  const needsState = $derived(STATE_REQUIRED.has(country))
   // Checkout (ticket #8): POST the Quote, then leave for the PSP's hosted page.
   let checkout = $state<
     { kind: 'idle' } | { kind: 'starting' } | { kind: 'error'; message: string }
-  >({ kind: 'idle' });
+  >({ kind: 'idle' })
   const startCheckout = async () => {
-    if (quote.kind !== 'ready') return;
-    checkout = { kind: 'starting' };
+    if (quote.kind !== 'ready') return
+    checkout = { kind: 'starting' }
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ quoteId: quote.quote.id }),
-      });
-      const body: unknown = await res.json().catch(() => undefined);
+      })
+      const body: unknown = await res.json().catch(() => undefined)
       if (
         res.ok &&
         typeof body === 'object' &&
         body !== null &&
         typeof (body as { url?: unknown }).url === 'string'
       ) {
-        window.location.assign((body as { url: string }).url);
-        return;
+        window.location.assign((body as { url: string }).url)
+        return
       }
       checkout = {
         kind: 'error',
         message: hasMessage(body) ? body.message : t.checkoutError,
-      };
-      if (res.status === 422 && hasMessage(body) && /expired/i.test(body.message))
-        void fetchQuote();
+      }
+      if (res.status === 422 && hasMessage(body) && /expired/i.test(body.message)) void fetchQuote()
     } catch {
-      checkout = { kind: 'error', message: t.networkError };
+      checkout = { kind: 'error', message: t.networkError }
     }
-  };
-  const canceled = $derived(data.canceled);
+  }
+  const canceled = $derived(data.canceled)
 
   const isQuote = (b: unknown): b is Quote =>
-    typeof b === 'object' && b !== null && typeof (b as { total?: unknown }).total === 'number';
+    typeof b === 'object' && b !== null && typeof (b as { total?: unknown }).total === 'number'
 
   const fetchQuote = async () => {
     if (!offerSlug || !variantKey || !country || (needsState && !stateCode)) {
-      quote = { kind: 'idle' };
-      return;
+      quote = { kind: 'idle' }
+      return
     }
-    const mine = ++quoteAttempt;
-    quote = { kind: 'loading' };
+    const mine = ++quoteAttempt
+    quote = { kind: 'loading' }
     const params = new URLSearchParams({
       engine: data.page.engine,
       designId: design.id,
@@ -122,67 +121,67 @@
       variant: variantKey,
       country,
       ...(needsState ? { state: stateCode.toUpperCase() } : {}),
-    });
+    })
     try {
-      const res = await fetch(`/api/quote?${params}`);
-      const body: unknown = await res.json().catch(() => undefined);
-      if (mine !== quoteAttempt) return;
-      if (res.status === 200 && isQuote(body)) quote = { kind: 'ready', quote: body };
+      const res = await fetch(`/api/quote?${params}`)
+      const body: unknown = await res.json().catch(() => undefined)
+      if (mine !== quoteAttempt) return
+      if (res.status === 200 && isQuote(body)) quote = { kind: 'ready', quote: body }
       else if (res.status === 422 && hasMessage(body))
-        quote = { kind: 'unavailable', message: body.message };
-      else quote = { kind: 'error', message: t.priceError };
+        quote = { kind: 'unavailable', message: body.message }
+      else quote = { kind: 'error', message: t.priceError }
     } catch {
-      if (mine === quoteAttempt) quote = { kind: 'error', message: t.networkError };
+      if (mine === quoteAttempt) quote = { kind: 'error', message: t.networkError }
     }
-  };
+  }
 
   const choose = (slug: string, key: string) => {
-    offerSlug = slug;
-    variantKey = key;
-    void ensure();
-    void fetchQuote();
-  };
+    offerSlug = slug
+    variantKey = key
+    void ensure()
+    void fetchQuote()
+  }
 
   const apply = async (res: Response, mine: number) => {
-    if (mine !== attempt) return;
-    const body: unknown = await res.json().catch(() => undefined);
+    if (mine !== attempt) return
+    const body: unknown = await res.json().catch(() => undefined)
     if (res.status === 200 && isReady(body)) {
-      printfile = { kind: 'ready', printfile: body.printfile };
+      printfile = { kind: 'ready', printfile: body.printfile }
     } else if (res.status === 202 && isPreparing(body)) {
-      printfile = { kind: 'preparing', retryAfterMs: body.retryAfterMs };
-      timer = setTimeout(() => void poll(mine), Math.max(250, body.retryAfterMs));
+      printfile = { kind: 'preparing', retryAfterMs: body.retryAfterMs }
+      timer = setTimeout(() => void poll(mine), Math.max(250, body.retryAfterMs))
     } else if (res.status === 422 && hasMessage(body)) {
-      printfile = { kind: 'unavailable', message: body.message };
+      printfile = { kind: 'unavailable', message: body.message }
     } else {
-      printfile = { kind: 'error', message: t.engineError };
+      printfile = { kind: 'error', message: t.engineError }
     }
-  };
+  }
 
   const ensure = async () => {
-    if (!offerSlug || !variantKey) return;
-    const mine = ++attempt;
-    printfile = { kind: 'preparing', retryAfterMs: 0 };
+    if (!offerSlug || !variantKey) return
+    const mine = ++attempt
+    printfile = { kind: 'preparing', retryAfterMs: 0 }
     try {
       const res = await fetch(base, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ offer: offerSlug, variant: variantKey }),
-      });
-      await apply(res, mine);
+      })
+      await apply(res, mine)
     } catch {
-      if (mine === attempt) printfile = { kind: 'error', message: t.networkError };
+      if (mine === attempt) printfile = { kind: 'error', message: t.networkError }
     }
-  };
+  }
 
   const poll = async (mine: number) => {
-    if (mine !== attempt || !offerSlug || !variantKey) return;
+    if (mine !== attempt || !offerSlug || !variantKey) return
     try {
-      const res = await fetch(`${base}?offer=${offerSlug}&variant=${variantKey}`);
-      await apply(res, mine);
+      const res = await fetch(`${base}?offer=${offerSlug}&variant=${variantKey}`)
+      await apply(res, mine)
     } catch {
-      if (mine === attempt) printfile = { kind: 'error', message: t.networkError };
+      if (mine === attempt) printfile = { kind: 'error', message: t.networkError }
     }
-  };
+  }
 </script>
 
 <svelte:head>

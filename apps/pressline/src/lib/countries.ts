@@ -38,7 +38,7 @@ export const COUNTRIES: ReadonlyArray<readonly [string, string]> = [
   ['SI', 'Slovenia'],
   ['SK', 'Slovakia'],
   ['US', 'United States'],
-];
+]
 
 /** Countries whose shipping quote needs a state/province code. */
-export const STATE_REQUIRED = new Set(['US', 'CA', 'AU']);
+export const STATE_REQUIRED = new Set(['US', 'CA', 'AU'])

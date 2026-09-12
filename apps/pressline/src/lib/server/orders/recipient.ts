@@ -1,5 +1,5 @@
-import type { ProviderRecipient } from '../services/fulfillment-provider';
-import type { Recipient } from './orders';
+import type { ProviderRecipient } from '../services/fulfillment-provider'
+import type { Recipient } from './orders'
 
 /** The Order's Recipient as the provider wants it addressed. */
 export const toProviderRecipient = (r: Recipient): ProviderRecipient => ({
@@ -12,4 +12,4 @@ export const toProviderRecipient = (r: Recipient): ProviderRecipient => ({
   ...(r.zip ? { zip: r.zip } : {}),
   email: r.email,
   ...(r.phone ? { phone: r.phone } : {}),
-});
+})

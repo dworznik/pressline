@@ -1,9 +1,9 @@
-import { Effect, Schema } from 'effect';
-import { timingSafeEqual } from '../security';
-import { Config } from '../config/schema';
-import { DesignSource } from '../services/design-source';
-import { findOrder, OrderNotFound } from './orders';
-import { OrderState } from './state';
+import { Effect, Schema } from 'effect'
+import { timingSafeEqual } from '../security'
+import { Config } from '../config/schema'
+import { DesignSource } from '../services/design-source'
+import { findOrder, OrderNotFound } from './orders'
+import { OrderState } from './state'
 
 /**
  * What a Customer may see of their Order (ticket #13 builds the page on it):
@@ -33,24 +33,24 @@ export const PublicOrder = Schema.Struct({
   createdAt: Schema.Int,
   /** Demo Mode: the print order was created and canceled straight away; the pages explain it. */
   demo: Schema.Boolean,
-});
-export type PublicOrder = typeof PublicOrder.Type;
+})
+export type PublicOrder = typeof PublicOrder.Type
 
 /** A wrong token is indistinguishable from a missing Order. */
 export const publicOrder = (id: string, token: string) =>
   Effect.gen(function* () {
-    const order = yield* findOrder(id);
-    if (!timingSafeEqual(order.statusToken, token)) return yield* new OrderNotFound({ id });
-    const config = yield* Config;
-    const offer = config.catalog.offers.find((o) => o.slug === order.offer);
+    const order = yield* findOrder(id)
+    if (!timingSafeEqual(order.statusToken, token)) return yield* new OrderNotFound({ id })
+    const config = yield* Config
+    const offer = config.catalog.offers.find((o) => o.slug === order.offer)
     const previewUrl =
       order.previewUrl ??
       (yield* Effect.flatMap(DesignSource, (s) => s.getDesign(order.engine, order.designId)).pipe(
         Effect.map((d) => d.previewUrl),
         Effect.option,
         Effect.map((o) => (o._tag === 'Some' ? o.value : undefined)),
-      ));
-    const r = order.recipient;
+      ))
+    const r = order.recipient
     return {
       id: order.id,
       state: order.state,
@@ -85,5 +85,5 @@ export const publicOrder = (id: string, token: string) =>
         : {}),
       createdAt: order.createdAt,
       demo: config.demo,
-    } satisfies PublicOrder;
-  });
+    } satisfies PublicOrder
+  })

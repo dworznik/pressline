@@ -1,4 +1,4 @@
-import type { PresslineConfigSchema } from '../config/schema';
+import type { PresslineConfigSchema } from '../config/schema'
 
 /** The Operator config the Playwright build runs with; plain data, safe to import anywhere. */
 export const e2eConfig: Partial<typeof PresslineConfigSchema.Encoded> = {
@@ -33,4 +33,4 @@ export const e2eConfig: Partial<typeof PresslineConfigSchema.Encoded> = {
       },
     ],
   },
-};
+}

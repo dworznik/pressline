@@ -1,23 +1,23 @@
-import { HttpApiBuilder, HttpServer, type HttpClient } from '@effect/platform';
-import { Layer } from 'effect';
-import type { Config } from '../config/schema';
-import type { Db } from '../db/db';
-import type { DesignSource } from '../services/design-source';
-import type { FulfillmentProvider } from '../services/fulfillment-provider';
-import type { Mailer } from '../services/mailer';
-import type { Psp } from '../services/psp';
-import { PresslineApi } from './api';
-import { EnginesLive } from '../design/engines';
-import { CatalogLive } from './catalog';
-import { DesignsLive } from './designs';
-import { HealthLive } from './health';
-import { PrintfilesLive } from './printfiles';
-import { OperatorAuthLive, type OperatorSecrets } from '../operator/auth';
-import type { InstanceFacts } from '../operator/instance';
-import { CronLive, OperatorLive } from './operator';
-import { OrdersLive } from './orders';
-import { QuotesLive } from './quotes';
-import { WebhooksLive } from './webhooks';
+import { HttpApiBuilder, HttpServer, type HttpClient } from '@effect/platform'
+import { Layer } from 'effect'
+import type { Config } from '../config/schema'
+import type { Db } from '../db/db'
+import type { DesignSource } from '../services/design-source'
+import type { FulfillmentProvider } from '../services/fulfillment-provider'
+import type { Mailer } from '../services/mailer'
+import type { Psp } from '../services/psp'
+import { PresslineApi } from './api'
+import { EnginesLive } from '../design/engines'
+import { CatalogLive } from './catalog'
+import { DesignsLive } from './designs'
+import { HealthLive } from './health'
+import { PrintfilesLive } from './printfiles'
+import { OperatorAuthLive, type OperatorSecrets } from '../operator/auth'
+import type { InstanceFacts } from '../operator/instance'
+import { CronLive, OperatorLive } from './operator'
+import { OrdersLive } from './orders'
+import { QuotesLive } from './quotes'
+import { WebhooksLive } from './webhooks'
 
 /** Everything the HTTP layer needs from the outside world. */
 export type Services =
@@ -29,7 +29,7 @@ export type Services =
   | Mailer
   | HttpClient.HttpClient
   | OperatorSecrets
-  | InstanceFacts;
+  | InstanceFacts
 
 /**
  * Build the web-standard `(Request) => Promise<Response>` for the whole API
@@ -50,7 +50,7 @@ export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) => {
       CronLive,
     ]),
     Layer.provide([EnginesLive, OperatorAuthLive]),
-  );
+  )
   return HttpApiBuilder.toWebHandler(
     Layer.mergeAll(
       api,
@@ -58,11 +58,11 @@ export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) => {
       HttpApiBuilder.middlewareOpenApi({ path: '/api/openapi.json' }).pipe(Layer.provide(api)),
       HttpServer.layerContext,
     ).pipe(Layer.provide(services)),
-  );
-};
+  )
+}
 
-export type WebHandler = ReturnType<typeof makeWebHandler>;
+export type WebHandler = ReturnType<typeof makeWebHandler>
 
 /** Paths SvelteKit hands to the Effect handler. */
 export const isApiPath = (pathname: string) =>
-  pathname === '/api' || pathname.startsWith('/api/') || pathname.startsWith('/webhooks/');
+  pathname === '/api' || pathname.startsWith('/api/') || pathname.startsWith('/webhooks/')

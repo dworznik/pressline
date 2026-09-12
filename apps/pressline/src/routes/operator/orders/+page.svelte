@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
-  import { formatMoney } from '$lib/money';
-  import type { PageData } from './$types';
-  let { data }: { data: PageData } = $props();
+  import { resolve } from '$app/paths'
+  import { formatMoney } from '$lib/money'
+  import type { PageData } from './$types'
+  let { data }: { data: PageData } = $props()
   const states = [
     '',
     'checkout_open',
@@ -16,8 +16,8 @@
     'canceled',
     'refunded',
     'expired',
-  ];
-  const when = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 16);
+  ]
+  const when = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 16)
 </script>
 
 <svelte:head><title>Operator · Orders</title></svelte:head>

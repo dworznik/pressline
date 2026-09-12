@@ -34,16 +34,18 @@ The four packages under `packages/` publish to npm as `@pressline/*` and release
 lockstep at one version. Everything else in the workspace is `private: true` and
 never ships.
 
-To cut a release:
+**A release is a merged version bump.** Raise `version` in all four
+`packages/*/package.json` to the same value, open the PR as usual, and merging it
+to `main` publishes. Nothing else to click.
 
-1. Bump `version` in all four `packages/*/package.json` to the same value, on `main`.
-2. Run the `release` workflow by hand from the Actions tab. This publishes
-   nothing: it rehearses the publish and fails if any package would not
-   authenticate. Do this before drafting the release — see below for why.
-3. Draft a GitHub Release whose tag is `v<that version>` (`v0.2.0`, or `v0.2.0-rc.1`).
-4. Publish the release. `.github/workflows/release.yml` takes it from there: it
-   checks the tag against the four manifests, runs `pnpm verify`, and then
-   `pnpm --recursive publish`.
+`.github/workflows/release.yml` runs on every push to `main` and starts by asking
+`scripts/release-status.mjs` what is missing from the registry. Almost always the
+answer is nothing and the job stops there in a few seconds. When a bump lands it
+runs `pnpm verify`, publishes with `pnpm --recursive publish`, and tags the commit
+`v<version>` afterwards — the tag records what shipped rather than deciding it.
+
+That script also refuses a bump where the four packages disagree on the version,
+which would otherwise publish some of them and leave the rest behind.
 
 The workflow holds no npm token. It authenticates with [npm trusted
 publishing](https://docs.npmjs.com/trusted-publishers/): GitHub mints an OIDC
@@ -57,11 +59,14 @@ the very first publish of a _new_ package has to be done by hand.
 Whether a package is registered lives on npmjs.com, and nothing in this
 repository can read it. That matters because packages publish in dependency
 order: a missing registration takes the release down part-way, with `contract`
-on the registry and its dependents not. Hence step 2. pnpm builds its publish
-options — the token exchange included — before it honors `--dry-run`, so the
-rehearsal authenticates for real while publishing nothing, and fails loudly if
-a package would have been skipped. It also fails when every version is already
-published, because then it proved nothing: bump the versions first.
+on the registry and its dependents not.
+
+So when a bump is on a branch and you want certainty before merging it, run the
+`release` workflow by hand from the Actions tab against that branch. It publishes
+nothing — pnpm builds its publish options, the token exchange included, before it
+honors `--dry-run`, so the rehearsal authenticates for real and fails loudly if a
+package would have been skipped. Worth doing after adding a package, or the first
+time a trusted publisher is configured; unnecessary the rest of the time.
 
 Two things not to change without knowing why:
 

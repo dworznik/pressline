@@ -1,10 +1,11 @@
 name: release
 
 on:
-  # Publishing the GitHub Release is the trigger: draft it, click Publish, npm follows.
-  release:
-    types: [published]
-  # Run by hand to rehearse a release. This never publishes; see the dry run below.
+  # Merging to main is the trigger. Almost every push has nothing to publish and
+  # the job stops at the gate below; a merged version bump is what ships.
+  push:
+    branches: [main]
+  # Run by hand to rehearse. This never publishes; see the rehearsal step.
   workflow_dispatch:
 
 # Never let two releases publish at once, and never cancel one part-way: some
@@ -14,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write # to tag what was published
   # npm trusted publishing: pnpm exchanges this OIDC token for a short-lived
   # registry token per package. There is no NPM_TOKEN, by design.
   id-token: write
@@ -32,30 +33,28 @@ jobs:
           # No dependency cache here: a release should build from what the
           # lockfile says, not from whatever a previous run left behind.
 
-      - run: pnpm install --frozen-lockfile
+      # Fails if the packages disagree on a version; otherwise reports which of
+      # them the registry is missing. Everything below is skipped when it is none,
+      # which is the usual answer.
+      - name: what is there to publish
+        id: status
+        run: node scripts/release-status.mjs >> "$GITHUB_OUTPUT"
 
-      # The tag names a version; package.json decides what actually ships. Stop
-      # before publishing if they disagree.
-      - name: tag matches package versions
-        if: github.event_name == 'release'
-        run: node scripts/check-release-tag.mjs "${{ github.event.release.tag_name }}"
+      - if: steps.status.outputs.pending != ''
+        run: pnpm install --frozen-lockfile
 
-      - run: pnpm verify
+      - if: steps.status.outputs.pending != ''
+        run: pnpm verify
 
       # A trusted publisher is configured per package on npmjs.com, and nothing in
       # this repository can see whether that was done. pnpm builds its publish
       # options -- including the OIDC token exchange -- before it honors --dry-run,
       # so this rehearses the authentication for real and publishes nothing.
       - name: rehearse the publish
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && steps.status.outputs.pending != ''
         run: |
           set -o pipefail
           pnpm --recursive publish --dry-run --no-git-checks 2>&1 | tee dry-run.log
-
-          if grep -qF 'There are no new packages that should be published' dry-run.log; then
-            echo "::error::Every version in packages/* is already on the registry, so nothing exercised trusted publishing. Bump the four versions on main, then run this again."
-            exit 1
-          fi
 
           # pnpm only warns when the token exchange fails and falls back to whatever
           # credential it can find -- of which this job has none. Treat it as fatal:
@@ -65,12 +64,32 @@ jobs:
             exit 1
           fi
 
-          echo 'Trusted publishing authenticated for every package. A release will publish cleanly.'
+          echo 'Trusted publishing authenticated for every package. A merge will publish cleanly.'
 
       # Publishes every non-private workspace package whose version is not on the
       # registry yet, in dependency order, rewriting `workspace:^` to a real range.
-      # --no-git-checks because a release builds from a detached tag checkout.
+      # --no-git-checks because the publish branch default is master.
       # Do not add --batch: it turns OIDC off and the publish would go unauthenticated.
       - name: publish
-        if: github.event_name == 'release'
+        if: github.event_name == 'push' && steps.status.outputs.pending != ''
         run: pnpm --recursive publish --no-git-checks
+
+      # The tag is the record of what went out, written after the fact because the
+      # registry, not the tag, decided what shipped.
+      - name: tag the release
+        if: github.event_name == 'push' && steps.status.outputs.pending != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.status.outputs.version }}
+          PUBLISHED: ${{ steps.status.outputs.pending }}
+        run: |
+          # A re-run after a partly failed publish finishes the job and arrives
+          # here with the tag already written. That is success, not a conflict.
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "v${VERSION} is already tagged; leaving it alone."
+            exit 0
+          fi
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --notes "Published to npm from ${GITHUB_SHA}: ${PUBLISHED//,/, }" \
+            --target "${GITHUB_SHA}"

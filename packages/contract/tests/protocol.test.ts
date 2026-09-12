@@ -1,6 +1,6 @@
 import { Either, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { AspectRange, CatalogueVariant } from '../src/index';
+import { AspectRange, OfferVariant } from '../src/index';
 
 describe('protocol schemas', () => {
   it('rejects an aspect range whose min exceeds max', () => {
@@ -10,8 +10,8 @@ describe('protocol schemas', () => {
     expect(Either.isRight(decode({ min: 1, max: 1 }))).toBe(true);
   });
 
-  it('rejects a catalogue variant whose specHash is not a SHA-256 hex digest', () => {
-    const decode = Schema.decodeUnknownEither(CatalogueVariant);
+  it('rejects a catalog variant whose specHash is not a SHA-256 hex digest', () => {
+    const decode = Schema.decodeUnknownEither(OfferVariant);
     const spec = {
       width: 1800,
       height: 2400,

@@ -6,7 +6,7 @@ import { Engines, EngineStatus } from '../design/engines';
 import { listOrderEmails, OrderEmail } from '../emails/send';
 import { findOrder, listOrders, listTransitions, Order, Transition } from '../orders/orders';
 import { OrderState } from '../orders/state';
-import { FulfilmentProvider } from '../services/fulfilment-provider';
+import { FulfillmentProvider } from '../services/fulfillment-provider';
 import { Psp } from '../services/psp';
 import { Config } from '../config/schema';
 import type { InstanceFactsValue } from './instance';
@@ -69,7 +69,7 @@ export const WebhookStatus = Schema.Struct({
 export const InstanceHealth = Schema.Struct({
   engines: Schema.Array(EngineStatus),
   webhooks: WebhookStatus,
-  /** One call each to the PSP and the fulfilment provider, made now. */
+  /** One call each to the PSP and the fulfillment provider, made now. */
   providers: Schema.Struct({
     stripe: Schema.Struct({ ok: Schema.Boolean, detail: Schema.optional(Schema.String) }),
     printful: Schema.Struct({ ok: Schema.Boolean, detail: Schema.optional(Schema.String) }),
@@ -183,7 +183,7 @@ export const instanceHealth = (facts: InstanceFactsValue) =>
     const config = yield* Config;
     const engines = yield* Effect.flatMap(Engines, (e) => e.all);
     const psp = yield* Psp;
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const stripe = yield* psp.getWebhookStatus().pipe(
       Effect.orElseSucceed(() => ({
         configured: false,
@@ -213,7 +213,7 @@ export const instanceHealth = (facts: InstanceFactsValue) =>
       config: {
         name: config.name,
         currency: config.currency,
-        offers: config.catalogue.offers.length,
+        offers: config.catalog.offers.length,
         demo: config.demo,
         mailer: facts.mailer,
       },

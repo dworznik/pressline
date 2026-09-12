@@ -40,4 +40,4 @@ A Worker holds ~128 MiB. The WASM backend refuses, with `RenderRefused` (`reason
 
 ## What it does not do
 
-Colour management beyond declaring sRGB, bleed, or any print-shop judgement. Pressline never runs it: the bridge validates headers only (ADR-0002) and the app is lint-banned from importing this package.
+Color management beyond declaring sRGB, bleed, or any print-shop judgment. Pressline never runs it: the bridge validates headers only (ADR-0002) and the app is lint-banned from importing this package.

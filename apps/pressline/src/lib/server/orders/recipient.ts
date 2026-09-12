@@ -1,4 +1,4 @@
-import type { ProviderRecipient } from '../services/fulfilment-provider';
+import type { ProviderRecipient } from '../services/fulfillment-provider';
 import type { Recipient } from './orders';
 
 /** The Order's Recipient as the provider wants it addressed. */

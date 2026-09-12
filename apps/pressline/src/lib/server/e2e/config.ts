@@ -12,7 +12,7 @@ export const e2eConfig: Partial<typeof PresslineConfigSchema.Encoded> = {
     contactEmail: 'hello@shop.e2e',
   },
   checkout: { publicUrl: 'http://localhost:4173' },
-  catalogue: {
+  catalog: {
     offers: [
       {
         slug: 'tee-black-front',

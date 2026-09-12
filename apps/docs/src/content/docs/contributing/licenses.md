@@ -1,5 +1,5 @@
 ---
-title: Licences
+title: Licenses
 description: MIT for code, CC BY 4.0 for docs.
 ---
 

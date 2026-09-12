@@ -6,7 +6,7 @@ import { backends, blueJpeg, greenSvg, header, pixel, redLeft, wasmBackend } fro
 /**
  * Seam 3 (docs/SPEC.md): the render helper is judged by the PNG it writes,
  * the way Pressline judges an Engine's Printfile: header dimensions, DPI,
- * colour type and alpha. One suite, both backends.
+ * color type and alpha. One suite, both backends.
  */
 const spec = (over: Partial<PrintfileSpec> = {}): PrintfileSpec => ({
   width: 120,
@@ -29,11 +29,11 @@ describe.each(backends)('render on the %s backend', (_name, make) => {
       width: 120,
       height: 160,
       bitDepth: 8,
-      colourType: 6,
+      colorType: 6,
       dpi: 300,
       srgb: true,
     });
-    // 40×20 into 120×160 (contain): scaled to 120×60, centred vertically at y=50..110.
+    // 40×20 into 120×160 (contain): scaled to 120×60, centered vertically at y=50..110.
     expect(await pixel(png, 30, 80)).toEqual([255, 0, 0, 255]); // left half: red
     expect(await pixel(png, 90, 80)).toEqual([0, 0, 0, 0]); // right half: transparent
     expect(await pixel(png, 60, 10)).toEqual([0, 0, 0, 0]); // letterbox: transparent
@@ -48,20 +48,20 @@ describe.each(backends)('render on the %s backend', (_name, make) => {
       { background: { r: 10, g: 20, b: 30 } },
     );
     const h = header(png);
-    expect(h).toMatchObject({ width: 120, height: 160, colourType: 2, hasTrns: false });
+    expect(h).toMatchObject({ width: 120, height: 160, colorType: 2, hasTrns: false });
     expect(await pixel(png, 90, 80)).toEqual([10, 20, 30, 255]);
     expect(await pixel(png, 60, 10)).toEqual([10, 20, 30, 255]);
     expect(await pixel(png, 30, 80)).toEqual([255, 0, 0, 255]);
   });
 
-  it('covers: fills the Spec and crops, honouring alignment', async () => {
+  it('covers: fills the Spec and crops, honoring alignment', async () => {
     const backend = await make();
     // 30×60 blue JPEG into 120×160: cover scales to 120×240, top-aligned → no letterbox anywhere.
     const png = await render(backend, { kind: 'raster', bytes: await blueJpeg() }, spec(), {
       fit: 'cover',
       align: { y: 'top' },
     });
-    expect(header(png)).toMatchObject({ width: 120, height: 160, colourType: 6 });
+    expect(header(png)).toMatchObject({ width: 120, height: 160, colorType: 6 });
     const [r, g, b, a] = await pixel(png, 60, 159);
     expect(a).toBe(255);
     expect(b).toBeGreaterThan(200);
@@ -82,7 +82,7 @@ describe.each(backends)('render on the %s backend', (_name, make) => {
     const png = await render(backend, { kind: 'svg', svg: greenSvg }, spec({ dpi: 150 }));
     const h = header(png);
     expect(h).toMatchObject({ width: 120, height: 160, dpi: 150 });
-    // 100×50 into 120×160: 120×60, centred at y=50..110.
+    // 100×50 into 120×160: 120×60, centered at y=50..110.
     expect(await pixel(png, 60, 80)).toEqual([0, 255, 0, 255]);
     expect(await pixel(png, 60, 20)).toEqual([0, 0, 0, 0]);
   });

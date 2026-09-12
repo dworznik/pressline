@@ -11,8 +11,8 @@ import {
 import { Effect, Layer, Ref } from 'effect';
 import { DesignSource, DesignSourceError, UnknownEngine } from './design-source';
 import {
-  FulfilmentProvider,
-  FulfilmentProviderError,
+  FulfillmentProvider,
+  FulfillmentProviderError,
   type CatalogProduct,
   type CatalogVariant,
   type PlacementPrintArea,
@@ -24,7 +24,7 @@ import {
   type ShippingRate,
   type ShippingRateRequest,
   type VariantPrices,
-} from './fulfilment-provider';
+} from './fulfillment-provider';
 import { Mailer, MailerError, type Email } from './mailer';
 import {
   Psp,
@@ -83,7 +83,7 @@ export interface DesignSourceMemoryOptions {
 }
 
 /**
- * In-memory Engines: seeded designs and scripted render behaviour, plus a
+ * In-memory Engines: seeded designs and scripted render behavior, plus a
  * call counter so tests can assert how often the Engine was asked.
  */
 export const makeDesignSourceMemory = (options: DesignSourceMemoryOptions = {}) =>
@@ -355,7 +355,7 @@ export interface MemoryCatalog {
 export const emptyCatalog: MemoryCatalog = { products: [], variants: [], printAreas: {} };
 
 const notFound = (what: string, id: number) =>
-  new FulfilmentProviderError({
+  new FulfillmentProviderError({
     message: `${what} ${id} not found`,
     retryable: false,
     status: 404,
@@ -392,7 +392,7 @@ const parseProviderWebhook = (rawBody: string) => {
   }
 };
 
-export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatalog) =>
+export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCatalog) =>
   Effect.map(Ref.make(0), (calls) => {
     const providerOrders = new Map<string, ProviderOrder>();
     const shipments = new Map<string, ReadonlyArray<ProviderShipment>>();
@@ -404,7 +404,7 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
         Effect.flatMap(() => (item ? Effect.succeed(item) : notFound(what, id))),
       );
     return {
-      layer: Layer.succeed(FulfilmentProvider, {
+      layer: Layer.succeed(FulfillmentProvider, {
         health: () => Effect.void,
         getWebhookStatus: () => Effect.succeed({ configured: true, url: providerWebhookUrl }),
         registerWebhook: (url) => {
@@ -454,7 +454,7 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
               const cfg = catalog.orders ?? {};
               if (cfg.createRejects) {
                 return Effect.fail(
-                  new FulfilmentProviderError({
+                  new FulfillmentProviderError({
                     message: cfg.createRejects,
                     retryable: false,
                     status: 400,
@@ -464,7 +464,7 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
               if (createFailuresLeft > 0) {
                 createFailuresLeft -= 1;
                 return Effect.fail(
-                  new FulfilmentProviderError({
+                  new FulfillmentProviderError({
                     message: 'provider 503',
                     retryable: true,
                     status: 503,
@@ -508,7 +508,7 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
               if (confirmFailuresLeft > 0) {
                 confirmFailuresLeft -= 1;
                 return Effect.fail(
-                  new FulfilmentProviderError({
+                  new FulfillmentProviderError({
                     message: 'provider 503',
                     retryable: true,
                     status: 503,
@@ -530,10 +530,10 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
               const o = providerOrders.get(id);
               if (!o) return notFound('provider order', Number(id));
               if (o.status === 'inprocess' || o.status === 'partial' || o.status === 'fulfilled') {
-                return Effect.succeed('not_cancellable' as const);
+                return Effect.succeed('not_cancelable' as const);
               }
               providerOrders.set(id, { ...o, status: 'canceled' });
-              return Effect.succeed('cancelled' as const);
+              return Effect.succeed('canceled' as const);
             }),
           ),
         updateOrderRecipient: (id, recipient) =>
@@ -543,7 +543,7 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
               if (!o) return notFound('provider order', Number(id));
               if (o.status !== 'draft' && o.status !== 'failed' && o.status !== 'onhold') {
                 return Effect.fail(
-                  new FulfilmentProviderError({
+                  new FulfillmentProviderError({
                     message: `provider order ${id} is ${o.status}; the recipient can no longer be changed`,
                     retryable: false,
                   }),
@@ -583,8 +583,8 @@ export const makeFulfilmentProviderMemory = (catalog: MemoryCatalog = emptyCatal
     };
   });
 
-export const layerFulfilmentProviderMemory = Layer.unwrapEffect(
-  Effect.map(makeFulfilmentProviderMemory(), (m) => m.layer),
+export const layerFulfillmentProviderMemory = Layer.unwrapEffect(
+  Effect.map(makeFulfillmentProviderMemory(), (m) => m.layer),
 );
 
 /** Records sends so tests can read what was sent; can be switched to fail every send. */

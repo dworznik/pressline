@@ -1,6 +1,6 @@
 import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer } from 'effect';
-import { FulfilmentProvider } from '../src/lib/server/services/fulfilment-provider';
+import { FulfillmentProvider } from '../src/lib/server/services/fulfillment-provider';
 import { layerPrintful } from '../src/lib/server/services/printful';
 import { Psp } from '../src/lib/server/services/psp';
 import { layerStripe } from '../src/lib/server/services/stripe';
@@ -24,7 +24,7 @@ const env = (k: string) => {
 };
 
 const printful = Effect.gen(function* () {
-  const p = yield* FulfilmentProvider;
+  const p = yield* FulfillmentProvider;
   yield* p.health();
   const product = yield* p.getCatalogProduct(PRODUCT);
   const variant = yield* p.getCatalogVariant(VARIANT);

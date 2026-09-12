@@ -103,7 +103,7 @@ const doctor = Command.make('doctor', {}, () =>
   Command.withDescription('Check the instance: config, secrets, Engines, providers, webhooks'),
 );
 
-// ---- catalogue ------------------------------------------------------------
+// ---- catalog ------------------------------------------------------------
 
 const Spec = Schema.Struct({
   width: Schema.Number,
@@ -144,7 +144,7 @@ const slugify = (s: string) =>
     .slice(0, 40)
     .replace(/^-|-$/g, '');
 
-/** An Offer the Operator can paste into `pressline.config.ts`, with every variant keyed by colour and size. */
+/** An Offer the Operator can paste into `pressline.config.ts`, with every variant keyed by color and size. */
 const offerSnippet = (p: (typeof SearchResult.Type)['products'][number]) => {
   const method = p.placements[0];
   const variants = p.variants
@@ -178,11 +178,11 @@ const searchText = Args.text({ name: 'text' }).pipe(
   Args.withDescription('Words of the product name'),
 );
 
-const catalogueSearch = Command.make('search', { text: searchText }, ({ text }) =>
+const catalogSearch = Command.make('search', { text: searchText }, ({ text }) =>
   Effect.gen(function* () {
     const { products } = yield* api(
       'GET',
-      `/api/operator/catalogue/search?q=${encodeURIComponent(text)}`,
+      `/api/operator/catalog/search?q=${encodeURIComponent(text)}`,
       SearchResult,
     );
     if (products.length === 0) return yield* print(`No products match "${text}".`);
@@ -215,9 +215,9 @@ const CheckResult = Schema.Struct({
   ),
 });
 
-const catalogueCheck = Command.make('check', {}, () =>
+const catalogCheck = Command.make('check', {}, () =>
   Effect.gen(function* () {
-    const { offers } = yield* api('GET', '/api/operator/catalogue/check', CheckResult);
+    const { offers } = yield* api('GET', '/api/operator/catalog/check', CheckResult);
     for (const o of offers) {
       yield* print(`${mark(o.ok)} ${o.slug}: ${o.ok ? `${o.variants} variants` : o.message}`);
     }
@@ -228,9 +228,9 @@ const catalogueCheck = Command.make('check', {}, () =>
   }),
 ).pipe(Command.withDescription('Verify every configured Offer resolves at the provider'));
 
-const catalogue = Command.make('catalogue').pipe(
-  Command.withDescription('Provider catalogue tools'),
-  Command.withSubcommands([catalogueSearch, catalogueCheck]),
+const catalog = Command.make('catalog').pipe(
+  Command.withDescription('Provider catalog tools'),
+  Command.withSubcommands([catalogSearch, catalogCheck]),
 );
 
 // ---- webhooks -------------------------------------------------------------
@@ -649,7 +649,7 @@ const printfile = Command.make('printfile').pipe(
 
 const root = Command.make('pressline', { url, token }).pipe(
   Command.withDescription('Operate a Pressline instance through its operator API'),
-  Command.withSubcommands([doctor, catalogue, webhooks, orders, reconcile, printfile]),
+  Command.withSubcommands([doctor, catalog, webhooks, orders, reconcile, printfile]),
 );
 
 export const VERSION = '0.1.0';

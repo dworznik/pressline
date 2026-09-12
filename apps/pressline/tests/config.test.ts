@@ -6,7 +6,7 @@ const valid = {
   name: 'x',
   currency: 'EUR',
   engines: [{ slug: 'a', baseUrl: 'https://a' }],
-  catalogue: {
+  catalog: {
     offers: [
       {
         slug: 'tee-black-front',
@@ -33,22 +33,22 @@ describe('config validation at boot', () => {
     }
   });
 
-  it('accepts a minimal config and defaults demo and catalogue', async () => {
+  it('accepts a minimal config and defaults demo and catalog', async () => {
     const cfg = await Effect.runPromise(
       decodeConfig({ name: 'x', currency: 'EUR', engines: [{ slug: 'a', baseUrl: 'https://a' }] }),
     );
     expect(cfg.demo).toBe(false);
-    expect(cfg.catalogue.offers).toEqual([]);
+    expect(cfg.catalog.offers).toEqual([]);
   });
 
-  it('accepts a Catalogue with one Offer', async () => {
+  it('accepts a Catalog with one Offer', async () => {
     const cfg = await Effect.runPromise(decodeConfig(valid));
-    expect(cfg.catalogue.offers[0]?.variants['black-m']?.catalogVariantId).toBe(4017);
+    expect(cfg.catalog.offers[0]?.variants['black-m']?.catalogVariantId).toBe(4017);
   });
 
   it('names the offending Offer when a variant is invalid', async () => {
     const bad = structuredClone(valid);
-    (bad.catalogue.offers[0]!.variants as Record<string, unknown>)['black-m'] = {
+    (bad.catalog.offers[0]!.variants as Record<string, unknown>)['black-m'] = {
       catalogVariantId: -1,
       label: 'Black / M',
     };
@@ -62,7 +62,7 @@ describe('config validation at boot', () => {
 
   it('rejects duplicate Offer slugs', async () => {
     const bad = structuredClone(valid);
-    bad.catalogue.offers.push(structuredClone(valid.catalogue.offers[0]!));
+    bad.catalog.offers.push(structuredClone(valid.catalog.offers[0]!));
     const result = await decode(bad);
     expect(Either.isLeft(result) && result.left.message).toMatch(
       /duplicate Offer slug "tee-black-front"/,
@@ -71,7 +71,7 @@ describe('config validation at boot', () => {
 
   it('rejects an Offer without variants', async () => {
     const bad = structuredClone(valid);
-    (bad.catalogue.offers[0] as { variants: unknown }).variants = {};
+    (bad.catalog.offers[0] as { variants: unknown }).variants = {};
     const result = await decode(bad);
     expect(Either.isLeft(result) && result.left.message).toMatch(/at least one variant/);
   });

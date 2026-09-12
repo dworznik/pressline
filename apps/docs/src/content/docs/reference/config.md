@@ -7,7 +7,7 @@ description: Every key of pressline.config.ts.
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`, `currency`       | Shown everywhere; one ISO 4217 currency per instance                                                                                                     |
 | `engines[]`              | `{ slug, baseUrl }`; secret in `ENGINE_SECRET_<SLUG>`                                                                                                    |
-| `catalogue.offers[]`     | `{ slug, name, catalogProductId, placement, technique, retailPrice, aspect?, variants: { key: { catalogVariantId, label, color?, size?, imageUrl? } } }` |
+| `catalog.offers[]`       | `{ slug, name, catalogProductId, placement, technique, retailPrice, aspect?, variants: { key: { catalogVariantId, label, color?, size?, imageUrl? } } }` |
 | `demo`                   | Demo Mode                                                                                                                                                |
 | `branding`               | `{ logoUrl?, accent, accentText, tagline? }`                                                                                                             |
 | `legal`                  | `{ withdrawalNotice, termsUrl?, privacyUrl?, contactEmail? }`                                                                                            |

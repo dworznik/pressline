@@ -2,8 +2,8 @@ import { Effect, Either, Schema } from 'effect';
 
 /**
  * Printfile Spec (CONTEXT.md): what a Printfile must satisfy for one Offer
- * variant and Placement. Pressline derives it from the fulfilment provider;
- * the Engine renders to it. Canonically serialisable so both sides compute
+ * variant and Placement. Pressline derives it from the fulfillment provider;
+ * the Engine renders to it. Canonically serializable so both sides compute
  * the same Spec Hash (ADR-0005).
  */
 export const PrintfileFormat = Schema.Literal('png', 'jpeg');

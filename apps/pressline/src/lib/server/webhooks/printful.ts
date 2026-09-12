@@ -12,12 +12,12 @@ import {
 } from '../orders/orders';
 import type { Cause, OrderState } from '../orders/state';
 import {
-  FulfilmentProvider,
+  FulfillmentProvider,
   ProviderWebhookRejected,
   type ProviderOrder,
   type ProviderShipment,
   type ProviderWebhookEvent,
-} from '../services/fulfilment-provider';
+} from '../services/fulfillment-provider';
 import { sendOrderEmail } from '../emails/send';
 import { receive, release, settle, type InboundOutcome } from './inbound';
 
@@ -55,7 +55,7 @@ export const stateFor = (
     case 'fulfilled':
       return 'fulfilled';
     case 'canceled':
-      return 'cancelled';
+      return 'canceled';
     case 'failed':
       return from === 'submitted' || from === 'in_production' || from === 'on_hold'
         ? 'on_hold'
@@ -124,13 +124,13 @@ export const applyPrintfulEvent = (
 ): Effect.Effect<
   Result,
   ProviderWebhookProcessingFailed,
-  FulfilmentProvider | Db | Config | DesignSource | Mailer
+  FulfillmentProvider | Db | Config | DesignSource | Mailer
 > =>
   Effect.gen(function* () {
     if (!event.providerOrderId) return result('ignored', event.type);
     const order = yield* resolveOrder(event);
     if (!order) return result('unknown_order', event.providerOrderId);
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     // Re-fetch: the provider's current status is the fact, not the delivery.
     const fetched = yield* provider.getOrder(event.providerOrderId).pipe(Effect.either);
     if (fetched._tag === 'Left') {
@@ -187,7 +187,7 @@ export const handlePrintfulWebhook = (
   headers: { signature?: string; publicKey?: string },
 ) =>
   Effect.gen(function* () {
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const event = yield* provider.verifyWebhook(rawBody, headers);
     const now = Math.floor((yield* Clock.currentTimeMillis) / 1000);
     if (event.occurredAt < now - MAX_EVENT_AGE_S || event.occurredAt > now + MAX_CLOCK_SKEW_S) {

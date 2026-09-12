@@ -103,7 +103,7 @@
       checkout = { kind: 'error', message: t.networkError };
     }
   };
-  const cancelled = $derived(data.cancelled);
+  const canceled = $derived(data.canceled);
 
   const isQuote = (b: unknown): b is Quote =>
     typeof b === 'object' && b !== null && typeof (b as { total?: unknown }).total === 'number';
@@ -219,8 +219,8 @@
       <p class="demo" data-demo>{t.demoBanner(data.page.storefront.demo.testCard)}</p>
     {/if}
     <h1>{design.title ?? t.fallbackTitle}</h1>
-    {#if cancelled}
-      <p class="notice" data-state="cancelled">{t.cancelled}</p>
+    {#if canceled}
+      <p class="notice" data-state="canceled">{t.canceled}</p>
     {/if}
 
     {#if !design.sellable}

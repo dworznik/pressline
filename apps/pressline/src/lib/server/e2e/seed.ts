@@ -5,7 +5,7 @@ import { makeHostedFetch, type HostedFile } from './hosted';
 import { png } from './png';
 import {
   makeDesignSourceMemory,
-  makeFulfilmentProviderMemory,
+  makeFulfillmentProviderMemory,
   makePspMemory,
   type MemoryCatalog,
 } from '../services/memory';
@@ -114,7 +114,7 @@ export const e2eServices = Layer.unwrapEffect(
         },
       },
     });
-    const provider = yield* makeFulfilmentProviderMemory(catalog);
+    const provider = yield* makeFulfillmentProviderMemory(catalog);
     const psp = yield* makePspMemory({ hostedPage: 'success' });
     return Layer.mergeAll(
       designSource.layer,

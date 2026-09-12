@@ -44,13 +44,13 @@ model {
       }
     }
 
-    fulfilmentService = component 'FulfilmentProvider' {
+    fulfillmentService = component 'FulfillmentProvider' {
       technology 'Effect service (Context.Tag)'
       description '
-        Catalogue, shipping rates, Provider Cost Estimate, provider orders and
+        Catalog, shipping rates, Provider Cost Estimate, provider orders and
         their webhooks. Printful is the shipped adapter; Demo Mode wraps it so
         drafts are created but never confirmed; tests use an in-memory
-        provider with a recorded catalogue.
+        provider with a recorded catalog.
       '
       link https://github.com/dworznik/pressline/blob/main/docs/adr/0007-printful-api-v2.md 'ADR-0007'
       link https://github.com/dworznik/pressline/blob/main/docs/adr/0011-effect-throughout.md 'ADR-0011'
@@ -61,7 +61,7 @@ model {
       }
       demo = component 'Demo Mode wrapper' {
         technology 'Layer over the Printful adapter'
-        description 'Confirms nothing: a draft is created, then cancelled, so no goods move.'
+        description 'Confirms nothing: a draft is created, then canceled, so no goods move.'
       }
     }
 
@@ -98,15 +98,15 @@ model {
 
   // Entry points as callers (Storefront and Operator View call the HttpApi)
   pressline.app.httpApi -> pressline.app.designSourceService 'fetches the Design; requests and validates the Printfile (ADR-0004)'
-  pressline.app.httpApi -> pressline.app.fulfilmentService 'catalogue, rates, Provider Cost Estimate'
+  pressline.app.httpApi -> pressline.app.fulfillmentService 'catalog, rates, Provider Cost Estimate'
   pressline.app.httpApi -> pressline.app.pspService 'creates the Checkout session'
   pressline.app.httpApi -> pressline.app.dbService 'Orders, Transitions, Quotes, reads for the Storefront and Operator View'
   pressline.app.webhooks -> pressline.app.pspService 'verifies, re-fetches the session'
-  pressline.app.webhooks -> pressline.app.fulfilmentService 'verifies, re-fetches, submits the provider order'
+  pressline.app.webhooks -> pressline.app.fulfillmentService 'verifies, re-fetches, submits the provider order'
   pressline.app.webhooks -> pressline.app.mailerService 'confirmation, shipped with tracking'
   pressline.app.webhooks -> pressline.app.dbService 'Inbound Events, Transitions'
   pressline.app.reconciliation -> pressline.app.pspService 're-fetches every open Order'
-  pressline.app.reconciliation -> pressline.app.fulfilmentService 're-fetches every open Order'
+  pressline.app.reconciliation -> pressline.app.fulfillmentService 're-fetches every open Order'
   pressline.app.reconciliation -> pressline.app.mailerService 'Alarms'
   pressline.app.reconciliation -> pressline.app.dbService 'Transitions, Cause reconciliation'
 
@@ -115,8 +115,8 @@ model {
   pressline.app.dbService.libsql -> pressline.ledger 'libSQL (ADR-0008)'
   pressline.app.dbService.sqliteNode -> pressline.ledger 'SQLite file (ADR-0008)'
   pressline.app.designSourceService.http -> engine.app 'the three DesignSource endpoints (@pressline/contract)'
-  pressline.app.fulfilmentService.printful -> fulfilmentProvider 'Printful API v2 (ADR-0007)'
-  pressline.app.fulfilmentService.demo -> pressline.app.fulfilmentService.printful 'wraps in Demo Mode'
+  pressline.app.fulfillmentService.printful -> fulfillmentProvider 'Printful API v2 (ADR-0007)'
+  pressline.app.fulfillmentService.demo -> pressline.app.fulfillmentService.printful 'wraps in Demo Mode'
   pressline.app.pspService.stripe -> psp 'Stripe Checkout'
   pressline.app.mailerService.resend -> mailer 'Resend'
 }

@@ -26,4 +26,4 @@ The fuller primer is on the docs site: `apps/docs/src/content/docs/contributing/
 
 ## Test seams
 
-See `docs/SPEC.md` → Testing Decisions. Bridge behaviour is tested through its HTTP surface with in-memory services (`apps/pressline/tests/harness.ts`); do not add module-level tests of the ledger.
+See `docs/SPEC.md` → Testing Decisions. Bridge behavior is tested through its HTTP surface with in-memory services (`apps/pressline/tests/harness.ts`); do not add module-level tests of the ledger.

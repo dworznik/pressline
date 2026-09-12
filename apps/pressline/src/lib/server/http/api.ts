@@ -1,7 +1,7 @@
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from '@effect/platform';
 import {
-  CatalogueOffer,
-  CatalogueResponse,
+  CatalogOffer,
+  CatalogResponse,
   DesignNotFound,
   DesignResponse,
   Slug,
@@ -25,16 +25,16 @@ import {
 } from '../operator/actions';
 import { Recipient } from '../orders/orders';
 import {
-  CatalogueCheckResult,
-  CatalogueSearchQuery,
-  CatalogueSearchResult,
+  CatalogCheckResult,
+  CatalogSearchQuery,
+  CatalogSearchResult,
   PrintfileCheckRequest,
   PrintfileCheckResult,
   ToolError,
   WebhookRegisterRequest,
   WebhookRegisterResult,
 } from '../operator/tools';
-import { ProviderWebhookRejected } from '../services/fulfilment-provider';
+import { ProviderWebhookRejected } from '../services/fulfillment-provider';
 import { WebhookRejected } from '../services/psp';
 import { ProviderWebhookProcessingFailed } from '../webhooks/printful';
 import { WebhookAck, WebhookProcessingFailed } from '../webhooks/stripe';
@@ -69,16 +69,16 @@ export const HealthGroup = HttpApiGroup.make('health').add(
   HttpApiEndpoint.get('health', '/api/health').addSuccess(HealthResponse),
 );
 
-/** The Catalogue could not be resolved: misconfiguration or the provider is down. */
-export class CatalogueUnavailable extends Schema.TaggedError<CatalogueUnavailable>()(
-  'CatalogueUnavailable',
+/** The Catalog could not be resolved: misconfiguration or the provider is down. */
+export class CatalogUnavailable extends Schema.TaggedError<CatalogUnavailable>()(
+  'CatalogUnavailable',
   { message: Schema.String, offer: Schema.optional(Schema.String) },
 ) {}
 
-export const CatalogueGroup = HttpApiGroup.make('catalogue').add(
+export const CatalogGroup = HttpApiGroup.make('catalog').add(
   HttpApiEndpoint.get('offers', '/api/offers')
-    .addSuccess(CatalogueResponse)
-    .addError(CatalogueUnavailable, { status: 503 }),
+    .addSuccess(CatalogResponse)
+    .addError(CatalogUnavailable, { status: 503 }),
 );
 
 /** The Engine could not be reached for this request. */
@@ -106,7 +106,7 @@ export const DesignPage = Schema.Struct({
   engine: Schema.String,
   design: DesignResponse,
   /** Eligible Offers; empty when the Design is not sellable. */
-  offers: Schema.Array(CatalogueOffer),
+  offers: Schema.Array(CatalogOffer),
   currency: Schema.String,
   storefront: StorefrontInfo,
 });
@@ -121,7 +121,7 @@ export const DesignsGroup = HttpApiGroup.make('designs').add(
     .addError(DesignNotFound, { status: 404 })
     .addError(EngineUnavailable, { status: 503 })
     .addError(EngineError, { status: 502 })
-    .addError(CatalogueUnavailable, { status: 503 }),
+    .addError(CatalogUnavailable, { status: 503 }),
 );
 
 /** Ensure-Printfile answers (ticket #6, ADR-0005). */
@@ -147,7 +147,7 @@ export const PrintfilesGroup = HttpApiGroup.make('printfiles')
       .addError(DesignNotFound, { status: 404 })
       .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })
-      .addError(CatalogueUnavailable, { status: 503 }),
+      .addError(CatalogUnavailable, { status: 503 }),
   )
   .add(
     // Same answer without waiting; what the Storefront's preparing page polls.
@@ -160,7 +160,7 @@ export const PrintfilesGroup = HttpApiGroup.make('printfiles')
       .addError(DesignNotFound, { status: 404 })
       .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })
-      .addError(CatalogueUnavailable, { status: 503 }),
+      .addError(CatalogUnavailable, { status: 503 }),
   );
 
 /** Quotes (ticket #7, ADR-0010). */
@@ -174,7 +174,7 @@ export const QuotesGroup = HttpApiGroup.make('quotes')
       .addError(DesignNotFound, { status: 404 })
       .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })
-      .addError(CatalogueUnavailable, { status: 503 }),
+      .addError(CatalogUnavailable, { status: 503 }),
   )
   .add(
     HttpApiEndpoint.get('quoteById', '/api/quotes/:id')
@@ -200,7 +200,7 @@ export const OrdersGroup = HttpApiGroup.make('orders')
       .addError(PspUnavailable, { status: 502 })
       .addError(EngineUnavailable, { status: 503 })
       .addError(EngineError, { status: 502 })
-      .addError(CatalogueUnavailable, { status: 503 }),
+      .addError(CatalogUnavailable, { status: 503 }),
   )
   .add(
     HttpApiEndpoint.get('publicOrder', '/api/orders/:id')
@@ -299,14 +299,14 @@ export const OperatorGroup = HttpApiGroup.make('operator')
       .addSuccess(ReconciliationReport),
   )
   .add(
-    HttpApiEndpoint.get('catalogueSearch', '/api/operator/catalogue/search')
-      .setUrlParams(CatalogueSearchQuery)
-      .addSuccess(CatalogueSearchResult)
-      .addError(CatalogueUnavailable, { status: 502 }),
+    HttpApiEndpoint.get('catalogSearch', '/api/operator/catalog/search')
+      .setUrlParams(CatalogSearchQuery)
+      .addSuccess(CatalogSearchResult)
+      .addError(CatalogUnavailable, { status: 502 }),
   )
   .add(
-    HttpApiEndpoint.get('catalogueCheck', '/api/operator/catalogue/check').addSuccess(
-      CatalogueCheckResult,
+    HttpApiEndpoint.get('catalogCheck', '/api/operator/catalog/check').addSuccess(
+      CatalogCheckResult,
     ),
   )
   .add(
@@ -338,7 +338,7 @@ export const CronGroup = HttpApiGroup.make('cron').add(
 
 export class PresslineApi extends HttpApi.make('pressline')
   .add(HealthGroup)
-  .add(CatalogueGroup)
+  .add(CatalogGroup)
   .add(DesignsGroup)
   .add(PrintfilesGroup)
   .add(QuotesGroup)

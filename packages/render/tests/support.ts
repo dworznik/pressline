@@ -49,7 +49,7 @@ export const header = (png: Uint8Array) => {
     width: v.getUint32(0),
     height: v.getUint32(4),
     bitDepth: ihdr[8]!,
-    colourType: ihdr[9]!,
+    colorType: ihdr[9]!,
     dpi: Math.round(ppm * 0.0254),
     srgb: chunks(png).some((c) => c.type === 'sRGB'),
     hasTrns: chunks(png).some((c) => c.type === 'tRNS'),

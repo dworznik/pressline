@@ -12,8 +12,8 @@ npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 | Command                                                                     | What it does                                                                                          |
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `doctor`                                                                    | Config, secrets, provider reachability, Engine health, webhook registration; exit 1 with the problems |
-| `catalogue search <text>`                                                   | Printful products by name with variants, Specs and an Offer snippet                                   |
-| `catalogue check`                                                           | Every configured Offer resolves                                                                       |
+| `catalog search <text>`                                                     | Printful products by name with variants, Specs and an Offer snippet                                   |
+| `catalog check`                                                             | Every configured Offer resolves                                                                       |
 | `webhooks register [--public-url]`                                          | Create or verify both webhook endpoints; prints the secrets once                                      |
 | `orders list [--state] [--limit]` · `orders show <id>`                      | The ledger                                                                                            |
 | `orders create … --paid-outside [--send-email]`                             | An order paid outside Stripe (reprint, offline sale)                                                  |

@@ -1,7 +1,7 @@
 import type { DesignResponse } from '@pressline/contract';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { makeTestApp, type TestApp } from './harness';
 
 const design: DesignResponse = {
@@ -33,7 +33,7 @@ describe('GET /api/quote', () => {
   afterEach(() => app?.dispose());
 
   it('locks retail + standard shipping and records the Provider Cost Estimate', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const { status, body } = await q(app, { country: 'DE' });
     expect(status).toBe(200);
     expect(body).toMatchObject({
@@ -62,7 +62,7 @@ describe('GET /api/quote', () => {
 
   it('applies the configured shipping markup to the Customer line only', async () => {
     app = await makeTestApp({
-      config: { catalogue: { offers }, shipping: { markupPercent: 10 } },
+      config: { catalog: { offers }, shipping: { markupPercent: 10 } },
       catalog,
       engines,
     });
@@ -71,21 +71,21 @@ describe('GET /api/quote', () => {
   });
 
   it('picks the cheapest method when the provider has no STANDARD one', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const { body } = await q(app, { country: 'CH' });
     expect(body.shippingMethod.id).toBe('ECONOMY');
     expect(body.shipping).toBe(890);
   });
 
   it('422s with no_shipping for a country the provider cannot ship to', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const { status, body } = await q(app, { country: 'AQ' });
     expect(status).toBe(422);
     expect(body).toMatchObject({ reason: 'no_shipping' });
   });
 
   it('422s with state_required for US/CA/AU without a state, and quotes with one', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const missing = await q(app, { country: 'US' });
     expect(missing.status).toBe(422);
     expect(missing.body).toMatchObject({ reason: 'state_required' });
@@ -95,7 +95,7 @@ describe('GET /api/quote', () => {
   });
 
   it('422s for a variant the design is not eligible for, and for a withdrawn design', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const wrong = await q(app, { country: 'DE', variant: 'black-xxl' });
     expect(wrong.body).toMatchObject({ reason: 'not_eligible' });
     const gone = await q(app, { country: 'DE', designId: withdrawn.id });
@@ -104,7 +104,7 @@ describe('GET /api/quote', () => {
 
   it('503s when the provider quotes in another currency than the instance sells in', async () => {
     app = await makeTestApp({
-      config: { catalogue: { offers }, currency: 'USD' },
+      config: { catalog: { offers }, currency: 'USD' },
       catalog,
       engines,
     });
@@ -114,7 +114,7 @@ describe('GET /api/quote', () => {
   });
 
   it('rejects a malformed country code at the schema boundary', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     expect(
       (await app.fetch('/api/quote?engine=sample&designId=x&offer=a&variant=b&country=Germany'))
         .status,

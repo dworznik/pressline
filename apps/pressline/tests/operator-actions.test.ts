@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ActionResult } from '$lib/server/operator/actions';
 import type { OrderDetail } from '$lib/server/operator/read';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
@@ -23,7 +23,7 @@ const design: DesignResponse = {
 const URL_OK = 'https://engine.test/files/heron/front.png';
 const boot = (orders?: { createRejects?: string; createRetryableFailures?: number }) =>
   makeTestApp({
-    config: { catalogue: { offers }, checkout: { publicUrl: 'https://shop.example' } },
+    config: { catalog: { offers }, checkout: { publicUrl: 'https://shop.example' } },
     catalog: orders ? { ...catalog, orders } : catalog,
     engines: {
       engines: {
@@ -248,23 +248,23 @@ describe('orders cancel', () => {
   let app: TestApp;
   afterEach(() => app?.dispose());
 
-  it('cancels at the provider while it can, records cancelled, and never refunds', async () => {
+  it('cancels at the provider while it can, records canceled, and never refunds', async () => {
     app = await boot();
     const id = await storefrontPaid(app);
     const res = await post<ActionResult>(app, `/api/operator/orders/${id}/cancel`);
     expect(res.status).toBe(200);
-    expect(res.body.detail.order.state).toBe('cancelled');
-    expect(res.body.outcome).toMatch(/^provider order \d+ cancelled; no refund was made/);
-    expect(res.body.detail.transitions.at(-1)).toMatchObject({ to: 'cancelled', cause: 'cli' });
+    expect(res.body.detail.order.state).toBe('canceled');
+    expect(res.body.outcome).toMatch(/^provider order \d+ canceled; no refund was made/);
+    expect(res.body.detail.transitions.at(-1)).toMatchObject({ to: 'canceled', cause: 'cli' });
     expect(app.providerOrders().at(-1)?.status).toBe('canceled');
     const again = await post<ActionResult>(app, `/api/operator/orders/${id}/cancel`);
     expect(again.status).toBe(422);
     expect((again.body as unknown as { message: string }).message).toBe(
-      'cannot cancel an Order in cancelled (needs checkout_open or paid or submit_failed or submitted or on_hold or in_production or shipped)',
+      'cannot cancel an Order in canceled (needs checkout_open or paid or submit_failed or submitted or on_hold or in_production or shipped)',
     );
   });
 
-  it('expires the checkout session when cancelling an open checkout, so a late payment cannot land', async () => {
+  it('expires the checkout session when canceling an open checkout, so a late payment cannot land', async () => {
     app = await boot();
     const { body: q } = await app.json<Quote>(
       '/api/quote?engine=sample&designId=design-portrait-1&offer=tee-black-front&variant=black-m&country=DE',
@@ -289,7 +289,7 @@ describe('orders cancel', () => {
       type: 'checkout.session.completed',
       sessionId: session,
     });
-    expect((await detail(app, body.orderId)).order.state).toBe('cancelled');
+    expect((await detail(app, body.orderId)).order.state).toBe('canceled');
   });
 
   it('tells the Operator when the provider is already producing it', async () => {
@@ -298,9 +298,9 @@ describe('orders cancel', () => {
     app.setProviderOrderStatus((await detail(app, id)).order.providerOrderId!, 'inprocess');
     const res = await post<ActionResult>(app, `/api/operator/orders/${id}/cancel`);
     expect(res.status).toBe(200);
-    expect(res.body.detail.order.state).toBe('cancelled');
+    expect(res.body.detail.order.state).toBe('canceled');
     expect(res.body.outcome).toContain(
-      'could not be cancelled through the API; contact the provider',
+      'could not be canceled through the API; contact the provider',
     );
   });
 });

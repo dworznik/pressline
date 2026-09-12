@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { findOrder } from '$lib/server/orders/orders';
 import type { PublicOrder } from '$lib/server/orders/public';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
@@ -18,7 +18,7 @@ const URL_OK = 'https://engine.test/files/heron/front.png';
 
 const boot = () =>
   makeTestApp({
-    config: { catalogue: { offers } },
+    config: { catalog: { offers } },
     catalog,
     engines: {
       engines: {
@@ -184,7 +184,7 @@ describe('POST /webhooks/printful', () => {
     });
   });
 
-  it('shipped → fulfilled when the provider reports fulfilled; cancelled on order_canceled', async () => {
+  it('shipped → fulfilled when the provider reports fulfilled; canceled on order_canceled', async () => {
     app = await boot();
     const { orderId, token, providerOrderId } = await submittedOrder(app);
     app.setProviderOrderStatus(providerOrderId, 'fulfilled');
@@ -209,7 +209,7 @@ describe('POST /webhooks/printful', () => {
       occurred_at: new Date().toISOString(),
       data: { order: { id: second.providerOrderId, external_id: second.orderId } },
     });
-    expect((await stateOf(app, second.orderId, second.token)).state).toBe('cancelled');
+    expect((await stateOf(app, second.orderId, second.token)).state).toBe('canceled');
   });
 
   it('acknowledges a duplicate delivery and refuses an out-of-order one', async () => {
@@ -223,7 +223,7 @@ describe('POST /webhooks/printful', () => {
     };
     expect((await app.printfulWebhook(ev)).body.outcome).toMatch(/^applied/);
     expect((await app.printfulWebhook(ev)).body.outcome).toMatch(/^duplicate:applied/); // Printful's retry
-    // A stale "in process" arriving after fulfilment (different occurred_at) is refused: fulfilled is terminal.
+    // A stale "in process" arriving after fulfillment (different occurred_at) is refused: fulfilled is terminal.
     app.setProviderOrderStatus(providerOrderId, 'inprocess');
     const stale = await app.printfulWebhook({
       ...ev,

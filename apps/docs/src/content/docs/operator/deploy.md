@@ -14,6 +14,6 @@ Pressline is one SvelteKit deployable per platform; `PRESSLINE_ADAPTER` picks th
 
 Anywhere else: `PRESSLINE_ADAPTER=node pnpm --filter pressline build`, run `build/index.js` with `DATABASE_PATH` pointing at a SQLite file, and schedule `POST /api/operator/reconcile` with the operator token.
 
-The committed config ships with an empty Catalogue and one placeholder Engine (`sample` at `localhost:5174`) that you replace; without secrets the instance still boots, and [`pressline doctor`](/reference/cli/) tells you what is missing. Continue with [Configure](/operator/configure/).
+The committed config ships with an empty Catalog and one placeholder Engine (`sample` at `localhost:5174`) that you replace; without secrets the instance still boots, and [`pressline doctor`](/reference/cli/) tells you what is missing. Continue with [Configure](/operator/configure/).
 
 The sample Engine deploys the same way from `apps/sample-engine` (R2 or Vercel Blob for its files).

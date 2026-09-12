@@ -4,7 +4,7 @@ import { assertDemoSafe } from '$lib/server/config/demo';
 import type { DesignPage } from '$lib/server/http/api';
 import type { OrderDetail } from '$lib/server/operator/read';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
@@ -13,7 +13,7 @@ type Page = typeof DesignPage.Type;
 
 /**
  * Demo Mode (ticket #18) at seam 1: the whole flow runs, the provider draft
- * is cancelled where it would be confirmed, and the Operator View is public
+ * is canceled where it would be confirmed, and the Operator View is public
  * for reads only.
  */
 const design: DesignResponse = {
@@ -26,7 +26,7 @@ const design: DesignResponse = {
 const URL_OK = 'https://engine.test/files/heron/front.png';
 const boot = (demo: boolean) =>
   makeTestApp({
-    config: { catalogue: { offers }, demo },
+    config: { catalog: { offers }, demo },
     catalog,
     engines: {
       engines: {
@@ -102,20 +102,20 @@ describe('Demo Mode', () => {
     expect(live.body.storefront.demo).toBeUndefined();
   });
 
-  it('runs the whole flow: the draft is cancelled where it would be confirmed, and the ledger says so', async () => {
+  it('runs the whole flow: the draft is canceled where it would be confirmed, and the ledger says so', async () => {
     app = await boot(true);
     const id = await placeAndPay(app);
     const { body: d } = await app.json<Detail>(`/api/operator/orders/${id}`, { headers: bearer });
-    expect(d.order.state).toBe('cancelled');
+    expect(d.order.state).toBe('canceled');
     expect(d.transitions.map((t) => t.to)).toEqual([
       'checkout_open',
       'paid',
       'submitted',
-      'cancelled',
+      'canceled',
     ]);
     expect(d.transitions.at(-1)).toMatchObject({
       cause: 'stripe_webhook',
-      note: 'Demo Mode: provider draft cancelled instead of confirmed; nothing is produced',
+      note: 'Demo Mode: provider draft canceled instead of confirmed; nothing is produced',
     });
     expect(d.order.providerOrderId).toBeDefined();
     expect(app.providerOrders().at(-1)).toMatchObject({ externalId: id, status: 'canceled' });

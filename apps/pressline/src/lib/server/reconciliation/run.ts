@@ -3,11 +3,11 @@ import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { Engines } from '../design/engines';
 import { listUnsentEmails, sendOrderEmail } from '../emails/send';
-import { catalogueCheck } from '../operator/tools';
+import { catalogCheck } from '../operator/tools';
 import { listOrders, transition, type Order } from '../orders/orders';
 import { submitOrder } from '../orders/submit';
 import type { DesignSource } from '../services/design-source';
-import { FulfilmentProvider } from '../services/fulfilment-provider';
+import { FulfillmentProvider } from '../services/fulfillment-provider';
 import { Mailer } from '../services/mailer';
 import { Psp } from '../services/psp';
 import {
@@ -22,10 +22,10 @@ import { applyPaid, applyStripeEvent } from '../webhooks/stripe';
 
 /**
  * Reconciliation (CONTEXT.md, ADR-0009): compare every open Order against
- * the PSP and the fulfilment provider, repair what the webhooks missed
+ * the PSP and the fulfillment provider, repair what the webhooks missed
  * (every repair is a Transition with Cause `reconciliation`), record refunds
  * the Operator issued elsewhere, retry failed emails, re-check Engines,
- * refresh the Catalogue cache, and raise Alarms for what needs a human.
+ * refresh the Catalog cache, and raise Alarms for what needs a human.
  * A dry run counts and notes what it would repair, and repairs nothing.
  */
 export const Alarm = Schema.Struct({
@@ -36,7 +36,7 @@ export const Alarm = Schema.Struct({
     'refund',
     'dispute',
     'engine_disabled',
-    'catalogue',
+    'catalog',
     'email',
     'provider_status',
   ),
@@ -169,7 +169,7 @@ const stuckPaid = (run: Run) =>
 const providerCatchUp = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const open = [
       ...(yield* listOrders({ state: 'submitted', limit: PAGE })),
       ...(yield* listOrders({ state: 'in_production', limit: PAGE })),
@@ -252,7 +252,7 @@ const refundsAndDisputes = (run: Run) =>
       'in_production',
       'shipped',
       'fulfilled',
-      'cancelled',
+      'canceled',
     ] as const;
     const candidates: Order[] = [];
     for (const state of states) {
@@ -289,7 +289,7 @@ const refundsAndDisputes = (run: Run) =>
         run.alarms.push({
           kind: 'refund',
           orderId: order.id,
-          message: `refund of ${amount} recorded${order.state === 'paid' || order.state === 'cancelled' ? '' : ` while ${order.state}: cancel it at the provider if it has not shipped`}`,
+          message: `refund of ${amount} recorded${order.state === 'paid' || order.state === 'canceled' ? '' : ` while ${order.state}: cancel it at the provider if it has not shipped`}`,
         });
       } else {
         r.notes.push(`${order.id}: refund seen but not recorded (${moved.left._tag})`);
@@ -303,7 +303,7 @@ const reprocessInbound = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
     const psp = yield* Psp;
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     for (const e of yield* listUnprocessed()) {
       r.checked++;
       if (run.dryRun) {
@@ -315,7 +315,7 @@ const reprocessInbound = (run: Run) =>
       const replay: Effect.Effect<
         { readonly outcome: InboundOutcome; readonly note?: string },
         { readonly _tag: string },
-        Db | Config | DesignSource | Mailer | FulfilmentProvider | Psp
+        Db | Config | DesignSource | Mailer | FulfillmentProvider | Psp
       > =
         e.provider === 'stripe'
           ? psp.parseWebhook(e.payload).pipe(Effect.flatMap(applyStripeEvent))
@@ -380,16 +380,16 @@ const engineHealth = (run: Run) =>
     return r;
   });
 
-/** 8. Catalogue: resolve every Offer on its own (refreshing the cache); each one that fails is an Alarm. */
-const catalogueRefresh = (run: Run) =>
+/** 8. Catalog: resolve every Offer on its own (refreshing the cache); each one that fails is an Alarm. */
+const catalogRefresh = (run: Run) =>
   Effect.gen(function* () {
     const r = step();
-    const { offers } = yield* catalogueCheck;
+    const { offers } = yield* catalogCheck;
     for (const o of offers) {
       r.checked++;
       if (o.ok) continue;
       run.alarms.push({
-        kind: 'catalogue',
+        kind: 'catalog',
         message: `Offer "${o.slug}": ${o.message ?? 'does not resolve'}`,
       });
     }
@@ -464,7 +464,7 @@ export const runReconciliation = (trigger: Trigger, options: { dryRun?: boolean 
     steps.inboundEvents = yield* reprocessInbound(run);
     steps.emails = yield* retryEmails(run);
     steps.engines = yield* engineHealth(run);
-    steps.catalogue = yield* catalogueRefresh(run);
+    steps.catalog = yield* catalogRefresh(run);
     const finishedAt = yield* Clock.currentTimeMillis;
     const report: ReconciliationReport = {
       startedAt,

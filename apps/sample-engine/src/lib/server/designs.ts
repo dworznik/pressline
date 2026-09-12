@@ -1,6 +1,6 @@
 import {
   specHash,
-  type CatalogueResponse,
+  type CatalogResponse,
   type PrintfileReady,
   type PrintfileSpec,
 } from '@pressline/contract';
@@ -40,15 +40,15 @@ export interface Design {
   readonly previewUrl: string;
   readonly createdAt: number;
   readonly printfiles: Readonly<Record<string, StoredPrintfile>>;
-  /** Offer slugs this Design can be printed on, once the catalogue was seen; absent = all (CONTEXT.md → Eligibility). */
+  /** Offer slugs this Design can be printed on, once the catalog was seen; absent = all (CONTEXT.md → Eligibility). */
   readonly offers?: ReadonlyArray<string>;
 }
 
 export interface Engine {
   readonly store: FileStore;
   readonly backend: Backend;
-  /** Pressline's public catalogue; undefined when the Engine runs on its own. */
-  readonly catalogue: () => Promise<CatalogueResponse | undefined>;
+  /** Pressline's public catalog; undefined when the Engine runs on its own. */
+  readonly catalog: () => Promise<CatalogResponse | undefined>;
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -188,14 +188,14 @@ export const finalize = async (
   await saveDesign(engine.store, design);
 
   // Pre-render for every Offer and variant Pressline sells, so checkout never waits (SPEC story 2).
-  const catalogue = await engine.catalogue().catch(() => undefined);
-  if (catalogue) {
+  const catalog = await engine.catalog().catch(() => undefined);
+  if (catalog) {
     // Eligibility is written after every Offer, so a failure half-way leaves a
     // truthful list rather than "eligible for everything".
     const eligible: string[] = [];
     design = { ...design, offers: [] };
     await updateDesign(engine.store, design);
-    for (const offer of catalogue.offers) {
+    for (const offer of catalog.offers) {
       let ok = true;
       for (const variant of offer.variants) {
         const result = await ensurePrintfile(engine, design, variant.spec).catch((e: unknown) => ({

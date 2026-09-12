@@ -1,12 +1,12 @@
 import { inspectPrintfile, PrintfileInspection, PrintfileSpec } from '@pressline/contract';
 import { Effect, Schema } from 'effect';
-import { deriveSpec, resolveCatalogue } from '../catalogue/catalogue';
+import { deriveSpec, resolveCatalog } from '../catalog/catalog';
 import { Config, type OfferConfig } from '../config/schema';
-import { FulfilmentProvider } from '../services/fulfilment-provider';
+import { FulfillmentProvider } from '../services/fulfillment-provider';
 import { Psp } from '../services/psp';
 
 /**
- * Operator tools behind the CLI (ticket #16): catalogue search and check,
+ * Operator tools behind the CLI (ticket #16): catalog search and check,
  * webhook registration, Printfile check. Reads and idempotent set-ups only;
  * configuration itself stays in the config file (ADR-0014).
  */
@@ -14,9 +14,9 @@ export class ToolError extends Schema.TaggedError<ToolError>()('ToolError', {
   message: Schema.String,
 }) {}
 
-export const CatalogueSearchQuery = Schema.Struct({ q: Schema.String });
+export const CatalogSearchQuery = Schema.Struct({ q: Schema.String });
 
-export const CatalogueSearchResult = Schema.Struct({
+export const CatalogSearchResult = Schema.Struct({
   products: Schema.Array(
     Schema.Struct({
       id: Schema.Int,
@@ -40,14 +40,14 @@ export const CatalogueSearchResult = Schema.Struct({
     }),
   ),
 });
-export type CatalogueSearchResult = typeof CatalogueSearchResult.Type;
+export type CatalogSearchResult = typeof CatalogSearchResult.Type;
 
 export const SEARCH_LIMIT = 10;
 
 /** Products whose name contains every word of the query, with variants and the Specs per print method. */
-export const catalogueSearch = (q: string) =>
+export const catalogSearch = (q: string) =>
   Effect.gen(function* () {
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     const all = yield* provider.listCatalogProducts();
     const hits = all
@@ -85,7 +85,7 @@ export const catalogueSearch = (q: string) =>
         };
       }),
     );
-    return { products } satisfies CatalogueSearchResult;
+    return { products } satisfies CatalogSearchResult;
   });
 
 const OfferCheck = Schema.Struct({
@@ -96,15 +96,15 @@ const OfferCheck = Schema.Struct({
 });
 type OfferCheck = typeof OfferCheck.Type;
 
-export const CatalogueCheckResult = Schema.Struct({ offers: Schema.Array(OfferCheck) });
-export type CatalogueCheckResult = typeof CatalogueCheckResult.Type;
+export const CatalogCheckResult = Schema.Struct({ offers: Schema.Array(OfferCheck) });
+export type CatalogCheckResult = typeof CatalogCheckResult.Type;
 
 /** Resolve every configured Offer on its own so one bad Offer does not hide the others. */
-export const catalogueCheck = Effect.gen(function* () {
+export const catalogCheck = Effect.gen(function* () {
   const config = yield* Config;
-  const offers = yield* Effect.forEach(config.catalogue.offers, (offer: OfferConfig) =>
-    resolveCatalogue.pipe(
-      Effect.provideService(Config, { ...config, catalogue: { offers: [offer] } }),
+  const offers = yield* Effect.forEach(config.catalog.offers, (offer: OfferConfig) =>
+    resolveCatalog.pipe(
+      Effect.provideService(Config, { ...config, catalog: { offers: [offer] } }),
       Effect.map((c): OfferCheck => ({
         slug: offer.slug,
         ok: true,
@@ -120,7 +120,7 @@ export const catalogueCheck = Effect.gen(function* () {
       ),
     ),
   );
-  return { offers } satisfies CatalogueCheckResult;
+  return { offers } satisfies CatalogCheckResult;
 });
 
 export const WebhookRegisterRequest = Schema.Struct({
@@ -159,7 +159,7 @@ export const webhooksRegister = (publicUrl: string | undefined) =>
       return yield* new ToolError({ message: `webhooks need an https URL, got ${origin}` });
     }
     const psp = yield* Psp;
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const failed = (url: string) => (e: { readonly message: string }) =>
       Effect.succeed({ status: 'failed' as const, url, message: e.message });
     const stripeUrl = `${origin}/webhooks/stripe`;
@@ -189,10 +189,10 @@ export type PrintfileCheckResult = typeof PrintfileCheckResult.Type;
 /** Check any URL against the Spec of an Offer variant, the way Pressline checks an Engine's Printfile. */
 export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
   Effect.gen(function* () {
-    const catalogue = yield* resolveCatalogue.pipe(
+    const catalog = yield* resolveCatalog.pipe(
       Effect.mapError((e) => new ToolError({ message: e.message })),
     );
-    const offer = catalogue.offers.find((o) => o.slug === req.offer);
+    const offer = catalog.offers.find((o) => o.slug === req.offer);
     const variant = offer?.variants.find((v) => v.key === req.variant);
     if (!offer || !variant) {
       return yield* new ToolError({

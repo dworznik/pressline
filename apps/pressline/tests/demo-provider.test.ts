@@ -1,21 +1,21 @@
 import { Effect, Layer } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { demoFulfilmentProvider } from '$lib/server/services/demo';
+import { demoFulfillmentProvider } from '$lib/server/services/demo';
 import {
-  FulfilmentProvider,
-  FulfilmentProviderError,
-  type FulfilmentProviderService,
-} from '$lib/server/services/fulfilment-provider';
-import { layerFulfilmentProviderMemory } from '$lib/server/services/memory';
+  FulfillmentProvider,
+  FulfillmentProviderError,
+  type FulfillmentProviderService,
+} from '$lib/server/services/fulfillment-provider';
+import { layerFulfillmentProviderMemory } from '$lib/server/services/memory';
 
 /**
- * Printful deletes a cancelled draft, so it cannot be fetched afterwards. The
+ * Printful deletes a canceled draft, so it cannot be fetched afterwards. The
  * in-memory provider keeps it; this wrapper makes it disappear the way
  * Printful's does.
  */
 const layerDeletingOnCancel = Layer.effect(
-  FulfilmentProvider,
-  Effect.map(FulfilmentProvider, (p): FulfilmentProviderService => {
+  FulfillmentProvider,
+  Effect.map(FulfillmentProvider, (p): FulfillmentProviderService => {
     const deleted = new Set<string>();
     return {
       ...p,
@@ -24,7 +24,7 @@ const layerDeletingOnCancel = Layer.effect(
       getOrder: (id) =>
         deleted.has(id)
           ? Effect.fail(
-              new FulfilmentProviderError({
+              new FulfillmentProviderError({
                 message: 'Printful 404: Not Found',
                 retryable: false,
                 status: 404,
@@ -33,13 +33,13 @@ const layerDeletingOnCancel = Layer.effect(
           : p.getOrder(id),
     };
   }),
-).pipe(Layer.provide(layerFulfilmentProviderMemory));
+).pipe(Layer.provide(layerFulfillmentProviderMemory));
 
 describe('Demo Mode provider', () => {
   it('confirming a draft cancels it and still answers with the order, although the provider has deleted it', async () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const p = yield* FulfilmentProvider;
+        const p = yield* FulfillmentProvider;
         const draft = yield* p.createOrderDraft({
           externalId: '01a09567-00cb-7424-aaa8-547f582bc7b6',
           shippingMethod: 'STANDARD',
@@ -62,7 +62,7 @@ describe('Demo Mode provider', () => {
         const confirmed = yield* p.confirmOrder(draft.id);
         const afterwards = yield* p.getOrder(draft.id).pipe(Effect.either);
         return { draft, confirmed, afterwards };
-      }).pipe(Effect.provide(demoFulfilmentProvider(layerDeletingOnCancel))),
+      }).pipe(Effect.provide(demoFulfillmentProvider(layerDeletingOnCancel))),
     );
     expect(result.confirmed).toMatchObject({ id: result.draft.id, status: 'canceled' });
     expect(result.afterwards._tag).toBe('Left');

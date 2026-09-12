@@ -10,8 +10,8 @@ import { makeWebHandler, type WebHandler } from './http/handler';
 import { layerDesignSourceHttp } from './services/design-source-http';
 import { layerMailerConsole, layerMailerNone } from './services/mailer';
 import { layerResend } from './services/resend';
-import { demoFulfilmentProvider } from './services/demo';
-import { layerFulfilmentProviderMemory, layerPspMemory } from './services/memory';
+import { demoFulfillmentProvider } from './services/demo';
+import { layerFulfillmentProviderMemory, layerPspMemory } from './services/memory';
 import { layerPrintful } from './services/printful';
 import { layerStripe } from './services/stripe';
 import { e2eConfig } from './e2e/config';
@@ -96,10 +96,10 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
           ? { webhookPublicKey: env.PRINTFUL_WEBHOOK_PUBLIC_KEY }
           : {}),
       })
-    : layerFulfilmentProviderMemory;
+    : layerFulfillmentProviderMemory;
   // Demo Mode: drafts are real, confirmation is a cancellation (ticket #18).
-  const FulfilmentProviderLive = rawConfig.demo
-    ? demoFulfilmentProvider(RealProvider)
+  const FulfillmentProviderLive = rawConfig.demo
+    ? demoFulfillmentProvider(RealProvider)
     : RealProvider;
   const PspLive = env.STRIPE_SECRET_KEY
     ? layerStripe({
@@ -168,7 +168,7 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
     InstanceFactsLive,
     DbLive,
     layerDesignSourceHttp(engines),
-    FulfilmentProviderLive,
+    FulfillmentProviderLive,
     PspLive,
     MailerLive,
   ).pipe(

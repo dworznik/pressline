@@ -96,7 +96,7 @@ const contextFor = (orderId: string) =>
   Effect.gen(function* () {
     const order = yield* findOrder(orderId);
     const config = yield* Config;
-    const offer = config.catalogue.offers.find((o) => o.slug === order.offer);
+    const offer = config.catalog.offers.find((o) => o.slug === order.offer);
     const variant = offer?.variants[order.variant];
     // The Preview was captured at checkout; ask the Engine only for Orders from before that column existed.
     const previewUrl =

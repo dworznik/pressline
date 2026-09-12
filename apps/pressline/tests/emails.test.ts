@@ -2,7 +2,7 @@ import type { DesignResponse } from '@pressline/contract';
 import { afterEach, describe, expect, it } from 'vitest';
 import { listOrderEmails } from '$lib/server/emails/send';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, type TestApp } from './harness';
 
@@ -17,7 +17,7 @@ const URL_OK = 'https://engine.test/files/heron/front.png';
 
 const boot = () =>
   makeTestApp({
-    config: { catalogue: { offers }, legal: { contactEmail: 'help@shop.test' } },
+    config: { catalog: { offers }, legal: { contactEmail: 'help@shop.test' } },
     catalog,
     engines: {
       engines: {

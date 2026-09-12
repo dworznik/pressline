@@ -3,12 +3,12 @@ import { Layer } from 'effect';
 import type { Config } from '../config/schema';
 import type { Db } from '../db/db';
 import type { DesignSource } from '../services/design-source';
-import type { FulfilmentProvider } from '../services/fulfilment-provider';
+import type { FulfillmentProvider } from '../services/fulfillment-provider';
 import type { Mailer } from '../services/mailer';
 import type { Psp } from '../services/psp';
 import { PresslineApi } from './api';
 import { EnginesLive } from '../design/engines';
-import { CatalogueLive } from './catalogue';
+import { CatalogLive } from './catalog';
 import { DesignsLive } from './designs';
 import { HealthLive } from './health';
 import { PrintfilesLive } from './printfiles';
@@ -24,7 +24,7 @@ export type Services =
   | Config
   | Db
   | DesignSource
-  | FulfilmentProvider
+  | FulfillmentProvider
   | Psp
   | Mailer
   | HttpClient.HttpClient
@@ -40,7 +40,7 @@ export const makeWebHandler = <E>(services: Layer.Layer<Services, E>) => {
   const api = HttpApiBuilder.api(PresslineApi).pipe(
     Layer.provide([
       HealthLive,
-      CatalogueLive,
+      CatalogLive,
       DesignsLive,
       PrintfilesLive,
       QuotesLive,

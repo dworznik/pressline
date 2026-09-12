@@ -16,7 +16,7 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 
 ## Project
 
-Pressline: a self-hostable bridge from an image-generating app (an Engine) to print-on-demand products. Printful fulfils, Stripe Checkout pays, one Operator per instance. Read `CONTEXT.md` before naming anything and `docs/adr/` before working around a constraint. The spec is `docs/SPEC.md`; tickets are GitHub sub-issues of #1.
+Pressline: a self-hostable bridge from an image-generating app (an Engine) to print-on-demand products. Printful fulfills, Stripe Checkout pays, one Operator per instance. Read `CONTEXT.md` before naming anything and `docs/adr/` before working around a constraint. The spec is `docs/SPEC.md`; tickets are GitHub sub-issues of #1.
 
 ### Load-bearing constraints (each has an ADR)
 

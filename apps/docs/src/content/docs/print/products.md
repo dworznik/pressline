@@ -3,7 +3,7 @@ title: Print areas and product limits
 description: Where the numbers come from, and what fits in a Worker.
 ---
 
-Pressline asks Printful for each product's placements (print area, DPI, technique) and each variant's placement dimensions, derives one Printfile Spec per Offer variant, and caches it for a day. `pressline catalogue search <text>` shows the Specs a product implies before you configure it.
+Pressline asks Printful for each product's placements (print area, DPI, technique) and each variant's placement dimensions, derives one Printfile Spec per Offer variant, and caches it for a day. `pressline catalog search <text>` shows the Specs a product implies before you configure it.
 
 **Limits** (Printful v2 open beta as of this writing): one placement per Offer in v1; technique per Offer; some variants have smaller print areas than the product's default (Pressline uses the variant's); embroidery placements need thread-count-friendly art and are best left out of an automated Engine.
 

@@ -2,24 +2,24 @@ import {
   PrintfileSpec,
   PROTOCOL_VERSION,
   specHash,
-  type CatalogueOffer,
-  type CatalogueResponse,
-  type CatalogueVariant,
+  type CatalogOffer,
+  type CatalogResponse,
+  type OfferVariant,
 } from '@pressline/contract';
 import { Clock, Effect, Schema } from 'effect';
 import { Config, type OfferConfig, type OfferVariantConfig } from '../config/schema';
 import { Db } from '../db/db';
 import {
-  FulfilmentProvider,
+  FulfillmentProvider,
   samePrintMethod,
   type CatalogVariant,
-  type FulfilmentProviderError,
+  type FulfillmentProviderError,
   type PlacementPrintArea,
-} from '../services/fulfilment-provider';
+} from '../services/fulfillment-provider';
 
 /**
- * The Catalogue (CONTEXT.md, ADR-0006, ADR-0010): Operator-configured Offers
- * resolved against the fulfilment provider into Printfile Specs. What the
+ * The Catalog (CONTEXT.md, ADR-0006, ADR-0010): Operator-configured Offers
+ * resolved against the fulfillment provider into Printfile Specs. What the
  * provider said about a variant is cached with a TTL; what the Operator
  * configured is applied on every read, so a config change is live on
  * redeploy and never waits for the cache.
@@ -27,7 +27,7 @@ import {
 export const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** The Operator's config disagrees with the provider's catalog. */
-export class CatalogueError extends Schema.TaggedError<CatalogueError>()('CatalogueError', {
+export class CatalogError extends Schema.TaggedError<CatalogError>()('CatalogError', {
   offer: Schema.String,
   message: Schema.String,
 }) {}
@@ -47,7 +47,7 @@ export const deriveSpec = (
   offer: Pick<OfferConfig, 'slug' | 'placement' | 'technique'>,
   variant: CatalogVariant,
   area: PlacementPrintArea,
-): Effect.Effect<PrintfileSpec, CatalogueError> => {
+): Effect.Effect<PrintfileSpec, CatalogError> => {
   const dims = variant.placementDimensions.find((d) => d.placement === offer.placement);
   const widthIn = dims?.widthIn ?? area.printAreaWidthIn;
   const heightIn = dims?.heightIn ?? area.printAreaHeightIn;
@@ -55,7 +55,7 @@ export const deriveSpec = (
   const height = Math.round(heightIn * area.dpi);
   const positiveInt = (n: number) => Number.isSafeInteger(n) && n > 0;
   if (!positiveInt(width) || !positiveInt(height) || !positiveInt(area.dpi)) {
-    return new CatalogueError({
+    return new CatalogError({
       offer: offer.slug,
       message: `provider returned invalid print dimensions (${widthIn}in × ${heightIn}in at ${area.dpi} dpi) for placement "${offer.placement}" on variant ${variant.id}`,
     });
@@ -73,7 +73,7 @@ export const deriveSpec = (
   });
 };
 
-/** What the provider told us about one variant, as persisted in `catalogue_cache`. */
+/** What the provider told us about one variant, as persisted in `catalog_cache`. */
 const CachedVariant = Schema.Struct({
   spec: PrintfileSpec,
   specHash: Schema.String,
@@ -94,7 +94,7 @@ const readCache = (key: string) =>
     const db = yield* Db;
     const now = yield* Clock.currentTimeMillis;
     const rows = yield* db.all<{ value: string }>(
-      'SELECT value FROM catalogue_cache WHERE key = ? AND expires_at > ?',
+      'SELECT value FROM catalog_cache WHERE key = ? AND expires_at > ?',
       [key, now],
     );
     return rows[0] ? yield* Schema.decode(CachedVariantJson)(rows[0].value) : undefined;
@@ -106,7 +106,7 @@ const writeCache = (key: string, value: CachedVariant) =>
     const now = yield* Clock.currentTimeMillis;
     const json = yield* Schema.encode(CachedVariantJson)(value);
     yield* db.run(
-      'INSERT OR REPLACE INTO catalogue_cache (key, value, expires_at) VALUES (?, ?, ?)',
+      'INSERT OR REPLACE INTO catalog_cache (key, value, expires_at) VALUES (?, ?, ?)',
       [key, json, now + CACHE_TTL_MS],
     );
   }).pipe(Effect.orDie);
@@ -116,7 +116,7 @@ const presentVariant = (
   key: string,
   configured: OfferVariantConfig,
   cached: CachedVariant,
-): CatalogueVariant => {
+): OfferVariant => {
   const color = configured.color ?? cached.color;
   const size = configured.size ?? cached.size;
   const imageUrl = configured.imageUrl ?? cached.imageUrl;
@@ -134,10 +134,10 @@ const presentVariant = (
 /** Product-level facts needed for every cache miss of one Offer; fetched at most once per resolution. */
 const printAreaFor = (offer: OfferConfig) =>
   Effect.gen(function* () {
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const product = yield* provider.getCatalogProduct(offer.catalogProductId);
     if (!product.printMethods.some((m) => samePrintMethod(m, offer))) {
-      return yield* new CatalogueError({
+      return yield* new CatalogError({
         offer: offer.slug,
         message: `product ${product.id} (${product.name}) has no placement "${offer.placement}" with technique "${offer.technique}"`,
       });
@@ -145,7 +145,7 @@ const printAreaFor = (offer: OfferConfig) =>
     const areas = yield* provider.getPlacementPrintAreas(offer.catalogProductId);
     const area = areas.find((a) => samePrintMethod(a, offer));
     if (!area) {
-      return yield* new CatalogueError({
+      return yield* new CatalogError({
         offer: offer.slug,
         message: `provider has no print area for placement "${offer.placement}" / "${offer.technique}" on product ${offer.catalogProductId}`,
       });
@@ -159,16 +159,16 @@ const resolveVariant = (
   configured: OfferVariantConfig,
   printArea: Effect.Effect<
     PlacementPrintArea,
-    CatalogueError | FulfilmentProviderError,
-    FulfilmentProvider
+    CatalogError | FulfillmentProviderError,
+    FulfillmentProvider
   >,
 ) =>
   Effect.gen(function* () {
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const area = yield* printArea;
     const variant = yield* provider.getCatalogVariant(configured.catalogVariantId);
     if (variant.catalogProductId !== offer.catalogProductId) {
-      return yield* new CatalogueError({
+      return yield* new CatalogError({
         offer: offer.slug,
         message: `variant "${key}" (${configured.catalogVariantId}) belongs to product ${variant.catalogProductId}, not ${offer.catalogProductId}`,
       });
@@ -189,7 +189,7 @@ const resolveVariant = (
 const resolveOffer = (offer: OfferConfig, currency: string) =>
   Effect.gen(function* () {
     const printArea = yield* Effect.cached(printAreaFor(offer));
-    const variants: CatalogueVariant[] = [];
+    const variants: OfferVariant[] = [];
     for (const [key, configured] of Object.entries(offer.variants)) {
       const cacheId = cacheKey(offer, configured.catalogVariantId);
       let cached = yield* readCache(cacheId);
@@ -199,7 +199,7 @@ const resolveOffer = (offer: OfferConfig, currency: string) =>
       }
       variants.push(presentVariant(key, configured, cached));
     }
-    const resolved: CatalogueOffer = {
+    const resolved: CatalogOffer = {
       slug: offer.slug,
       name: offer.name,
       placement: offer.placement,
@@ -211,14 +211,14 @@ const resolveOffer = (offer: OfferConfig, currency: string) =>
     return resolved;
   });
 
-/** The whole public Catalogue. */
-export const resolveCatalogue: Effect.Effect<
-  CatalogueResponse,
-  CatalogueError | FulfilmentProviderError,
-  Config | Db | FulfilmentProvider
+/** The whole public Catalog. */
+export const resolveCatalog: Effect.Effect<
+  CatalogResponse,
+  CatalogError | FulfillmentProviderError,
+  Config | Db | FulfillmentProvider
 > = Effect.gen(function* () {
   const config = yield* Config;
-  const offers = yield* Effect.forEach(config.catalogue.offers, (o) =>
+  const offers = yield* Effect.forEach(config.catalog.offers, (o) =>
     resolveOffer(o, config.currency),
   );
   return { protocolVersion: PROTOCOL_VERSION, currency: config.currency, offers };

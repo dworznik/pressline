@@ -16,7 +16,7 @@ export const copy = {
     tabTitle: (title: string) => `${title} · Order a print`,
     demoBanner: (testCard: string) =>
       `Demo shop: nothing is charged and nothing is printed. At checkout, pay with the test card ${testCard}, any future expiry and any CVC.`,
-    cancelled: 'Payment was cancelled. Your design is still here when you are ready.',
+    canceled: 'Payment was canceled. Your design is still here when you are ready.',
     notSellable: 'This design is no longer available to order.',
     noOffers: "No products currently fit this design's shape.",
     exclShipping: 'excl. shipping and tax',
@@ -56,8 +56,8 @@ export const copy = {
       title: 'This checkout has expired',
       text: 'No payment was taken. Please start again from your design.',
     },
-    cancelled: {
-      title: 'This order was cancelled',
+    canceled: {
+      title: 'This order was canceled',
       text: 'If you were charged, the refund will arrive on the same payment method.',
     },
     reference: 'Order reference:',

@@ -6,7 +6,7 @@ A small template designer that speaks the Pressline DesignSource protocol. Copy 
 ENGINE_SECRET=dev-secret PRESSLINE_URL=http://localhost:5173 pnpm dev   # http://localhost:5174
 ```
 
-- `/` — pick text, colours and a shape; **Finalise** stores the Design (unguessable ID), renders a Preview, fetches Pressline's catalogue (`GET /api/offers`) and pre-renders a Printfile per Offer and variant with `@pressline/render`. Offers whose Spec does not fit (aspect, render budget) are left out of the Design's `offers`.
+- `/` — pick text, colors and a shape; **Finalize** stores the Design (unguessable ID), renders a Preview, fetches Pressline's catalog (`GET /api/offers`) and pre-renders a Printfile per Offer and variant with `@pressline/render`. Offers whose Spec does not fit (aspect, render budget) are left out of the Design's `offers`.
 - `/d/<id>` — the finished design with **Order a print**, which lands on `PRESSLINE_URL/order/<ENGINE_SLUG>/<id>`.
 - `GET /designs/<id>`, `POST /designs/<id>/printfile`, `GET /health` — the protocol, bearer-protected by `ENGINE_SECRET`.
 - `FileStore`: filesystem (`./data`, served at `/files/*`), R2 (`FILES=r2`) or Vercel Blob (`FILES=blob`). URLs are public and immutable.

@@ -32,7 +32,7 @@ export const api = <A, I>(
       .execute(request)
       .pipe(Effect.mapError((e) => new CliError({ message: `${path}: ${e.message}` })));
     if (response.status === 401) {
-      return yield* new CliError({ message: 'unauthorised: check --token / PRESSLINE_TOKEN' });
+      return yield* new CliError({ message: 'unauthorized: check --token / PRESSLINE_TOKEN' });
     }
     if (response.status >= 400) {
       const detail = yield* HttpClientResponse.schemaBodyJson(ApiError)(response).pipe(

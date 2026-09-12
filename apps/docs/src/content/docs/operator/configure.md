@@ -1,6 +1,6 @@
 ---
 title: Configure
-description: The Catalogue, your Engines and your look live in one typed file.
+description: The Catalog, your Engines and your look live in one typed file.
 ---
 
 Everything that is not a secret is in `apps/pressline/pressline.config.ts`, validated at boot. Edit, commit, redeploy; the Operator View never edits configuration.
@@ -10,7 +10,7 @@ export default defineConfig({
   name: 'My Shop',
   currency: 'EUR',
   engines: [{ slug: 'sample', baseUrl: 'https://engine.example' }],
-  catalogue: {
+  catalog: {
     offers: [
       {
         slug: 'tee-black-front',
@@ -32,7 +32,7 @@ export default defineConfig({
 });
 ```
 
-- **Offers** point at Printful catalog variants; `pressline catalogue search "staple"` prints a ready-made snippet with the variant IDs and the Printfile Spec each placement implies. `pressline catalogue check` verifies every Offer resolves.
+- **Offers** point at Printful catalog variants; `pressline catalog search "staple"` prints a ready-made snippet with the variant IDs and the Printfile Spec each placement implies. `pressline catalog check` verifies every Offer resolves.
 - **Engines** are trusted apps you configure with a slug and base URL; each has its own shared secret `ENGINE_SECRET_<SLUG>` in the platform env.
 - **Retail prices** are fixed per Offer; shipping is quoted live from Printful (optionally marked up with `shipping.markupPercent`); tax is Stripe's.
 - The full schema is in the [configuration reference](/reference/config/).

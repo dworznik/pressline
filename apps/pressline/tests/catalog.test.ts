@@ -1,17 +1,17 @@
-import { specHash, type CatalogueResponse } from '@pressline/contract';
+import { specHash, type CatalogResponse } from '@pressline/contract';
 import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import { makeTestApp, type TestApp } from './harness';
 
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 
-describe('GET /api/offers (public Catalogue)', () => {
+describe('GET /api/offers (public Catalog)', () => {
   let app: TestApp;
   afterEach(() => app?.dispose());
 
   it('returns Offers with Printfile Specs derived from the provider (inches × DPI)', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog });
-    const { status, body } = await app.json<CatalogueResponse>('/api/offers');
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog });
+    const { status, body } = await app.json<CatalogResponse>('/api/offers');
     expect(status).toBe(200);
     expect(body.protocolVersion).toBe('1');
     expect(body.currency).toBe('EUR');
@@ -51,39 +51,39 @@ describe('GET /api/offers (public Catalogue)', () => {
   });
 
   it('serves a cache hit without calling the provider', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog });
     await app.json('/api/offers');
-    const after1 = await app.fulfilmentProviderCalls();
+    const after1 = await app.fulfillmentProviderCalls();
     expect(after1).toBeGreaterThan(0);
     const { status } = await app.json('/api/offers');
     expect(status).toBe(200);
-    expect(await app.fulfilmentProviderCalls()).toBe(after1);
+    expect(await app.fulfillmentProviderCalls()).toBe(after1);
   });
 
   it('re-resolves from the provider once the cache TTL has expired', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog });
     await app.json('/api/offers');
-    const warm = await app.fulfilmentProviderCalls();
+    const warm = await app.fulfillmentProviderCalls();
     app.advanceClock('23 hours');
     await app.json('/api/offers');
-    expect(await app.fulfilmentProviderCalls()).toBe(warm);
+    expect(await app.fulfillmentProviderCalls()).toBe(warm);
     app.advanceClock('2 hours');
     const { status } = await app.json('/api/offers');
     expect(status).toBe(200);
-    expect(await app.fulfilmentProviderCalls()).toBeGreaterThan(warm);
+    expect(await app.fulfillmentProviderCalls()).toBeGreaterThan(warm);
   });
 
   it('applies config-side presentation overrides even when the variant is cached', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog });
-    await app.json('/api/offers'); // warm the cache with the provider's colour "Black"
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog });
+    await app.json('/api/offers'); // warm the cache with the provider's color "Black"
     await app.dispose();
     const overridden = {
       ...offers[0]!,
       variants: { 'black-m': { catalogVariantId: 4017, label: 'Noir / M', color: 'Noir' } },
     };
     // Same database would be ideal; a fresh app with the override shows the read-time merge.
-    app = await makeTestApp({ config: { catalogue: { offers: [overridden] } }, catalog });
-    const { body } = await app.json<CatalogueResponse>('/api/offers');
+    app = await makeTestApp({ config: { catalog: { offers: [overridden] } }, catalog });
+    const { body } = await app.json<CatalogResponse>('/api/offers');
     expect(body.offers[0]!.variants[0]).toMatchObject({
       label: 'Noir / M',
       color: 'Noir',
@@ -91,16 +91,16 @@ describe('GET /api/offers (public Catalogue)', () => {
     });
   });
 
-  it('returns an empty Catalogue for a fresh instance', async () => {
+  it('returns an empty Catalog for a fresh instance', async () => {
     app = await makeTestApp();
-    const { status, body } = await app.json<CatalogueResponse>('/api/offers');
+    const { status, body } = await app.json<CatalogResponse>('/api/offers');
     expect(status).toBe(200);
     expect(body.offers).toEqual([]);
   });
 
   it('503s naming the Offer when config disagrees with the provider', async () => {
     app = await makeTestApp({
-      config: { catalogue: { offers: [{ ...offers[0]!, placement: 'sleeve' }] } },
+      config: { catalog: { offers: [{ ...offers[0]!, placement: 'sleeve' }] } },
       catalog,
     });
     const { status, body } = await app.json<{ message: string }>('/api/offers');
@@ -112,7 +112,7 @@ describe('GET /api/offers (public Catalogue)', () => {
   it('503s naming the Offer when a variant belongs to another product', async () => {
     app = await makeTestApp({
       config: {
-        catalogue: {
+        catalog: {
           offers: [{ ...offers[0]!, variants: { poster: { catalogVariantId: 1349, label: 'x' } } }],
         },
       },

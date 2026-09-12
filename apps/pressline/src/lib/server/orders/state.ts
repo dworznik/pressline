@@ -11,7 +11,7 @@ export const OrderState = Schema.Literal(
   'in_production',
   'shipped',
   'fulfilled',
-  'cancelled',
+  'canceled',
   'refunded',
 );
 export type OrderState = typeof OrderState.Type;
@@ -26,26 +26,26 @@ export const Cause = Schema.Literal(
 );
 export type Cause = typeof Cause.Type;
 
-/** Fulfilment is over: nothing more will ship. Purge eligibility, not "no edges": a refund can still be recorded after `fulfilled`. */
+/** Fulfillment is over: nothing more will ship. Purge eligibility, not "no edges": a refund can still be recorded after `fulfilled`. */
 export const TERMINAL: ReadonlySet<OrderState> = new Set([
   'expired',
   'fulfilled',
-  'cancelled',
+  'canceled',
   'refunded',
 ]);
 
 const EDGES: Readonly<Record<OrderState, ReadonlyArray<OrderState>>> = {
-  checkout_open: ['expired', 'paid', 'cancelled'],
-  paid: ['submitted', 'submit_failed', 'cancelled', 'refunded'],
-  submit_failed: ['submitted', 'cancelled'],
-  submitted: ['in_production', 'on_hold', 'shipped', 'fulfilled', 'cancelled', 'refunded'],
-  on_hold: ['submitted', 'in_production', 'cancelled', 'refunded'],
-  in_production: ['shipped', 'fulfilled', 'on_hold', 'cancelled', 'refunded'],
-  shipped: ['fulfilled', 'cancelled', 'refunded'],
+  checkout_open: ['expired', 'paid', 'canceled'],
+  paid: ['submitted', 'submit_failed', 'canceled', 'refunded'],
+  submit_failed: ['submitted', 'canceled'],
+  submitted: ['in_production', 'on_hold', 'shipped', 'fulfilled', 'canceled', 'refunded'],
+  on_hold: ['submitted', 'in_production', 'canceled', 'refunded'],
+  in_production: ['shipped', 'fulfilled', 'on_hold', 'canceled', 'refunded'],
+  shipped: ['fulfilled', 'canceled', 'refunded'],
   expired: [],
-  // Fulfilled is the end of fulfilment, but a goodwill refund can still be recorded after it.
+  // Fulfilled is the end of fulfillment, but a goodwill refund can still be recorded after it.
   fulfilled: ['refunded'],
-  cancelled: ['refunded'],
+  canceled: ['refunded'],
   refunded: [],
 };
 

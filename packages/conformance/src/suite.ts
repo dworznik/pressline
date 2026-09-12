@@ -26,7 +26,7 @@ export interface ConformanceOptions {
   readonly renderTimeout?: Duration.DurationInput;
   /**
    * The Spec the Engine must refuse with 422. Default: a 100:1 aspect, which
-   * an Engine that honours its Design's aspect rejects; an Engine that pads
+   * an Engine that honors its Design's aspect rejects; an Engine that pads
    * anything to any shape may pass `false` to skip the check.
    */
   readonly impossibleSpec?: PrintfileSpec | false;
@@ -74,7 +74,7 @@ export const specFor = (design: DesignResponse, dpi: number): PrintfileSpec => {
   };
 };
 
-/** A Spec no Design can honour: an aspect of 100:1. */
+/** A Spec no Design can honor: an aspect of 100:1. */
 export const impossibleSpec = (dpi: number): PrintfileSpec => ({
   width: 4000,
   height: 40,

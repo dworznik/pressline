@@ -16,7 +16,7 @@ Anywhere else: `PRESSLINE_ADAPTER=node pnpm --filter pressline build` and run `b
 ## Go-live checklist
 
 1. Secrets set: `PRINTFUL_TOKEN`, `STRIPE_SECRET_KEY` (live), `OPERATOR_TOKEN`, `SESSION_SECRET`, `ENGINE_SECRET_<SLUG>` per Engine, `RESEND_API_KEY` with `email.from`.
-2. `pressline.config.ts`: Catalogue (`pressline catalogue search` for snippets), Engines, branding, legal URLs, `email.operator`, `checkout.publicUrl`.
+2. `pressline.config.ts`: Catalog (`pressline catalog search` for snippets), Engines, branding, legal URLs, `email.operator`, `checkout.publicUrl`.
 3. `pressline webhooks register`, store the printed secrets, redeploy.
 4. `pressline doctor` is all ✓; `demo: false`.
 5. Read the Withdrawal Notice with counsel (docs/operator/stripe.md).

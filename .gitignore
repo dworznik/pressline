@@ -15,7 +15,7 @@ coverage/
 .env.*
 !.env.example
 
-# Local SQLite databases and test artefacts
+# Local SQLite databases and test artifacts
 *.db
 *.db-journal
 *.sqlite

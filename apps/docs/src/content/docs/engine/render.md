@@ -19,4 +19,4 @@ The output always satisfies the Spec: exact dimensions, DPI in `pHYs`, sRGB decl
 
 **Budget.** A Worker holds about 128 MiB. The WASM backend refuses a render whose raw pixels would not fit (`RenderRefused`, `reason: 'budget'`, with the numbers); `fitsBudget(spec, backend)` answers the same question before you promise a Customer anything. See the [Worker-fit table](/print/products/) for typical placements.
 
-Not covered: EXIF orientation (rotate phone photos first), colour management beyond declaring sRGB, bleed.
+Not covered: EXIF orientation (rotate phone photos first), color management beyond declaring sRGB, bleed.

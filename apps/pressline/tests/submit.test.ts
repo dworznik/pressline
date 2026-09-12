@@ -4,7 +4,7 @@ import { listTransitions } from '$lib/server/orders/orders';
 import type { PublicOrder } from '$lib/server/orders/public';
 import type { Quote } from '$lib/server/quote/quote';
 import type { MemoryCatalog } from '$lib/server/services/memory';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, type TestApp } from './harness';
 
@@ -19,7 +19,7 @@ const URL_OK = 'https://engine.test/files/heron/front.png';
 
 const boot = (orders: MemoryCatalog['orders'] = {}) =>
   makeTestApp({
-    config: { catalogue: { offers } },
+    config: { catalog: { offers } },
     catalog: { ...catalog, orders },
     engines: {
       engines: {

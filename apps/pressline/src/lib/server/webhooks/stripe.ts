@@ -2,7 +2,7 @@ import { Effect, Schema } from 'effect';
 import type { Config } from '../config/schema';
 import type { Db } from '../db/db';
 import type { DesignSource } from '../services/design-source';
-import type { FulfilmentProvider } from '../services/fulfilment-provider';
+import type { FulfillmentProvider } from '../services/fulfillment-provider';
 import type { Mailer } from '../services/mailer';
 import {
   findOrder,
@@ -137,7 +137,7 @@ export const applyStripeEvent = (
 ): Effect.Effect<
   Result,
   WebhookProcessingFailed,
-  Psp | Db | Config | FulfilmentProvider | DesignSource | Mailer
+  Psp | Db | Config | FulfillmentProvider | DesignSource | Mailer
 > =>
   Effect.gen(function* () {
     if (!event.sessionId || !HANDLED.has(event.type)) return result('ignored', event.type);

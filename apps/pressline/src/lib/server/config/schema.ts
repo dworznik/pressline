@@ -50,7 +50,7 @@ export const OfferConfig = Schema.Struct({
 );
 export type OfferConfig = typeof OfferConfig.Type;
 
-export const CatalogueConfig = Schema.Struct({
+export const CatalogConfig = Schema.Struct({
   offers: Schema.Array(OfferConfig).pipe(
     Schema.filter((offers) => {
       const seen = new Set<string>();
@@ -62,10 +62,10 @@ export const CatalogueConfig = Schema.Struct({
     }),
   ),
 });
-export type CatalogueConfig = typeof CatalogueConfig.Type;
+export type CatalogConfig = typeof CatalogConfig.Type;
 
 const DEFAULT_WITHDRAWAL_NOTICE =
-  'This item is made to your design. The 14-day right of withdrawal does not apply to personalised goods; defective or damaged items are replaced.';
+  'This item is made to your design. The 14-day right of withdrawal does not apply to personalized goods; defective or damaged items are replaced.';
 
 export const PresslineConfigSchema = Schema.Struct({
   /** Shown on the Storefront and in emails. */
@@ -74,8 +74,8 @@ export const PresslineConfigSchema = Schema.Struct({
   currency: Schema.String.pipe(Schema.pattern(/^[A-Z]{3}$/)),
   /** Trusted Engines wired to this instance (ADR-0001). */
   engines: Schema.Array(EngineConfig).pipe(Schema.minItems(1)),
-  /** The Catalogue (CONTEXT.md). Empty is allowed while setting up. */
-  catalogue: Schema.optionalWith(CatalogueConfig, { default: () => ({ offers: [] }) }),
+  /** The Catalog (CONTEXT.md). Empty is allowed while setting up. */
+  catalog: Schema.optionalWith(CatalogConfig, { default: () => ({ offers: [] }) }),
   /** Demo Mode: no money and no goods move. */
   demo: Schema.optionalWith(Schema.Boolean, { default: () => false }),
   /** Storefront and email theming (ticket #19): the Operator's look, nothing more. */
@@ -83,11 +83,11 @@ export const PresslineConfigSchema = Schema.Struct({
     Schema.Struct({
       /** Absolute URL of a logo shown in the header and emails; the name is used when absent. */
       logoUrl: Schema.optional(Schema.String.pipe(Schema.pattern(/^https?:\/\//))),
-      /** Accent colour as a CSS hex value, e.g. `#0a7`; buttons, links and the progress bar. */
+      /** Accent color as a CSS hex value, e.g. `#0a7`; buttons, links and the progress bar. */
       accent: Schema.optionalWith(Schema.String.pipe(Schema.pattern(/^#[0-9a-fA-F]{3,8}$/)), {
         default: () => '#222222',
       }),
-      /** Text colour on the accent, e.g. white on a dark accent. */
+      /** Text color on the accent, e.g. white on a dark accent. */
       accentText: Schema.optionalWith(Schema.String.pipe(Schema.pattern(/^#[0-9a-fA-F]{3,8}$/)), {
         default: () => '#ffffff',
       }),
@@ -128,7 +128,7 @@ export const PresslineConfigSchema = Schema.Struct({
     {
       default: () => ({
         withdrawalNotice:
-          'This item is made to your design. The 14-day right of withdrawal does not apply to personalised goods; defective or damaged items are replaced.',
+          'This item is made to your design. The 14-day right of withdrawal does not apply to personalized goods; defective or damaged items are replaced.',
       }),
     },
   ),
@@ -144,7 +144,7 @@ export const PresslineConfigSchema = Schema.Struct({
   ),
   checkout: Schema.optionalWith(
     Schema.Struct({
-      /** Let Stripe Checkout accept promotion codes (ADR-0015: no discount modelling in Pressline). */
+      /** Let Stripe Checkout accept promotion codes (ADR-0015: no discount modeling in Pressline). */
       allowPromotionCodes: Schema.optionalWith(Schema.Boolean, { default: () => false }),
       /** Public origin of this instance for PSP return URLs; defaults to the request's origin. */
       publicUrl: Schema.optional(Schema.String.pipe(Schema.pattern(/^https?:\/\//))),
@@ -169,7 +169,7 @@ export class ConfigError extends Schema.TaggedError<ConfigError>()('ConfigError'
 
 /**
  * Decode a raw config object; fails boot with a readable message. Errors
- * inside the Catalogue name the offending Offer by slug when one can be read
+ * inside the Catalog name the offending Offer by slug when one can be read
  * from the raw input, so the Operator does not have to count array indexes.
  */
 export const decodeConfig = (raw: unknown): Effect.Effect<PresslineConfig, ConfigError> =>
@@ -189,8 +189,8 @@ const formatConfigError = (raw: unknown, e: ParseResult.ParseError): string => {
 };
 
 const offerSlugAt = (raw: unknown, path: ReadonlyArray<string>): string | undefined => {
-  if (path[0] !== 'catalogue' || path[1] !== 'offers' || path[2] === undefined) return undefined;
-  const offers = (raw as { catalogue?: { offers?: unknown[] } })?.catalogue?.offers;
+  if (path[0] !== 'catalog' || path[1] !== 'offers' || path[2] === undefined) return undefined;
+  const offers = (raw as { catalog?: { offers?: unknown[] } })?.catalog?.offers;
   const offer = offers?.[Number(path[2])] as { slug?: unknown } | undefined;
   return typeof offer?.slug === 'string' ? offer.slug : undefined;
 };

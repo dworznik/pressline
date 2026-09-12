@@ -1,9 +1,9 @@
-import type { CatalogueVariant } from '@pressline/contract';
+import type { OfferVariant } from '@pressline/contract';
 import { Clock, Effect, Schema } from 'effect';
 import { Config } from '../config/schema';
 import { Db } from '../db/db';
 import { loadDesign } from '../design/design';
-import { FulfilmentProvider, type ShippingRate } from '../services/fulfilment-provider';
+import { FulfillmentProvider, type ShippingRate } from '../services/fulfillment-provider';
 import { STATE_REQUIRED } from '../../countries';
 import { withMarkup } from '../money';
 
@@ -200,9 +200,7 @@ export const makeQuote = (req: QuoteRequest) =>
       });
     }
     const offer = page.offers.find((o) => o.slug === req.offer);
-    const variant: CatalogueVariant | undefined = offer?.variants.find(
-      (v) => v.key === req.variant,
-    );
+    const variant: OfferVariant | undefined = offer?.variants.find((v) => v.key === req.variant);
     if (!offer || !variant) {
       return yield* new QuoteUnavailable({
         reason: 'not_eligible',
@@ -211,16 +209,16 @@ export const makeQuote = (req: QuoteRequest) =>
     }
 
     const config = yield* Config;
-    const catalogVariantId = config.catalogue.offers.find((o) => o.slug === offer.slug)?.variants[
+    const catalogVariantId = config.catalog.offers.find((o) => o.slug === offer.slug)?.variants[
       variant.key
     ]?.catalogVariantId;
     if (catalogVariantId === undefined) {
-      // The Catalogue was resolved from this same config a moment ago; only a redeploy mid-request gets here.
+      // The Catalog was resolved from this same config a moment ago; only a redeploy mid-request gets here.
       return yield* new QuoteInconsistent({
         message: `Offer "${offer.slug}" variant "${variant.key}" is no longer configured`,
       });
     }
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
 
     const rates = yield* provider.getShippingRates({
       countryCode: country,

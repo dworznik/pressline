@@ -20,6 +20,6 @@ export const load: PageServerLoad = async ({ params, fetch, url }) => {
   if (!res.ok) error(502, copy.design.engineDown);
   return {
     page: decodePage(await res.json()),
-    cancelled: url.searchParams.get('cancelled') === '1',
+    canceled: url.searchParams.get('canceled') === '1',
   };
 };

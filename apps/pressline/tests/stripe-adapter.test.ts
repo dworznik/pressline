@@ -68,7 +68,7 @@ const create = Effect.flatMap(Psp, (p) =>
     allowedCountry: 'DE',
     consentText: 'This item is made to your design.',
     successUrl: 'https://shop.test/orders/0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b/thank-you?t=tok',
-    cancelUrl: 'https://shop.test/order/sample/design-portrait-1?cancelled=1',
+    cancelUrl: 'https://shop.test/order/sample/design-portrait-1?canceled=1',
     expiresAt: 1789082600,
     allowPromotionCodes: false,
   }),

@@ -16,6 +16,6 @@ import {
 - `DesignResponse`, `PrintfileReady` (200), `PrintfileRendering` (202), `PrintfileRejected` (422), `DesignNotFound` (404), `EngineHealth` — wire schemas.
 - `EngineApi` — the protocol as an `HttpApi`; implement it with `HttpApiBuilder` or follow the paths from any stack.
 - `makeEngineClient({ baseUrl, secret })` — Pressline's client; needs an `HttpClient` (`FetchHttpClient.layer`).
-- `CatalogueResponse` — what Pressline's public `GET /api/offers` returns, so Engines can pre-render.
+- `CatalogResponse` — what Pressline's public `GET /api/offers` returns, so Engines can pre-render.
 
 Peer dependencies: `effect`, `@effect/platform`. MIT.

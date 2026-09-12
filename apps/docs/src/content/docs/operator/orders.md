@@ -3,7 +3,7 @@ title: Orders and reconciliation
 description: The ledger, the Operator View, the CLI actions, and the nightly truth pass.
 ---
 
-Every Order is a row plus append-only **Transitions**, each with a **Cause** (`storefront`, `stripe_webhook`, `printful_webhook`, `cli`, `reconciliation`). The happy path is `checkout_open → paid → submitted → in_production → shipped → fulfilled`; the table below is every move the state machine allows.
+Every Order is a row plus append-only **Transitions**, each with a **Cause** (`storefront`, `stripe_webhook`, `printful_webhook`, `cli`, `reconciliation`). The table below is every move the state machine allows.
 
 ## Transitions
 
@@ -18,9 +18,9 @@ Mirrored by hand from [`apps/pressline/src/lib/server/orders/state.ts`](https://
 | `on_hold`       | `submitted`, `in_production`, `cancelled`, `refunded`                       |
 | `in_production` | `shipped`, `fulfilled`, `on_hold`, `cancelled`, `refunded`                  |
 | `shipped`       | `fulfilled`, `cancelled`, `refunded`                                        |
+| `expired`       | none                                                                        |
 | `fulfilled`     | `refunded` (a goodwill refund can still be recorded after fulfilment)       |
 | `cancelled`     | `refunded`                                                                  |
-| `expired`       | none                                                                        |
 | `refunded`      | none                                                                        |
 
 `expired`, `fulfilled`, `cancelled` and `refunded` are terminal for fulfilment: nothing more will ship, and `orders purge` may strip personal data.

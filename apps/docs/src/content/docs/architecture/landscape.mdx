@@ -1,0 +1,12 @@
+---
+title: Landscape
+description: Who and what stands around Pressline.
+---
+
+import ArchitectureView from '../../../components/ArchitectureView.astro';
+
+**Encodes:** [ADR-0001](https://github.com/dworznik/pressline/blob/main/docs/adr/0001-single-operator.md), [ADR-0002](https://github.com/dworznik/pressline/blob/main/docs/adr/0002-engine-renders-pressline-validates.md), [ADR-0003](https://github.com/dworznik/pressline/blob/main/docs/adr/0003-engine-hosts-printfiles-pull-protocol.md), [ADR-0013](https://github.com/dworznik/pressline/blob/main/docs/adr/0013-monorepo-core-is-not-a-library.md).
+
+<ArchitectureView view="landscape" title="Landscape" height={560} />
+
+Who and what stands around Pressline. Three people: the Customer, who makes a Design in an Engine and buys it printed; the Operator, who runs the one instance and owns the Printful and Stripe accounts; the Engine developer, who builds the Engine, often the same person as the Operator. Pressline talks to roles, not vendors: a Fulfilment Provider, a PSP and a Mailer, each with one shipped implementation. The Engine renders and hosts every Printfile and Preview; Pressline never touches pixels.

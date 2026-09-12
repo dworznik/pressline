@@ -43,18 +43,15 @@ views {
       pressline.app,
       pressline.app.storefront, pressline.app.operatorView, pressline.app.httpApi,
       pressline.app.webhooks, pressline.app.reconciliation,
-      pressline.app.db, pressline.app.db.*,
-      pressline.app.designSource, pressline.app.designSource.*,
-      pressline.app.fulfilmentSvc, pressline.app.fulfilmentSvc.*,
-      pressline.app.pspSvc, pressline.app.pspSvc.*,
-      pressline.app.mailerSvc, pressline.app.mailerSvc.*,
+      pressline.app.dbService, pressline.app.dbService.*,
+      pressline.app.designSourceService, pressline.app.designSourceService.*,
+      pressline.app.fulfilmentService, pressline.app.fulfilmentService.*,
+      pressline.app.pspService, pressline.app.pspService.*,
+      pressline.app.mailerService, pressline.app.mailerService.*,
       pressline.ledger, engine.app, fulfilmentProvider, psp, mailer
     // The entry points reach the outside only through a service: hide the
     // container view's direct edges so every call goes via an adapter here.
     exclude
-      pressline.app.storefront -> engine.app,
-      pressline.app.storefront -> pressline.ledger,
-      pressline.app.operatorView -> pressline.ledger,
       pressline.app.httpApi -> engine.app,
       pressline.app.httpApi -> pressline.ledger,
       pressline.app.httpApi -> fulfilmentProvider,

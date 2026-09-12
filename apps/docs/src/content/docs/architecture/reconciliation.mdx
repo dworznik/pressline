@@ -1,0 +1,12 @@
+---
+title: Reconciliation
+description: One pass of the truth check that catches what webhooks missed.
+---
+
+import ArchitectureView from '../../../components/ArchitectureView.astro';
+
+**Encodes:** [ADR-0007](https://github.com/dworznik/pressline/blob/main/docs/adr/0007-printful-api-v2.md), [ADR-0009](https://github.com/dworznik/pressline/blob/main/docs/adr/0009-order-state-machine.md).
+
+<ArchitectureView view="reconciliation" title="Reconciliation, one pass" height={640} sequence />
+
+The other half of "webhooks are hints": what happens when one never arrives. On schedule, Reconciliation reads every open Order, re-fetches it from the PSP and the Fulfilment Provider, writes a Transition for anything the webhooks missed with Cause `reconciliation`, and emails Alarms to the Operator only when there are any.

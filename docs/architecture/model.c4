@@ -93,8 +93,9 @@ model {
     ledger = datastore 'Ledger' {
       technology 'SQLite: D1, libSQL or a file'
       description '
-        Orders, Transitions, Inbound Events, emails, migrations. A platform
-        binding beside the app. Every write is a single statement or a batch.
+        Orders, Transitions, Inbound Events, Quotes, Printfile validations,
+        emails, Reconciliation runs, the Catalogue cache. A platform binding
+        beside the app. Every write is a single statement or a batch.
       '
       link https://github.com/dworznik/pressline/blob/main/docs/adr/0008-sqlite-dialect-d1-and-libsql.md 'ADR-0008'
     }
@@ -132,11 +133,12 @@ model {
     link https://github.com/dworznik/pressline/blob/main/docs/adr/0003-engine-hosts-printfiles-pull-protocol.md 'ADR-0003'
 
     app = container 'Engine app' {
-      technology 'Any HTTP service; apps/sample-engine is the reference (SvelteKit)'
+      technology 'Any HTTP service'
       description '
         Makes Designs and serves the three DesignSource endpoints: health,
-        design, printfile. The sample Engine renders from a template or an AI
-        adapter and hosts what it renders.
+        design, printfile. apps/sample-engine is the reference: a SvelteKit
+        app that renders from a template or an AI adapter and hosts what it
+        renders.
       '
       metadata { workspace 'sample-engine' }
       link https://github.com/dworznik/pressline/blob/main/docs/adr/0002-engine-renders-pressline-validates.md 'ADR-0002'
@@ -174,14 +176,18 @@ model {
   customer -> pressline.app.storefront 'chooses an Offer, variant and country, sees the Quote'
   customer -> psp 'pays on the hosted Checkout page'
   mailer -> customer 'order confirmation, shipped with tracking'
-  mailer -> operator 'Alarms'
+  operator -> pressline.app 'deploys and configures from a typed file and platform secrets (ADR-0014)'
   operator -> pressline.app.operatorView 'inspects Orders, Transitions, Reconciliation results'
   operator -> pressline.cli 'runs doctor, webhooks register, reconcile'
   engineDeveloper -> engine.app 'builds and runs; implements DesignSource with @pressline/contract and @pressline/render'
   engineDeveloper -> pressline.app.httpApi 'integrates against the Catalogue and Printfile Spec endpoints; checks with @pressline/conformance'
 
+  // Entry points that go through the HttpApi in-process
+  pressline.app.storefront -> pressline.app.httpApi 'Design, Eligibility, Quote and Orders over /api/*'
+  pressline.app.operatorView -> pressline.app.httpApi 'reads over the operator API; runs Reconciliation on demand'
+
   // Pressline -> Engine (DesignSource)
-  pressline.app.storefront -> engine.app 'fetches the Design: Sellable, Preview, Eligibility, Mockups (@pressline/contract)'
+  pressline.app.httpApi -> engine.app 'fetches the Design: Sellable, Preview, Eligibility, Mockups (@pressline/contract)'
   pressline.app.httpApi -> engine.app 'requests the Printfile for a Spec Hash and validates it by headers, never pixels (ADR-0002, ADR-0004)'
 
   // Pressline -> providers
@@ -197,8 +203,6 @@ model {
   pressline.app.reconciliation -> mailer 'Alarms to the Operator'
 
   // Ledger
-  pressline.app.storefront -> pressline.ledger 'reads Orders'
-  pressline.app.operatorView -> pressline.ledger 'reads'
   pressline.app.httpApi -> pressline.ledger 'Orders, Transitions'
   pressline.app.webhooks -> pressline.ledger 'Inbound Events, Transitions (ADR-0009)'
   pressline.app.reconciliation -> pressline.ledger 'Transitions, Cause reconciliation (ADR-0009)'

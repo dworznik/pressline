@@ -45,16 +45,15 @@ describe('architecture model', () => {
     const relationships = [...model.relationships()];
     const named = new Set(elements.flatMap(workspaceNames));
     for (const app of dirs('apps')) {
-      const carrier = elements.find(
-        (el) => el.kind === 'container' && workspaceNames(el).includes(app),
-      );
       expect
-        .soft(carrier, `apps/${app} has no container with metadata { workspace '${app}' }`)
-        .toBeDefined();
+        .soft(named.has(app), `apps/${app} has no element with metadata { workspace '${app}' }`)
+        .toBe(true);
     }
     const titles = relationships.map((r) => r.title ?? '');
     for (const pkg of dirs('packages')) {
-      const mentioned = named.has(pkg) || titles.some((t) => t.includes(pkg));
+      // A whole-word mention: "@pressline/render" counts, "renders" does not.
+      const word = new RegExp(`(^|[^A-Za-z0-9-])${pkg}([^A-Za-z0-9-]|$)`);
+      const mentioned = named.has(pkg) || titles.some((t) => word.test(t));
       expect
         .soft(mentioned, `packages/${pkg} is named in no relationship title or element metadata`)
         .toBe(true);

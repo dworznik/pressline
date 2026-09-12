@@ -12,43 +12,56 @@ views {
     '
 
     customer -> pressline.app.storefront 'opens the Design on the Storefront, chooses an Offer, variant and country' {
-      notes 'No Order yet. The Storefront shows the Quote: fixed retail price plus the shipping rate for the country (ADR-0010).'
+      notes 'No Order yet. The Storefront shows the Quote: the fixed retail price of the Offer plus the shipping rate for the country (ADR-0010).'
     }
-    pressline.app.storefront -> engine.app 'fetches the Design: Sellable, Preview, Eligibility' {
-      notes 'DesignSource over @pressline/contract. A non-sellable Design refuses to quote.'
+    pressline.app.storefront -> pressline.app.httpApi 'asks for the Design and the Quote over /api/*' {
+      notes 'No Order yet.'
     }
-    pressline.app.storefront -> pressline.app.httpApi 'proceeds to checkout'
+    pressline.app.httpApi -> engine.app 'fetches the Design: Sellable, Preview, Eligibility' {
+      notes 'DesignSource over @pressline/contract. A non-sellable Design refuses to quote. No Order yet.'
+    }
     pressline.app.httpApi -> engine.app 'requests the Printfile for the Spec Hash and validates it' {
-      notes 'Headers only, never pixels (ADR-0002). Synchronous, or 202 until the Engine has rendered (ADR-0005).'
+      notes 'Headers only, never pixels (ADR-0002). Synchronous, or 202 until the Engine has rendered (ADR-0005). No Order yet: nothing is written until the Printfile is valid.'
     }
     pressline.app.httpApi -> psp 'creates the Checkout session, Printfile URL already validated' {
       notes 'Order **checkout_open**, Cause `storefront`. No session exists without a validated Printfile (ADR-0004).'
     }
     customer -> psp 'pays on the hosted Checkout page' {
-      notes 'Tax is added by the PSP; the Recipient is entered there and copied onto the Order.'
+      notes 'Tax is added by the PSP; the Recipient is entered there and copied onto the Order. Still **checkout_open** until the webhook is processed.'
     }
     psp -> pressline.app.webhooks 'checkout.session.completed' {
-      notes 'A hint about which session changed, never the truth (ADR-0007).'
+      notes 'A hint about which session changed, never the truth (ADR-0007). Still **checkout_open**.'
     }
-    pressline.app.webhooks -> pressline.ledger 'verifies the signature, records the Inbound Event' {
-      notes 'Keyed by the event ID the provider assigned, so a redelivery is processed at most once.'
+    pressline.app.webhooks -> pressline.ledger 'records the Inbound Event, signature verified' {
+      notes 'Keyed by the event ID the PSP assigned, so a redelivery is processed at most once. Still **checkout_open**.'
     }
-    pressline.app.webhooks -> psp 're-fetches the session'
+    pressline.app.webhooks -> psp 're-fetches the session' {
+      notes 'The re-fetched session is the truth the Transition is based on. Still **checkout_open**.'
+    }
     pressline.app.webhooks -> pressline.ledger 'Transition, Cause stripe_webhook' {
       notes 'Order **paid** (ADR-0009).'
     }
     pressline.app.webhooks -> fulfilmentProvider 'submits the provider order with the Printfile URL' {
-      notes 'Order **submitted**. The provider fetches the Printfile from the FileStore of the Engine, possibly months later (ADR-0003).'
+      notes 'Order **submitted**. The Fulfilment Provider fetches the Printfile from the FileStore of the Engine, possibly months later (ADR-0003).'
     }
-    pressline.app.webhooks -> mailer 'order confirmation with the Withdrawal Notice'
-    fulfilmentProvider -> pressline.app.webhooks 'provider order status, once per change' {
-      notes 'Same rule: verify, record the Inbound Event, re-fetch, then transition.'
+    pressline.app.webhooks -> mailer 'order confirmation with the Withdrawal Notice' {
+      notes 'Still **submitted**.'
     }
-    pressline.app.webhooks -> fulfilmentProvider 're-fetches the provider order'
+    fulfilmentProvider -> pressline.app.webhooks 'provider order status' {
+      notes 'A hint, like every webhook. Still **submitted**.'
+    }
+    pressline.app.webhooks -> pressline.ledger 'records the Inbound Event, signature verified' {
+      notes 'Still **submitted**.'
+    }
+    pressline.app.webhooks -> fulfilmentProvider 're-fetches the provider order' {
+      notes 'Still **submitted**.'
+    }
     pressline.app.webhooks -> pressline.ledger 'Transition, Cause printful_webhook' {
-      notes 'Order **in_production**, then on the next status **shipped**.'
+      notes 'Order **in_production**. The next status webhook repeats the same three steps and moves the Order to **shipped**.'
     }
-    pressline.app.webhooks -> mailer 'shipped with tracking'
+    pressline.app.webhooks -> mailer 'shipped with tracking' {
+      notes 'Order **shipped**. A later status from the Fulfilment Provider moves it to **fulfilled**.'
+    }
   }
 
   dynamic view reconciliation {
@@ -60,10 +73,10 @@ views {
     '
 
     operator -> pressline.app.reconciliation 'the platform scheduler fires, or the Operator runs `pressline reconcile`' {
-      notes 'Cloudflare Cron Trigger or Vercel Cron on schedule; the CLI or the Operator View on demand.'
+      notes 'Cloudflare Cron Trigger or Vercel Cron on schedule; `pressline reconcile` or the Operator View, through the operator API, on demand.'
     }
     pressline.app.reconciliation -> pressline.ledger 'reads every open Order'
-    pressline.app.reconciliation -> psp 're-fetches the Checkout session of each open Order' {
+    pressline.app.reconciliation -> psp 're-fetches stale Checkout sessions; checks payment status for refunds' {
       notes 'A stale `checkout_open` that was paid becomes **paid** and is submitted; one that was not becomes **expired**. Refunds and disputes are recorded.'
     }
     pressline.app.reconciliation -> fulfilmentProvider 're-fetches each provider order' {

@@ -2,8 +2,13 @@
 
 Self-hostable, open-source bridge from an image-generating app to physical print-on-demand products. Printful fulfills, Stripe Checkout takes payment, no Shopify in between.
 
-- Docs: https://pressline.0xff.sh/ · Demo instance: https://pressline-demo.vercel.app (the bridge, Demo Mode) with https://pressline-store-demo.vercel.app (the sample Engine)
-- Glossary: [`CONTEXT.md`](./CONTEXT.md) · Decisions: [`docs/adr/`](./docs/adr) · Architecture: [C4 views](https://pressline.0xff.sh/architecture/overview/) ([landscape](https://pressline.0xff.sh/architecture/#/view/landscape/)) from [`docs/architecture/`](./docs/architecture) · Spec: [`docs/SPEC.md`](./docs/SPEC.md) · Tickets: [#1](https://github.com/dworznik/pressline/issues/1)
+- **Docs**: [pressline.0xff.sh](https://pressline.0xff.sh/)
+- **Demo instance**: [the bridge](https://pressline-demo.vercel.app) in Demo Mode, with [the sample Engine](https://pressline-store-demo.vercel.app)
+- **Glossary**: [`CONTEXT.md`](./CONTEXT.md)
+- **Decisions**: [`docs/adr/`](./docs/adr)
+- **Architecture**: [C4 views](https://pressline.0xff.sh/architecture/overview/) ([landscape](https://pressline.0xff.sh/architecture/#/view/landscape/)), modeled in [`docs/architecture/`](./docs/architecture)
+- **Spec**: [`docs/SPEC.md`](./docs/SPEC.md)
+- **Tickets**: [#1](https://github.com/dworznik/pressline/issues/1)
 
 ## Layout
 
@@ -25,4 +30,4 @@ pnpm install          # also wires git hooks
 pnpm verify           # format · lint · typecheck · adr · architecture · test · build
 ```
 
-License: MIT for code, CC BY 4.0 for docs.
+License: [MIT](https://dworznik.mit-license.org) for code, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) for docs.

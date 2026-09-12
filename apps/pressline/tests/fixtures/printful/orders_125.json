@@ -1,6 +1,6 @@
 {
   "data": {
-    "id": 124,
+    "id": 125,
     "external_id": "0192a1b2c3d47e5f8a9b0c1d2e3f4a5b",
     "store_id": 10,
     "shipping": "STANDARD",
@@ -9,7 +9,7 @@
     "updated_at": "2026-09-11T10:00:00Z",
     "recipient": {
       "name": "Anna Example",
-      "address1": "Torstraße 2",
+      "address1": "Torstraße 1",
       "address2": "Hinterhaus",
       "city": "Berlin",
       "state_code": null,
@@ -19,18 +19,18 @@
       "phone": "+4915112345678"
     },
     "costs": {
-      "calculation_status": "done",
-      "currency": "EUR",
-      "subtotal": "10.90",
-      "discount": "0.00",
-      "shipping": "4.79",
-      "digitization": "0.00",
-      "additional_fee": "0.00",
-      "fulfillment_fee": "0.00",
-      "retail_delivery_fee": "0.00",
-      "vat": "2.98",
-      "tax": "0.00",
-      "total": "18.67"
+      "calculation_status": "calculating",
+      "currency": null,
+      "subtotal": null,
+      "discount": null,
+      "shipping": null,
+      "digitization": null,
+      "additional_fee": null,
+      "fulfillment_fee": null,
+      "retail_delivery_fee": null,
+      "tax": null,
+      "vat": null,
+      "total": null
     },
     "retail_costs": {
       "calculation_status": "done",
@@ -60,18 +60,18 @@
                 "url": "https://engine.test/files/heron/front.png"
               }
             ],
-            "status": "failed",
-            "status_explanation": "Product with ID: 71 cannot have disjointed design elements."
+            "status": "ok",
+            "status_explanation": null
           }
         ]
       }
     ],
     "_links": {
       "self": {
-        "href": "https://api.printful.com/v2/orders/123"
+        "href": "https://api.printful.com/v2/orders/125"
       },
       "shipments": {
-        "href": "https://api.printful.com/v2/orders/123/shipments"
+        "href": "https://api.printful.com/v2/orders/125/shipments"
       }
     }
   }

@@ -206,7 +206,7 @@ describe('Printful v2 adapter', () => {
         calculating: false,
       });
       expect(new URL(seen.at(-1)!.url).pathname).toBe(
-        '/v2/orders/@0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        '/v2/orders/@0192a1b2c3d47e5f8a9b0c1d2e3f4a5b',
       );
       expect(
         await run(
@@ -245,7 +245,7 @@ describe('Printful v2 adapter', () => {
       expect(draft).toMatchObject({ id: '123', status: 'draft' });
       const sent = JSON.parse(await seen.at(-1)!.clone().text()) as Record<string, unknown>;
       expect(sent).toMatchObject({
-        external_id: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+        external_id: '0192a1b2c3d47e5f8a9b0c1d2e3f4a5b', // 32 chars on the wire: Printful's limit
         shipping: 'STANDARD',
         recipient: {
           name: 'Anna Example',
@@ -272,6 +272,12 @@ describe('Printful v2 adapter', () => {
         ],
         retail_costs: { currency: 'EUR' },
       });
+    });
+
+    it('reads a fresh draft whose costs are still calculating (every money field null) as "no costs yet"', async () => {
+      const fresh = await run(Effect.flatMap(FulfilmentProvider, (p) => p.getOrder('125')));
+      expect(fresh).toMatchObject({ id: '125', status: 'draft' });
+      expect(fresh.costs).toBeUndefined();
     });
 
     it('confirms a draft and surfaces a failed placement with its explanation', async () => {
@@ -306,7 +312,7 @@ describe('Printful v2 adapter', () => {
       retries: 0,
       store_id: 10,
       data: {
-        order: { id: 123, external_id: '0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b', status: 'partial' },
+        order: { id: 123, external_id: '0192a1b2c3d47e5f8a9b0c1d2e3f4a5b', status: 'partial' },
         shipment: { id: 1, status: 'shipped' },
       },
     });

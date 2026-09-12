@@ -238,14 +238,15 @@ const PricesWire = Schema.Struct({
 const cleanMethodName = (name: string) =>
   name.replace(/\s*\(estimated delivery:[^)]*\)\s*/i, '').trim();
 
+/** While `calculation_status` is `calculating` (a fresh draft), every money field, the currency included, is `null`. */
 const OrderCostsWire = Schema.Struct({
   calculation_status: Schema.optional(Schema.String),
-  currency: Schema.String,
-  subtotal: Schema.optional(DecimalString),
-  shipping: Schema.optional(DecimalString),
-  tax: Schema.optional(DecimalString),
-  vat: Schema.optional(DecimalString),
-  total: Schema.optional(DecimalString),
+  currency: Schema.NullOr(Schema.String),
+  subtotal: Schema.optional(Schema.NullOr(DecimalString)),
+  shipping: Schema.optional(Schema.NullOr(DecimalString)),
+  tax: Schema.optional(Schema.NullOr(DecimalString)),
+  vat: Schema.optional(Schema.NullOr(DecimalString)),
+  total: Schema.optional(Schema.NullOr(DecimalString)),
 });
 
 const OrderWire = Schema.Struct({
@@ -289,11 +290,22 @@ const ORDER_STATUSES: ReadonlySet<string> = new Set([
   'fulfilled',
 ]);
 
+/**
+ * Printful caps `external_id` at 32 characters; an Order id is a 36-character
+ * UUID. Send it without hyphens and put them back on the way in, so the rest
+ * of the bridge keeps talking in Order ids.
+ */
+const toExternalId = (orderId: string) => orderId.replaceAll('-', '');
+const fromExternalId = (externalId: string) =>
+  /^[0-9a-f]{32}$/i.test(externalId)
+    ? externalId.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
+    : externalId;
+
 const toProviderOrder = (o: typeof OrderWire.Type): ProviderOrder => {
   const costs = o.costs ?? undefined;
   return {
     id: String(o.id),
-    ...(o.external_id ? { externalId: o.external_id } : {}),
+    ...(o.external_id ? { externalId: fromExternalId(o.external_id) } : {}),
     status: (ORDER_STATUSES.has(o.status) ? o.status : 'unknown') as ProviderOrderStatus,
     recipient: {
       countryCode: o.recipient.country_code,
@@ -309,7 +321,8 @@ const toProviderOrder = (o: typeof OrderWire.Type): ProviderOrder => {
           : {}),
       };
     }),
-    ...(costs
+    // No currency yet means nothing is priced yet: report no costs rather than zeros.
+    ...(costs && costs.currency
       ? {
           costs: {
             currency: costs.currency,
@@ -481,7 +494,7 @@ export const makePrintful = (options: PrintfulOptions) =>
           occurredAt: Number.isFinite(occurredAt) ? occurredAt : 0,
           ...(parsed.data.order ? { providerOrderId: String(parsed.data.order.id) } : {}),
           ...(parsed.data.order?.external_id
-            ? { orderExternalId: parsed.data.order.external_id }
+            ? { orderExternalId: fromExternalId(parsed.data.order.external_id) }
             : {}),
           ...(parsed.data.shipment ? { shipmentId: String(parsed.data.shipment.id) } : {}),
         } satisfies ProviderWebhookEvent;
@@ -568,7 +581,10 @@ export const makePrintful = (options: PrintfulOptions) =>
         ),
 
       findOrderByExternalId: (externalId) =>
-        get(`/v2/orders/@${encodeURIComponent(externalId)}`, Envelope(OrderWire)).pipe(
+        get(
+          `/v2/orders/@${encodeURIComponent(toExternalId(externalId))}`,
+          Envelope(OrderWire),
+        ).pipe(
           Effect.map(({ data }) => toProviderOrder(data)),
           Effect.catchIf(
             (e) => e.status === 404,
@@ -580,7 +596,7 @@ export const makePrintful = (options: PrintfulOptions) =>
         post(
           '/v2/orders',
           {
-            external_id: d.externalId,
+            external_id: toExternalId(d.externalId),
             shipping: d.shippingMethod,
             recipient: toRecipientWire(d.recipient),
             order_items: [

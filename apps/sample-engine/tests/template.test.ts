@@ -24,6 +24,29 @@ describe('template', () => {
     expect(Math.max(...evens)).toBeLessThanOrEqual(850)
   })
 
+  it('writes a well-formed path for every caption: no NaN, whatever the centering lands on', () => {
+    // opentype's own `toPathData` writes the literal `NaN` when a coordinate
+    // prints in exponential notation, which a fractional x-origin easily
+    // produces. "Level one" is one such caption: it used to render as "L".
+    const captions = [
+      'Level one',
+      'Levelone',
+      'Hello, print',
+      'Summer camp 2026',
+      'A B',
+      'iiii',
+      'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
+    ]
+    for (const text of captions) {
+      const svg = toSvg({ ...defaultTemplate, text })
+      const d = /<path d="([^"]*)"/.exec(svg)?.[1] ?? ''
+      expect(d, text).not.toContain('NaN')
+      expect(d, text).not.toMatch(/[eE][-+]\d/) // no exponential notation either
+      expect(d, text).toMatch(/^[MLCQZ0-9 .,-]+$/) // only path syntax
+      expect(d.length, text).toBeGreaterThan(0)
+    }
+  })
+
   it('accepts "none" and hex colors for the background, nothing else', () => {
     expect(sanitize({ background: 'none' }).background).toBe('none')
     expect(sanitize({ background: '#123456' }).background).toBe('#123456')

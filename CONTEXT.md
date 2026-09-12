@@ -46,6 +46,10 @@ _Avoid_: Dims, constraints, requirements
 The stable hash of a Printfile Spec. Together with a Design ID it identifies exactly one Printfile and is the idempotency key for rendering.
 _Avoid_: Job ID, render ID
 
+**Printfile Level**:
+How much of a print a Printfile can express. Level 1 is one raster covering the whole print area at the Spec's size, and is all that v1 asks; later levels add density ranges, vector, technique constraints and layout. The Spec Hash covers only the level-1 core.
+_Avoid_: Tier, profile, format version
+
 **Preview**:
 A customer-facing image of the Design (optionally mocked up on the product). Never used for printing.
 _Avoid_: Thumbnail, mockup (that is one kind of Preview)

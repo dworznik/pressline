@@ -57,6 +57,22 @@ describe('Printfile Spec canonical form and Spec Hash', () => {
     expect(await hash(b)).toBe(vectors[1]!.sha256);
   });
 
+  it('hashes exactly the level-1 core fields, nothing else (ADR-0016)', () => {
+    // Adding a Spec field must fail here until its author decides: a capability
+    // (optional, outside the hash) or a new protocol version (re-keys every Printfile).
+    const canonical = Either.getOrThrow(canonicalize(vectors[0]!.spec));
+    expect(Object.keys(JSON.parse(canonical) as object)).toEqual([
+      'alpha',
+      'colorSpace',
+      'dpi',
+      'formats',
+      'height',
+      'placement',
+      'technique',
+      'width',
+    ]);
+  });
+
   it('requires png in formats whenever alpha is required or allowed', () => {
     const base = vectors[0]!.spec;
     for (const alpha of ['required', 'allowed'] as const) {

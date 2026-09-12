@@ -1,6 +1,6 @@
 {
   "name": "@pressline/contract",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The DesignSource protocol: Printfile Spec, Spec Hash, request/response schemas and a typed client for Engines and Pressline",
   "keywords": [
     "pressline",

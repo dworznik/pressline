@@ -1,6 +1,6 @@
 {
   "name": "@pressline/conformance",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DesignSource conformance suite: run it against an Engine's base URL and learn whether it speaks the Pressline protocol before going live",
   "keywords": [
     "pressline",

@@ -44,8 +44,12 @@ answer is nothing and the job stops there in a few seconds. When a bump lands it
 runs `pnpm verify`, publishes with `pnpm --recursive publish`, and tags the commit
 `v<version>` afterwards — the tag records what shipped rather than deciding it.
 
-That script also refuses a bump where the four packages disagree on the version,
-which would otherwise publish some of them and leave the rest behind.
+The same workflow runs on the pull request, where it rehearses that publish
+instead of performing it. So a bump that cannot publish fails its own PR, and one
+that goes green will publish when merged. See below for what the rehearsal proves.
+
+`release-status.mjs` also refuses a bump where the four packages disagree on the
+version, which would otherwise publish some of them and leave the rest behind.
 
 The workflow holds no npm token. It authenticates with [npm trusted
 publishing](https://docs.npmjs.com/trusted-publishers/): GitHub mints an OIDC
@@ -61,12 +65,14 @@ repository can read it. That matters because packages publish in dependency
 order: a missing registration takes the release down part-way, with `contract`
 on the registry and its dependents not.
 
-So when a bump is on a branch and you want certainty before merging it, run the
-`release` workflow by hand from the Actions tab against that branch. It publishes
-nothing — pnpm builds its publish options, the token exchange included, before it
-honors `--dry-run`, so the rehearsal authenticates for real and fails loudly if a
-package would have been skipped. Worth doing after adding a package, or the first
-time a trusted publisher is configured; unnecessary the rest of the time.
+That is what the rehearsal on the pull request is for, and why it is worth a job
+rather than a note in a checklist. pnpm builds its publish options — the token
+exchange included — before it honors `--dry-run`, so the rehearsal authenticates
+against npm for real while publishing nothing, and fails if any package would have
+fallen back to a credential the workflow does not have. A missing registration is
+therefore a red pull request, not a half-finished release.
+
+It is skipped on pull requests from forks, which are never given an OIDC token.
 
 Two things not to change without knowing why:
 

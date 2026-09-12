@@ -5,13 +5,17 @@ on:
   # the job stops at the gate below; a merged version bump is what ships.
   push:
     branches: [main]
-  # Run by hand to rehearse. This never publishes; see the rehearsal step.
+  # A pull request that bumps the versions rehearses its own publish, so the
+  # answer to "will this actually go out?" arrives before it is merged.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# Never let two releases publish at once, and never cancel one part-way: some
-# packages would be on the registry and the rest would not.
+# One publish at a time, never cancelled part-way: some packages would be on the
+# registry and the rest would not. Keyed by ref so a rehearsal on a branch cannot
+# hold up main.
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -35,7 +39,7 @@ jobs:
 
       # Fails if the packages disagree on a version; otherwise reports which of
       # them the registry is missing. Everything below is skipped when it is none,
-      # which is the usual answer.
+      # which is the usual answer -- and the reason running on every push is cheap.
       - name: what is there to publish
         id: status
         run: node scripts/release-status.mjs >> "$GITHUB_OUTPUT"
@@ -43,28 +47,35 @@ jobs:
       - if: steps.status.outputs.pending != ''
         run: pnpm install --frozen-lockfile
 
-      - if: steps.status.outputs.pending != ''
+      # Only on the way out. A pull request has already had this from ci.yml.
+      - if: github.event_name == 'push' && steps.status.outputs.pending != ''
         run: pnpm verify
 
       # A trusted publisher is configured per package on npmjs.com, and nothing in
-      # this repository can see whether that was done. pnpm builds its publish
-      # options -- including the OIDC token exchange -- before it honors --dry-run,
-      # so this rehearses the authentication for real and publishes nothing.
+      # this repository can see whether that was done -- so a bump proves it here,
+      # on the pull request, rather than discovering it half-published on main.
+      # pnpm builds its publish options, the OIDC token exchange included, before
+      # it honors --dry-run: this authenticates for real and publishes nothing.
+      #
+      # A fork never gets an id-token, so skip it there rather than fail on it.
       - name: rehearse the publish
-        if: github.event_name == 'workflow_dispatch' && steps.status.outputs.pending != ''
+        if: |
+          github.event_name != 'push' && steps.status.outputs.pending != '' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
         run: |
           set -o pipefail
           pnpm --recursive publish --dry-run --no-git-checks 2>&1 | tee dry-run.log
 
           # pnpm only warns when the token exchange fails and falls back to whatever
           # credential it can find -- of which this job has none. Treat it as fatal:
-          # a real release would fail here, part-way through the dependency order.
+          # merging this would fail part-way through the dependency order.
           if grep -qF 'Skipped OIDC' dry-run.log; then
-            echo "::error::A package is missing its trusted publisher on npmjs.com. Configure it against this repository and release.yml, then run this again."
+            echo "::error::A package is missing its trusted publisher on npmjs.com. Configure it against this repository and release.yml before merging."
             exit 1
           fi
 
-          echo 'Trusted publishing authenticated for every package. A merge will publish cleanly.'
+          echo "Trusted publishing authenticated for every package. Merging this publishes ${{ steps.status.outputs.version }}."
 
       # Publishes every non-private workspace package whose version is not on the
       # registry yet, in dependency order, rewriting `workspace:^` to a real range.

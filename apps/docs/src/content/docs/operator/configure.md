@@ -25,7 +25,12 @@ export default defineConfig({
       },
     ],
   },
-  branding: { logoUrl: 'https://cdn.example/logo.svg', accent: '#0a7d5a', accentText: '#ffffff' },
+  branding: {
+    logoUrl: 'https://cdn.example/logo.svg',
+    faviconUrl: 'https://cdn.example/favicon.svg',
+    accent: '#0a7d5a',
+    accentText: '#ffffff',
+  },
   legal: { termsUrl: '…', privacyUrl: '…', contactEmail: 'hello@example' },
   email: { from: 'My Shop <orders@example>', operator: 'me@example' },
   checkout: { publicUrl: 'https://shop.example' },
@@ -33,6 +38,7 @@ export default defineConfig({
 ```
 
 - **Offers** point at Printful catalog variants; `pressline catalog search "staple"` prints a ready-made snippet with the variant IDs and the Printfile Spec each placement implies. `pressline catalog check` verifies every Offer resolves.
+- **Branding** is yours: the Storefront is your shop, not Pressline's. `faviconUrl` sets the browser tab icon, falling back to `logoUrl` and then to Pressline's own mark. The Operator View always shows Pressline's mark.
 - **Engines** are trusted apps you configure with a slug and base URL; each has its own shared secret `ENGINE_SECRET_<SLUG>` in the platform env.
 - **Retail prices** are fixed per Offer; shipping is quoted live from Printful (optionally marked up with `shipping.markupPercent`); tax is Stripe's.
 - The full schema is in the [configuration reference](/reference/config/).

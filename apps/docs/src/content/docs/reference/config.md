@@ -9,7 +9,7 @@ description: Every key of pressline.config.ts.
 | `engines[]`              | `{ slug, baseUrl }`; secret in `ENGINE_SECRET_<SLUG>`                                                                                                    |
 | `catalog.offers[]`       | `{ slug, name, catalogProductId, placement, technique, retailPrice, aspect?, variants: { key: { catalogVariantId, label, color?, size?, imageUrl? } } }` |
 | `demo`                   | Demo Mode                                                                                                                                                |
-| `branding`               | `{ logoUrl?, accent, accentText, tagline? }`                                                                                                             |
+| `branding`               | `{ logoUrl?, faviconUrl?, accent, accentText, tagline? }` — `faviconUrl` falls back to `logoUrl`, then to Pressline's own mark                           |
 | `legal`                  | `{ withdrawalNotice, termsUrl?, privacyUrl?, contactEmail? }`                                                                                            |
 | `email`                  | `{ from?, replyTo?, operator? }` — `from` together with `RESEND_API_KEY`; `operator` receives Alarms                                                     |
 | `checkout`               | `{ allowPromotionCodes, publicUrl? }` — set `publicUrl` behind a proxy                                                                                   |

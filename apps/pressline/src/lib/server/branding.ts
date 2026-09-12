@@ -8,6 +8,7 @@ const config = Schema.decodeUnknownSync(PresslineConfigSchema)(currentConfig())
 export interface Branding {
   readonly name: string
   readonly logoUrl?: string
+  readonly faviconUrl?: string
   readonly accent: string
   readonly accentText: string
   readonly tagline?: string
@@ -19,6 +20,7 @@ export interface Branding {
 export const getBranding = (): Branding => ({
   name: config.name,
   ...(config.branding.logoUrl ? { logoUrl: config.branding.logoUrl } : {}),
+  ...(config.branding.faviconUrl ? { faviconUrl: config.branding.faviconUrl } : {}),
   accent: config.branding.accent,
   accentText: config.branding.accentText,
   ...(config.branding.tagline ? { tagline: config.branding.tagline } : {}),

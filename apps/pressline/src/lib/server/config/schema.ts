@@ -83,6 +83,8 @@ export const PresslineConfigSchema = Schema.Struct({
     Schema.Struct({
       /** Absolute URL of a logo shown in the header and emails; the name is used when absent. */
       logoUrl: Schema.optional(Schema.String.pipe(Schema.pattern(/^https?:\/\//))),
+      /** Absolute URL of the Storefront's favicon. Falls back to `logoUrl`, then to Pressline's own mark. */
+      faviconUrl: Schema.optional(Schema.String.pipe(Schema.pattern(/^https?:\/\//))),
       /** Accent color as a CSS hex value, e.g. `#0a7`; buttons, links and the progress bar. */
       accent: Schema.optionalWith(Schema.String.pipe(Schema.pattern(/^#[0-9a-fA-F]{3,8}$/)), {
         default: () => '#222222',

@@ -5,7 +5,7 @@
  * 12×16 in. Text is emitted as outlines from the bundled font (`font.ts`),
  * never as `<text>`, so no host font is ever needed.
  */
-import type { Font } from 'opentype.js'
+import type { Font, Path } from 'opentype.js'
 import { displayFont } from './font'
 
 export interface Template {
@@ -68,13 +68,40 @@ const TEXT_SIZE = 104
 const TEXT_MAX_WIDTH = 780
 const TEXT_BASELINE = 900
 
+/**
+ * Serialize path commands ourselves rather than through opentype's
+ * `toPathData`, which rounds by string concatenation ("1e-17" + "e+2") and so
+ * writes the literal `NaN` for any coordinate JavaScript prints in exponential
+ * notation. Float dust near zero is ordinary here, and one `NaN` voids the
+ * whole `d` attribute from that point on: the caption then renders as its
+ * first glyph and a fragment. `toFixed` is plain decimal at these magnitudes.
+ */
+const round = (v: number) => Number(v.toFixed(2))
+const pathData = (path: Path) =>
+  path.commands
+    .map((c) => {
+      switch (c.type) {
+        case 'M':
+          return `M${round(c.x)} ${round(c.y)}`
+        case 'L':
+          return `L${round(c.x)} ${round(c.y)}`
+        case 'C':
+          return `C${round(c.x1)} ${round(c.y1)} ${round(c.x2)} ${round(c.y2)} ${round(c.x)} ${round(c.y)}`
+        case 'Q':
+          return `Q${round(c.x1)} ${round(c.y1)} ${round(c.x)} ${round(c.y)}`
+        case 'Z':
+          return 'Z'
+      }
+    })
+    .join('')
+
 /** The caption as a filled path: centered, shrunk to fit the width when long. */
 const textMarkup = (t: Template, font: Font) => {
   if (!t.text.trim()) return ''
   const natural = font.getAdvanceWidth(t.text, TEXT_SIZE)
   const size = natural > TEXT_MAX_WIDTH ? (TEXT_SIZE * TEXT_MAX_WIDTH) / natural : TEXT_SIZE
   const width = font.getAdvanceWidth(t.text, size)
-  const d = font.getPath(t.text, CX - width / 2, TEXT_BASELINE, size).toPathData(2)
+  const d = pathData(font.getPath(t.text, CX - width / 2, TEXT_BASELINE, size))
   return `<path d="${d}" fill="${t.textColor}"/>`
 }
 

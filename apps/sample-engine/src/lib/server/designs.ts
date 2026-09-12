@@ -16,7 +16,7 @@ import { ASPECT, toSvg, type Template } from '../template.js';
 import type { FileStore } from './store/file-store.js';
 
 /**
- * Designs (CONTEXT.md → Design): what the designer finalised, where its
+ * Designs (CONTEXT.md → Design): what the designer finalized, where its
  * Preview lives, and the Printfiles rendered so far keyed by Spec Hash
  * (ADR-0005: the idempotency key). Metadata is a JSON file in the FileStore
  * so the sample needs no database.
@@ -143,7 +143,7 @@ export const ensurePrintfile = async (
 };
 
 /** The Spec Pressline would derive: width/height already there per variant. */
-export const finalise = async (
+export const finalize = async (
   engine: Engine,
   input: { template: Partial<Template> } | { raster: Uint8Array; title: string },
 ): Promise<Design> => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultTemplate, sanitise, toSvg } from '$lib/template';
+import { defaultTemplate, sanitize, toSvg } from '$lib/template';
 
 describe('template', () => {
   it('emits the caption as outlines, never as <text>, so no host font is needed', () => {
@@ -26,9 +26,9 @@ describe('template', () => {
     expect(Math.max(...evens)).toBeLessThanOrEqual(850);
   });
 
-  it('accepts "none" and hex colours for the background, nothing else', () => {
-    expect(sanitise({ background: 'none' }).background).toBe('none');
-    expect(sanitise({ background: '#123456' }).background).toBe('#123456');
-    expect(sanitise({ background: 'red' }).background).toBe('none');
+  it('accepts "none" and hex colors for the background, nothing else', () => {
+    expect(sanitize({ background: 'none' }).background).toBe('none');
+    expect(sanitize({ background: '#123456' }).background).toBe('#123456');
+    expect(sanitize({ background: 'red' }).background).toBe('none');
   });
 });

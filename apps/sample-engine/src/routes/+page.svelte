@@ -5,14 +5,14 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let t = $state<Template>({ ...data.template });
-  // The background is either transparent (the garment shows through) or a colour the picker holds.
+  // The background is either transparent (the garment shows through) or a color the picker holds.
   let transparent = $state(data.template.background === 'none');
-  let backgroundColour = $state(
+  let backgroundColor = $state(
     data.template.background === 'none' ? '#0a7d5a' : data.template.background,
   );
   const template = $derived<Template>({
     ...t,
-    background: transparent ? 'none' : backgroundColour,
+    background: transparent ? 'none' : backgroundColor,
   });
   // Shown as an image, never injected as markup: the browser treats it as a picture only.
   const preview = $derived(`data:image/svg+xml,${encodeURIComponent(toSvg(template))}`);
@@ -24,17 +24,16 @@
   <section class="canvas">
     <img src={preview} alt="Your design" />
   </section>
-  <form method="POST" action="?/finalise" use:enhance class="controls">
+  <form method="POST" action="?/finalize" use:enhance class="controls">
     <h1>Design something</h1>
     <label>Text <input name="text" bind:value={t.text} maxlength="40" /></label>
-    <label>Text colour <input type="color" name="textColor" bind:value={t.textColor} /></label>
+    <label>Text color <input type="color" name="textColor" bind:value={t.textColor} /></label>
     <label class="check">
       <input type="checkbox" name="transparent" bind:checked={transparent} /> No background (the garment
       shows through)
     </label>
     {#if !transparent}
-      <label
-        >Background <input type="color" name="background" bind:value={backgroundColour} /></label
+      <label>Background <input type="color" name="background" bind:value={backgroundColor} /></label
       >
     {/if}
     <label>
@@ -46,17 +45,17 @@
         <option value="none">None</option>
       </select>
     </label>
-    <label>Shape colour <input type="color" name="shapeColor" bind:value={t.shapeColor} /></label>
-    <button type="submit">Finalise</button>
+    <label>Shape color <input type="color" name="shapeColor" bind:value={t.shapeColor} /></label>
+    <button type="submit">Finalize</button>
     <p class="hint">
-      Finalising stores your design and renders the print files for every product
+      Finalizing stores your design and renders the print files for every product
       {data.pressline ? 'in the shop' : '(no Pressline instance configured yet)'}.
     </p>
   </form>
   {#if data.ai}
     <form method="POST" action="?/generate" use:enhance class="ai">
       <h2>…or describe it</h2>
-      <input name="prompt" placeholder="A watercolour heron at dawn" maxlength="500" />
+      <input name="prompt" placeholder="A watercolor heron at dawn" maxlength="500" />
       <button type="submit">Generate</button>
     </form>
   {/if}

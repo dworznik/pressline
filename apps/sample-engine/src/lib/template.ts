@@ -11,7 +11,7 @@ import { displayFont } from './font';
 export interface Template {
   readonly text: string;
   readonly textColor: string;
-  /** A hex colour, or `none` for a transparent background: the garment shows through. */
+  /** A hex color, or `none` for a transparent background: the garment shows through. */
   readonly background: string;
   readonly shape: 'circle' | 'square' | 'triangle' | 'none';
   readonly shapeColor: string;
@@ -31,20 +31,20 @@ export const defaultTemplate: Template = {
 };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
-const colour = (c: string, fallback: string) => (HEX.test(c) ? c : fallback);
+const color = (c: string, fallback: string) => (HEX.test(c) ? c : fallback);
 
 /** Clamp free input into something the SVG can hold. */
-export const sanitise = (t: Partial<Template>): Template => ({
+export const sanitize = (t: Partial<Template>): Template => ({
   text: (t.text ?? defaultTemplate.text).slice(0, 40),
-  textColor: colour(t.textColor ?? '', defaultTemplate.textColor),
-  background: t.background === 'none' ? 'none' : colour(t.background ?? '', 'none'),
+  textColor: color(t.textColor ?? '', defaultTemplate.textColor),
+  background: t.background === 'none' ? 'none' : color(t.background ?? '', 'none'),
   shape: (['circle', 'square', 'triangle', 'none'] as const).includes(t.shape as never)
     ? (t.shape as Template['shape'])
     : 'circle',
-  shapeColor: colour(t.shapeColor ?? '', defaultTemplate.shapeColor),
+  shapeColor: color(t.shapeColor ?? '', defaultTemplate.shapeColor),
 });
 
-// Composition: the shape sits in a 600-unit box centred at (450, 470), the
+// Composition: the shape sits in a 600-unit box centered at (450, 470), the
 // caption's baseline is at 900. At 150 dpi on the tee that is an 8 in graphic
 // with the caption just under it, which reads as one print on the garment.
 const CX = 450;
@@ -68,7 +68,7 @@ const TEXT_SIZE = 104;
 const TEXT_MAX_WIDTH = 780;
 const TEXT_BASELINE = 900;
 
-/** The caption as a filled path: centred, shrunk to fit the width when long. */
+/** The caption as a filled path: centered, shrunk to fit the width when long. */
 const textMarkup = (t: Template, font: Font) => {
   if (!t.text.trim()) return '';
   const natural = font.getAdvanceWidth(t.text, TEXT_SIZE);
@@ -79,7 +79,7 @@ const textMarkup = (t: Template, font: Font) => {
 };
 
 export const toSvg = (input: Partial<Template>, font: Font = displayFont()): string => {
-  const t = sanitise(input);
+  const t = sanitize(input);
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">`,
     t.background === 'none'

@@ -198,4 +198,4 @@ Everything in ADR 0015: multi-item carts, customer accounts, refund and customer
 - Assumptions taken without discussion and easy to change: the docs site generator (Astro Starlight), one-hour Stripe session expiry, English-only surfaces.
 - Legal wording shipped in the sample configuration is a template and must carry a "review with counsel" note.
 - Sample Engine demo assets must be original or explicitly licensed.
-- Domains: none decided. The docs site is published on GitHub Pages and the demo instance (the bridge in Demo Mode plus the sample Engine) runs on Vercel under the project's own subdomains; no vanity domain name appears in rendered pages, diagrams, the Storefront or the repo.
+- Domains: the docs site is served at `pressline.0xff.sh` (GitHub Pages; the name lives in `apps/docs/public/CNAME` and the workflow's `DOCS_SITE`). The bridge and the sample Engine have no domain of their own: the demo instance runs on its platform's own subdomains. No other vanity domain appears in rendered pages, diagrams or the Storefront.

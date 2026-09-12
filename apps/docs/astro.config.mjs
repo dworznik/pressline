@@ -8,7 +8,7 @@ import { defineConfig, passthroughImageService } from 'astro/config'
 const base = (process.env['DOCS_BASE'] ?? '/').replace(/\/$/, '') || '/'
 
 export default defineConfig({
-  site: process.env['DOCS_SITE'] ?? 'https://dworznik.github.io',
+  site: process.env['DOCS_SITE'] ?? 'https://pressline.0xff.sh',
   base,
   // No raster images on the site, so no sharp: assets pass through untouched.
   image: { service: passthroughImageService() },

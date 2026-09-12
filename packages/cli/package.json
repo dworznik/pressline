@@ -1,6 +1,6 @@
 {
   "name": "@pressline/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Operator CLI for a Pressline instance: doctor, catalog search and check, webhooks register, orders, reconcile, printfile check",
   "keywords": [
     "pressline",

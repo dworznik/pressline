@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import { Args, Command, Options } from '@effect/cli'
 import { Config, Effect, Option, Schema } from 'effect'
 import { api, CliError, Instance } from './client.js'
@@ -640,7 +641,10 @@ const root = Command.make('pressline', { url, token }).pipe(
   Command.withSubcommands([doctor, catalog, webhooks, orders, reconcile, printfile]),
 )
 
-export const VERSION = '0.1.0'
+/** Read from the manifest rather than restated here, so a release cannot leave
+ * the two disagreeing. Resolves the same from `src` and from `dist`. */
+export const VERSION = (createRequire(import.meta.url)('../package.json') as { version: string })
+  .version
 
 /**
  * The CLI as a function of argv (including the two leading entries node

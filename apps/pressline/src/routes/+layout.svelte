@@ -36,7 +36,7 @@
       {#if b.termsUrl}<a href={b.termsUrl}>{copy.layout.terms}</a>{/if}
       {#if b.privacyUrl}<a href={b.privacyUrl}>{copy.layout.privacy}</a>{/if}
       {#if b.contactEmail}<a href="mailto:{b.contactEmail}">{copy.layout.contact}</a>{/if}
-      <a href="https://pressline.dev" rel="noopener">{copy.layout.poweredBy}</a>
+      <a href="https://dworznik.github.io/pressline/" rel="noopener">{copy.layout.poweredBy}</a>
       <!-- eslint-enable svelte/no-navigation-without-resolve -->
     </footer>
   {/if}

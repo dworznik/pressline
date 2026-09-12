@@ -3,12 +3,12 @@ import { defineConfig, passthroughImageService } from 'astro/config';
 
 // The docs site (ticket #26): a static Starlight site. Deploy the `dist/`
 // output anywhere static; GitHub Pages publishes it at /pressline (DOCS_BASE),
-// the custom domain serves it from /. Markdown links are site-absolute; scripts/apply-base.mjs
+// a custom domain would serve it from /. Markdown links are site-absolute; scripts/apply-base.mjs
 // prefixes them after the build when a base is set (Astro's Markdown processor has no hook for it).
 const base = (process.env['DOCS_BASE'] ?? '/').replace(/\/$/, '') || '/';
 
 export default defineConfig({
-  site: process.env['DOCS_SITE'] ?? 'https://pressline.dev',
+  site: process.env['DOCS_SITE'] ?? 'https://dworznik.github.io',
   base,
   // No raster images on the site, so no sharp: assets pass through untouched.
   image: { service: passthroughImageService() },

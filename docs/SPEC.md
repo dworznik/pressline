@@ -173,7 +173,7 @@ Rules:
 
 ### Docs
 
-- Static docs site for pressline.dev: Operator guide (deploy, configure, go live, Demo Mode, legal wording review), Engine developer guide (protocol, pre-rendering, hosting rules, conformance suite, AI-assisted engines), print preparation reference (formats, DPI, colour, transparency, print areas, product limitations, Worker-fit table), contributor guide (Effect primer, test layers, fixtures refresh), CLI reference, generated OpenAPI for the JSON API.
+- Static docs site (built from `apps/docs`, published on GitHub Pages): Operator guide (deploy, configure, go live, Demo Mode, legal wording review), Engine developer guide (protocol, pre-rendering, hosting rules, conformance suite, AI-assisted engines), print preparation reference (formats, DPI, colour, transparency, print areas, product limitations, Worker-fit table), contributor guide (Effect primer, test layers, fixtures refresh), CLI reference, generated OpenAPI for the JSON API.
 
 ## Testing Decisions
 
@@ -198,4 +198,4 @@ Everything in ADR 0015: multi-item carts, customer accounts, refund and customer
 - Assumptions taken without discussion and easy to change: the docs site generator (Astro Starlight), one-hour Stripe session expiry, English-only surfaces.
 - Legal wording shipped in the sample configuration is a template and must carry a "review with counsel" note.
 - Sample Engine demo assets must be original or explicitly licensed.
-- Domains: pressline.dev (docs), pressline.store (Demo Mode deployment of the template plus the sample Engine).
+- Domains: none decided. The docs site is published on GitHub Pages and the demo instance (the bridge in Demo Mode plus the sample Engine) runs on Vercel under the project's own subdomains; no vanity domain name appears in rendered pages, diagrams, the Storefront or the repo.

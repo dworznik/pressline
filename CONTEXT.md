@@ -149,7 +149,7 @@ A Reconciliation finding that needs the Operator: an Order stuck in `paid`, `sub
 _Avoid_: Alert, notification, warning
 
 **Demo Mode**:
-An instance configured so no money and no goods move: the PSP runs in test mode and the fulfilment provider creates drafts but never confirms them. Everything else is real. pressline.store runs this way.
+An instance configured so no money and no goods move: the PSP runs in test mode and the fulfilment provider creates drafts but never confirms them. Everything else is real. The demo instance runs this way.
 _Avoid_: Sandbox, test mode (the PSP's own term), staging
 
 **Withdrawal Notice**:

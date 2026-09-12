@@ -7,4 +7,4 @@ Deploy templates pointing at `apps/*` (ADR-0012, ADR-0013): button configs and p
 
 Both apps read `PRESSLINE_ADAPTER` at build time (`cloudflare`, `vercel`, `node`, default `auto`).
 
-- The docs site (`apps/docs`) is static Astro: `apps/docs/vercel.json` (root directory `apps/docs`) or any static host serving `apps/docs/dist` — pressline.dev.
+- The docs site (`apps/docs`) is static Astro: `apps/docs/vercel.json` (root directory `apps/docs`) or any static host serving `apps/docs/dist` — GitHub Pages today (`.github/workflows/docs-pages.yml`).

@@ -5,7 +5,7 @@ description: A self-hostable bridge from an image-generating app to physical pri
 
 Pressline sits between an app that makes images (an **Engine**) and a printed, shipped product. The Engine keeps its design tool; Pressline does the rest: product choice, a locked **Quote**, Stripe Checkout, the Printful order, customer emails, a ledger the **Operator** can read, and a nightly **Reconciliation** that repairs whatever a webhook missed.
 
-- One Operator per instance, one typed config file, secrets in the platform. No Shopify, no accounts, no carts.
+- One Operator per instance, one typed config file, secrets in the platform. No accounts, no carts.
 - Engines implement a three-endpoint protocol and host their own files; Pressline never touches pixels.
 - Deploys to Cloudflare Workers (D1) or Vercel (Turso) with a button, or anywhere Node runs.
 

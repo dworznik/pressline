@@ -14,6 +14,10 @@ _Avoid_: Tenant, merchant, admin, shop owner
 An external application, controlled by the Operator, that produces designs and implements the DesignSource contract. An instance may be wired to several Engines; all are trusted.
 _Avoid_: Image-generating app, design app, source, provider (reserved for fulfilment)
 
+**Engine developer**:
+The person who builds and runs an Engine and integrates it against the DesignSource contract. Often the same person as the Operator wearing a different hat: the Operator owns the instance and its accounts, the Engine developer owns the design tool.
+_Avoid_: Integrator, developer (alone), partner
+
 **Customer**:
 A person who buys a product bearing a design.
 _Avoid_: User, buyer, client, account

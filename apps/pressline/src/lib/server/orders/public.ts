@@ -15,7 +15,7 @@ export const PublicOrder = Schema.Struct({
   state: OrderState,
   offer: Schema.String,
   variant: Schema.String,
-  /** Display names from the Catalogue (fall back to the slugs if the Offer was removed). */
+  /** Display names from the Catalog (fall back to the slugs if the Offer was removed). */
   offerName: Schema.String,
   variantLabel: Schema.String,
   /** The design's Preview, hot-linked from the Engine when it still answers. */
@@ -40,7 +40,7 @@ export const publicOrder = (id: string, token: string) =>
     const order = yield* findOrder(id);
     if (!timingSafeEqual(order.statusToken, token)) return yield* new OrderNotFound({ id });
     const config = yield* Config;
-    const offer = config.catalogue.offers.find((o) => o.slug === order.offer);
+    const offer = config.catalog.offers.find((o) => o.slug === order.offer);
     const previewUrl =
       order.previewUrl ??
       (yield* Effect.flatMap(DesignSource, (s) => s.getDesign(order.engine, order.designId)).pipe(

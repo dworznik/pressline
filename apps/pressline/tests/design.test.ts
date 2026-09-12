@@ -1,7 +1,7 @@
 import type { DesignResponse } from '@pressline/contract';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DesignPage } from '$lib/server/http/api';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { makeTestApp, type TestApp } from './harness';
 
 const portrait: DesignResponse = {
@@ -42,7 +42,7 @@ describe('GET /api/designs/{engine}/{designId} (Storefront design page data)', (
   afterEach(() => app?.dispose());
 
   it('returns the Design with its Preview hot-linked and every eligible Offer', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const { status, body } = await app.json<DesignPage>(`/api/designs/sample/${portrait.id}`);
     expect(status).toBe(200);
     expect(body.design).toMatchObject({
@@ -55,25 +55,25 @@ describe('GET /api/designs/{engine}/{designId} (Storefront design page data)', (
   });
 
   it('filters Offers by the aspect range: a square design cannot go on the 3:4 poster', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const { body } = await app.json<DesignPage>(`/api/designs/sample/${square.id}`);
     expect(body.offers.map((o) => o.slug)).toEqual(['tee-black-front']);
   });
 
   it('filters Offers by the Engine’s eligibility list', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const { body } = await app.json<DesignPage>(`/api/designs/sample/${teeOnly.id}`);
     expect(body.offers.map((o) => o.slug)).toEqual(['tee-black-front']);
   });
 
   it('404s an unknown design, and an unknown Engine looks the same', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     expect((await app.fetch('/api/designs/sample/design-nope-0000')).status).toBe(404);
     expect((await app.fetch(`/api/designs/other/${portrait.id}`)).status).toBe(404);
   });
 
   it('returns a not-sellable design with no Offers', async () => {
-    app = await makeTestApp({ config: { catalogue: { offers } }, catalog, engines });
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines });
     const { status, body } = await app.json<DesignPage>(`/api/designs/sample/${withdrawn.id}`);
     expect(status).toBe(200);
     expect(body.design.sellable).toBe(false);
@@ -82,7 +82,7 @@ describe('GET /api/designs/{engine}/{designId} (Storefront design page data)', (
 
   it('503s when the Engine was disabled at startup', async () => {
     app = await makeTestApp({
-      config: { catalogue: { offers } },
+      config: { catalog: { offers } },
       catalog,
       engines: {
         engines: { sample: { protocolVersion: '9', designs: { [portrait.id]: portrait } } },

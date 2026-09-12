@@ -41,26 +41,26 @@ views {
     pressline.app.webhooks -> pressline.ledger 'Transition, Cause stripe_webhook' {
       notes 'Order **paid** (ADR-0009).'
     }
-    pressline.app.webhooks -> fulfilmentProvider 'submits the provider order with the Printfile URL' {
-      notes 'Order **submitted**. The Fulfilment Provider fetches the Printfile from the FileStore of the Engine, possibly months later (ADR-0003).'
+    pressline.app.webhooks -> fulfillmentProvider 'submits the provider order with the Printfile URL' {
+      notes 'Order **submitted**. The Fulfillment Provider fetches the Printfile from the FileStore of the Engine, possibly months later (ADR-0003).'
     }
     pressline.app.webhooks -> mailer 'order confirmation with the Withdrawal Notice' {
       notes 'Still **submitted**.'
     }
-    fulfilmentProvider -> pressline.app.webhooks 'provider order status' {
+    fulfillmentProvider -> pressline.app.webhooks 'provider order status' {
       notes 'A hint, like every webhook. Still **submitted**.'
     }
     pressline.app.webhooks -> pressline.ledger 'records the Inbound Event, signature verified' {
       notes 'Still **submitted**.'
     }
-    pressline.app.webhooks -> fulfilmentProvider 're-fetches the provider order' {
+    pressline.app.webhooks -> fulfillmentProvider 're-fetches the provider order' {
       notes 'Still **submitted**.'
     }
     pressline.app.webhooks -> pressline.ledger 'Transition, Cause printful_webhook' {
       notes 'Order **in_production**. The next status webhook repeats the same three steps and moves the Order to **shipped**.'
     }
     pressline.app.webhooks -> mailer 'shipped with tracking' {
-      notes 'Order **shipped**. A later status from the Fulfilment Provider moves it to **fulfilled**.'
+      notes 'Order **shipped**. A later status from the Fulfillment Provider moves it to **fulfilled**.'
     }
   }
 
@@ -68,7 +68,7 @@ views {
     title 'Reconciliation, one pass'
     description '
       The other half of "webhooks are hints": what happens when one never
-      arrives. Every open Order is compared with the PSP and the Fulfilment
+      arrives. Every open Order is compared with the PSP and the Fulfillment
       Provider; anything missed becomes a Transition with Cause reconciliation.
     '
 
@@ -79,7 +79,7 @@ views {
     pressline.app.reconciliation -> psp 're-fetches stale Checkout sessions; checks payment status for refunds' {
       notes 'A stale `checkout_open` that was paid becomes **paid** and is submitted; one that was not becomes **expired**. Refunds and disputes are recorded.'
     }
-    pressline.app.reconciliation -> fulfilmentProvider 're-fetches each provider order' {
+    pressline.app.reconciliation -> fulfillmentProvider 're-fetches each provider order' {
       notes 'A stuck **paid** Order is submitted again; **submitted**, **in_production** and **on_hold** move to what the provider reports.'
     }
     pressline.app.reconciliation -> pressline.ledger 'writes a Transition for anything the webhooks missed' {

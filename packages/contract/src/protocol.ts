@@ -82,7 +82,7 @@ export const EngineHealth = Schema.Struct({
 });
 export type EngineHealth = typeof EngineHealth.Type;
 
-/** Public catalogue served by Pressline (`GET /api/offers`) so Engines can pre-render. */
+/** Public catalog served by Pressline (`GET /api/offers`) so Engines can pre-render. */
 export const Money = Schema.Struct({
   /** Minor units (cents). */
   amount: Schema.Int.pipe(Schema.nonNegative()),
@@ -98,7 +98,7 @@ export const AspectRange = Schema.Struct({
 }).pipe(Schema.filter((r) => r.min <= r.max || 'aspect min must be <= max'));
 export type AspectRange = typeof AspectRange.Type;
 
-export const CatalogueVariant = Schema.Struct({
+export const OfferVariant = Schema.Struct({
   /** Variant key as configured, e.g. `black-m`. */
   key: Schema.String,
   label: Schema.String,
@@ -108,24 +108,24 @@ export const CatalogueVariant = Schema.Struct({
   spec: PrintfileSpec,
   specHash: SpecHash,
 });
-export type CatalogueVariant = typeof CatalogueVariant.Type;
+export type OfferVariant = typeof OfferVariant.Type;
 
-export const CatalogueOffer = Schema.Struct({
+export const CatalogOffer = Schema.Struct({
   slug: OfferSlug,
   name: Schema.String,
   placement: Schema.String,
   technique: Schema.String,
   retailPrice: Money,
   aspect: Schema.NullOr(AspectRange),
-  variants: Schema.Array(CatalogueVariant),
+  variants: Schema.Array(OfferVariant),
 });
-export type CatalogueOffer = typeof CatalogueOffer.Type;
+export type CatalogOffer = typeof CatalogOffer.Type;
 
-export const CatalogueResponse = Schema.Struct({
+export const CatalogResponse = Schema.Struct({
   protocolVersion: Schema.String,
   currency: Schema.String,
-  offers: Schema.Array(CatalogueOffer),
+  offers: Schema.Array(CatalogOffer),
 });
-export type CatalogueResponse = typeof CatalogueResponse.Type;
+export type CatalogResponse = typeof CatalogResponse.Type;
 
 export { PrintfileSpec };

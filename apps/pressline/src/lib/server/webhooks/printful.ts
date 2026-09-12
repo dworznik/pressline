@@ -4,6 +4,7 @@ import type { Db } from '../db/db';
 import type { DesignSource } from '../services/design-source';
 import type { Mailer } from '../services/mailer';
 import {
+  annotate,
   findOrder,
   findOrderByProviderOrder,
   transition,
@@ -12,12 +13,12 @@ import {
 } from '../orders/orders';
 import type { Cause, OrderState } from '../orders/state';
 import {
-  FulfilmentProvider,
+  FulfillmentProvider,
   ProviderWebhookRejected,
   type ProviderOrder,
   type ProviderShipment,
   type ProviderWebhookEvent,
-} from '../services/fulfilment-provider';
+} from '../services/fulfillment-provider';
 import { sendOrderEmail } from '../emails/send';
 import { receive, release, settle, type InboundOutcome } from './inbound';
 
@@ -37,7 +38,11 @@ const result = (outcome: InboundOutcome, note?: string): Result =>
   note ? { outcome, note } : { outcome };
 
 /** Provider status → the Order state it implies (ADR-0009). `partial` collapses into shipped. */
-export const stateFor = (status: ProviderOrder['status']): OrderState | undefined => {
+/** The ledger state a provider status stands for. `from` matters for `failed`: before confirmation it is a failed submission; after it (payment, file) it is the Operator's to sort out, so `on_hold`. */
+export const stateFor = (
+  status: ProviderOrder['status'],
+  from?: OrderState,
+): OrderState | undefined => {
   switch (status) {
     case 'pending':
     case 'inreview':
@@ -51,14 +56,20 @@ export const stateFor = (status: ProviderOrder['status']): OrderState | undefine
     case 'fulfilled':
       return 'fulfilled';
     case 'canceled':
-      return 'cancelled';
+      return 'canceled';
     case 'failed':
-      return 'submit_failed';
+      return from === 'submitted' || from === 'in_production' || from === 'on_hold'
+        ? 'on_hold'
+        : 'submit_failed';
     case 'draft':
     case 'unknown':
       return undefined;
   }
 };
+
+/** What the Operator reads on the Transition when the provider fails a confirmed order. */
+export const PROVIDER_FAILED_NOTE =
+  'provider reports the order failed (payment or file): fix it at the provider, or cancel';
 
 const recordTransition = (
   order: Order,
@@ -77,9 +88,14 @@ const recordTransition = (
         : Effect.succeed(result('applied')),
     ),
     Effect.catchTag('TransitionRefused', (r) =>
-      Effect.succeed(
-        r.from === to ? result('applied', 'already') : result('refused', `${r.from}->${r.to}`),
-      ),
+      r.from !== to
+        ? Effect.succeed(result('refused', `${r.from}->${r.to}`))
+        : patch.note
+          ? // Same state but a reason worth keeping: a same-state Transition row, once per reason.
+            annotate(order.id, cause, ref, patch.note).pipe(
+              Effect.map((wrote) => result('applied', wrote ? 'noted' : 'already')),
+            )
+          : Effect.succeed(result('applied', 'already')),
     ),
     Effect.catchTag('OrderNotFound', () => Effect.succeed(result('unknown_order'))),
   );
@@ -114,13 +130,13 @@ export const applyPrintfulEvent = (
 ): Effect.Effect<
   Result,
   ProviderWebhookProcessingFailed,
-  FulfilmentProvider | Db | Config | DesignSource | Mailer
+  FulfillmentProvider | Db | Config | DesignSource | Mailer
 > =>
   Effect.gen(function* () {
     if (!event.providerOrderId) return result('ignored', event.type);
     const order = yield* resolveOrder(event);
     if (!order) return result('unknown_order', event.providerOrderId);
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     // Re-fetch: the provider's current status is the fact, not the delivery.
     const fetched = yield* provider.getOrder(event.providerOrderId).pipe(Effect.either);
     if (fetched._tag === 'Left') {
@@ -135,10 +151,13 @@ export const applyPrintfulEvent = (
         `provider order ${providerOrder.id} belongs to ${providerOrder.externalId}`,
       );
     }
-    const target = stateFor(providerOrder.status);
+    const target = stateFor(providerOrder.status, order.state);
     if (!target) return result('ignored', `provider status=${providerOrder.status}`);
 
     let patch: OrderPatch = { providerOrderId: providerOrder.id };
+    if (providerOrder.status === 'failed' && target === 'on_hold') {
+      patch = { ...patch, note: PROVIDER_FAILED_NOTE };
+    }
     const shipmentEvent = event.type.startsWith('shipment_');
     if (shipmentEvent || target === 'shipped' || target === 'fulfilled') {
       // Tracking is part of the fact we are recording, so a transient failure here is retried too.
@@ -174,7 +193,7 @@ export const handlePrintfulWebhook = (
   headers: { signature?: string; publicKey?: string },
 ) =>
   Effect.gen(function* () {
-    const provider = yield* FulfilmentProvider;
+    const provider = yield* FulfillmentProvider;
     const event = yield* provider.verifyWebhook(rawBody, headers);
     const now = Math.floor((yield* Clock.currentTimeMillis) / 1000);
     if (event.occurredAt < now - MAX_EVENT_AGE_S || event.occurredAt > now + MAX_CLOCK_SKEW_S) {

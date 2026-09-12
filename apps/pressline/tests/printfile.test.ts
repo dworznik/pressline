@@ -8,11 +8,11 @@ import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PrintfileState } from '$lib/server/printfile/ensure';
 import type { MemoryPrintfileAnswer } from '$lib/server/services/memory';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { jpeg, png } from './fixtures/images';
 import { makeTestApp, type HostedFile, type TestApp } from './harness';
 
-/** The tee's front-print Spec as the Catalogue derives it (12×16 in @150 dpi, alpha allowed). */
+/** The tee's front-print Spec as the Catalog derives it (12×16 in @150 dpi, alpha allowed). */
 const teeSpec: PrintfileSpec = {
   width: 1800,
   height: 2400,
@@ -45,7 +45,7 @@ const ready = (
 
 const boot = (render: MemoryPrintfileAnswer, files: Record<string, HostedFile>, waitMs = 1000) =>
   makeTestApp({
-    config: { catalogue: { offers }, printfile: { waitMs } },
+    config: { catalog: { offers }, printfile: { waitMs } },
     catalog,
     engines: {
       engines: {
@@ -197,9 +197,9 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
         id: 'design-poster-001',
         aspect: { w: 3, h: 4 },
       };
-      const rgba = png({ width: 2700, height: 3600, colourType: 6, totalBytes: 7000 });
+      const rgba = png({ width: 2700, height: 3600, colorType: 6, totalBytes: 7000 });
       app = await makeTestApp({
-        config: { catalogue: { offers: [{ ...offers[1]!, aspect: { min: 0.7, max: 0.8 } }] } },
+        config: { catalog: { offers: [{ ...offers[1]!, aspect: { min: 0.7, max: 0.8 } }] } },
         catalog,
         engines: {
           engines: {
@@ -219,7 +219,7 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
       const jpg = jpeg({ width: 2700, height: 3600, totalBytes: 7000 });
       const jpgUrl = 'https://engine.test/files/heron/poster.jpg';
       app = await makeTestApp({
-        config: { catalogue: { offers: [offers[1]!] } },
+        config: { catalog: { offers: [offers[1]!] } },
         catalog,
         engines: {
           engines: {
@@ -249,16 +249,16 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
 });
 
 describe('parseImageHeader', () => {
-  it('reads PNG dimensions and alpha (colour type or tRNS)', () => {
-    expect(parseImageHeader(png({ width: 10, height: 20, colourType: 2 }))).toEqual({
+  it('reads PNG dimensions and alpha (color type or tRNS)', () => {
+    expect(parseImageHeader(png({ width: 10, height: 20, colorType: 2 }))).toEqual({
       format: 'png',
       width: 10,
       height: 20,
       hasAlpha: false,
     });
-    expect(parseImageHeader(png({ width: 10, height: 20, colourType: 6 }))?.hasAlpha).toBe(true);
+    expect(parseImageHeader(png({ width: 10, height: 20, colorType: 6 }))?.hasAlpha).toBe(true);
     expect(
-      parseImageHeader(png({ width: 10, height: 20, colourType: 3, trns: true }))?.hasAlpha,
+      parseImageHeader(png({ width: 10, height: 20, colorType: 3, trns: true }))?.hasAlpha,
     ).toBe(true);
   });
   it('reads JPEG dimensions from SOF0 and reports no alpha', () => {

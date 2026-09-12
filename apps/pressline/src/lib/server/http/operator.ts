@@ -4,13 +4,8 @@ import { OperatorPrincipal, OperatorSecrets, Unauthorized } from '../operator/au
 import { cancel, createManualOrder, fixAddress, purge, resubmit } from '../operator/actions';
 import { InstanceFacts } from '../operator/instance';
 import { instanceHealth, orderDetail, orderList } from '../operator/read';
-import {
-  catalogueCheck,
-  catalogueSearch,
-  printfileCheck,
-  webhooksRegister,
-} from '../operator/tools';
-import { CatalogueUnavailable } from './api';
+import { catalogCheck, catalogSearch, printfileCheck, webhooksRegister } from '../operator/tools';
+import { CatalogUnavailable } from './api';
 import { SESSION_TTL_MS, signSession } from '../operator/session';
 import { latestReport, runReconciliation } from '../reconciliation/run';
 import { timingSafeEqual } from '../security';
@@ -37,12 +32,12 @@ export const OperatorLive = HttpApiBuilder.group(PresslineApi, 'operator', (hand
     .handle('reconcile', ({ urlParams }) =>
       runReconciliation('operator', { dryRun: urlParams.dryRun === 'true' }),
     )
-    .handle('catalogueSearch', ({ urlParams }) =>
-      catalogueSearch(urlParams.q).pipe(
-        Effect.mapError((e) => new CatalogueUnavailable({ message: e.message })),
+    .handle('catalogSearch', ({ urlParams }) =>
+      catalogSearch(urlParams.q).pipe(
+        Effect.mapError((e) => new CatalogUnavailable({ message: e.message })),
       ),
     )
-    .handle('catalogueCheck', () => catalogueCheck)
+    .handle('catalogCheck', () => catalogCheck)
     .handle('createOrder', ({ payload }) => createManualOrder(payload))
     .handle('purgeOrders', ({ payload }) => purge(payload))
     .handle('resubmitOrder', ({ path }) => resubmit(path.id))

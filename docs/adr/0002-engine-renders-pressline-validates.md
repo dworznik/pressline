@@ -4,7 +4,7 @@ status: accepted
 
 # The Engine renders printfiles; Pressline only validates
 
-Pressline must run on both Cloudflare Workers and Vercel, so any pixel work in core would have to be WASM and fit inside Worker CPU/memory limits; a full-size DTG printfile is ~100 MB of raw RGBA, which makes in-core resampling a production risk and would also make Pressline the owner of colour-management and quality complaints. We therefore decided that the Engine produces the finished Printfile for a Printfile Spec that Pressline supplies, and Pressline validates it by inspecting headers only (format, dimensions, colour type, size), returning precise errors. A separate optional helper package (`@pressline/render`) gives Engines a reference implementation of fit/pad/resample so they need not reinvent it; it never runs on Pressline's request path.
+Pressline must run on both Cloudflare Workers and Vercel, so any pixel work in core would have to be WASM and fit inside Worker CPU/memory limits; a full-size DTG printfile is ~100 MB of raw RGBA, which makes in-core resampling a production risk and would also make Pressline the owner of color-management and quality complaints. We therefore decided that the Engine produces the finished Printfile for a Printfile Spec that Pressline supplies, and Pressline validates it by inspecting headers only (format, dimensions, color type, size), returning precise errors. A separate optional helper package (`@pressline/render`) gives Engines a reference implementation of fit/pad/resample so they need not reinvent it; it never runs on Pressline's request path.
 
 ## Considered options
 

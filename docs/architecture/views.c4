@@ -8,7 +8,7 @@ views {
       Who and what stands around Pressline: three people, the Engine, and the
       three external systems Pressline talks to by role.
     '
-    include customer, operator, engineDeveloper, pressline, engine, fulfilmentProvider, psp, mailer
+    include customer, operator, engineDeveloper, pressline, engine, fulfillmentProvider, psp, mailer
     autoLayout TopBottom
   }
 
@@ -27,7 +27,7 @@ views {
       pressline.app.webhooks, pressline.app.reconciliation,
       pressline.ledger, pressline.cli,
       engine, engine.app, engine.fileStore,
-      fulfilmentProvider, psp, mailer
+      fulfillmentProvider, psp, mailer
     autoLayout TopBottom
   }
 
@@ -45,23 +45,23 @@ views {
       pressline.app.webhooks, pressline.app.reconciliation,
       pressline.app.dbService, pressline.app.dbService.*,
       pressline.app.designSourceService, pressline.app.designSourceService.*,
-      pressline.app.fulfilmentService, pressline.app.fulfilmentService.*,
+      pressline.app.fulfillmentService, pressline.app.fulfillmentService.*,
       pressline.app.pspService, pressline.app.pspService.*,
       pressline.app.mailerService, pressline.app.mailerService.*,
-      pressline.ledger, engine.app, fulfilmentProvider, psp, mailer
+      pressline.ledger, engine.app, fulfillmentProvider, psp, mailer
     // The entry points reach the outside only through a service: hide the
     // container view's direct edges so every call goes via an adapter here.
     exclude
       pressline.app.httpApi -> engine.app,
       pressline.app.httpApi -> pressline.ledger,
-      pressline.app.httpApi -> fulfilmentProvider,
+      pressline.app.httpApi -> fulfillmentProvider,
       pressline.app.httpApi -> psp,
       pressline.app.webhooks -> pressline.ledger,
-      pressline.app.webhooks -> fulfilmentProvider,
+      pressline.app.webhooks -> fulfillmentProvider,
       pressline.app.webhooks -> psp,
       pressline.app.webhooks -> mailer,
       pressline.app.reconciliation -> pressline.ledger,
-      pressline.app.reconciliation -> fulfilmentProvider,
+      pressline.app.reconciliation -> fulfillmentProvider,
       pressline.app.reconciliation -> psp,
       pressline.app.reconciliation -> mailer
     autoLayout TopBottom

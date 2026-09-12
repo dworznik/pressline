@@ -121,7 +121,7 @@ export const startCheckout = (req: CheckoutRequest, origin: string) =>
         allowedCountry: quote.country,
         consentText: config.legal.withdrawalNotice,
         successUrl: `${base}/orders/${orderId}/thank-you?t=${token}`,
-        cancelUrl: `${base}/order/${quote.engine}/${quote.designId}?cancelled=1`,
+        cancelUrl: `${base}/order/${quote.engine}/${quote.designId}?canceled=1`,
         expiresAt,
         allowPromotionCodes: config.checkout.allowPromotionCodes,
       })

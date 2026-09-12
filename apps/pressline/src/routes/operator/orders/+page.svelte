@@ -13,7 +13,7 @@
     'in_production',
     'shipped',
     'fulfilled',
-    'cancelled',
+    'canceled',
     'refunded',
     'expired',
   ];

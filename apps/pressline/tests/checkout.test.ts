@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { listOrders, listTransitions } from '$lib/server/orders/orders';
 import type { PublicOrder } from '$lib/server/orders/public';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, type TestApp } from './harness';
 
@@ -18,7 +18,7 @@ const URL_OK = 'https://engine.test/files/heron/front.png';
 
 const boot = () =>
   makeTestApp({
-    config: { catalogue: { offers } },
+    config: { catalog: { offers } },
     catalog,
     engines: {
       engines: {
@@ -85,7 +85,7 @@ describe('POST /api/checkout', () => {
     expect(s!.input.successUrl).toMatch(
       new RegExp(`^http://pressline\\.test/orders/${body.orderId}/thank-you\\?t=`),
     );
-    expect(s!.input.cancelUrl).toBe(`http://pressline.test/order/sample/${design.id}?cancelled=1`);
+    expect(s!.input.cancelUrl).toBe(`http://pressline.test/order/sample/${design.id}?canceled=1`);
     expect(s!.input.expiresAt * 1000 - Date.now()).toBeGreaterThan(59 * 60_000);
 
     const token = new URL(s!.input.successUrl).searchParams.get('t')!;

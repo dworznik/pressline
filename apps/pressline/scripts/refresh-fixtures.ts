@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { FetchHttpClient } from '@effect/platform';
 import { Effect, Layer } from 'effect';
-import { FulfilmentProvider } from '../src/lib/server/services/fulfilment-provider';
+import { FulfillmentProvider } from '../src/lib/server/services/fulfillment-provider';
 import { layerPrintful } from '../src/lib/server/services/printful';
 import { Psp } from '../src/lib/server/services/psp';
 import { layerStripe } from '../src/lib/server/services/stripe';
@@ -45,7 +45,7 @@ const printfulName = (req: Request) => {
 };
 
 const printful = Effect.gen(function* () {
-  const p = yield* FulfilmentProvider;
+  const p = yield* FulfillmentProvider;
   yield* p.getCatalogProduct(71);
   yield* p.getCatalogVariant(4017);
   yield* p.getPlacementPrintAreas(71);
@@ -80,7 +80,7 @@ const stripe = Effect.gen(function* () {
     allowedCountry: 'DE',
     consentText: 'Made to your design; no withdrawal.',
     successUrl: 'https://shop.example/orders/x/thank-you?t=y',
-    cancelUrl: 'https://shop.example/order/sample/x?cancelled=1',
+    cancelUrl: 'https://shop.example/order/sample/x?canceled=1',
     expiresAt: Math.floor(Date.now() / 1000) + 1800,
     allowPromotionCodes: false,
   });

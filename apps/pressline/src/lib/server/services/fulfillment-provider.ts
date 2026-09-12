@@ -2,12 +2,12 @@ import { Context, Schema } from 'effect';
 import type { Effect } from 'effect';
 
 /**
- * Fulfilment Provider (CONTEXT.md): prints and ships. Printful v2 is the only
+ * Fulfillment Provider (CONTEXT.md): prints and ships. Printful v2 is the only
  * shipped implementation (ADR-0007). Shapes here are provider-neutral; the
  * adapter maps Printful's wire format onto them. Method set grows per ticket.
  */
-export class FulfilmentProviderError extends Schema.TaggedError<FulfilmentProviderError>()(
-  'FulfilmentProviderError',
+export class FulfillmentProviderError extends Schema.TaggedError<FulfillmentProviderError>()(
+  'FulfillmentProviderError',
   {
     message: Schema.String,
     retryable: Schema.Boolean,
@@ -97,7 +97,7 @@ export type ProviderOrderStatus =
   | 'inprocess'
   | 'partial'
   | 'fulfilled'
-  /** A status this adapter does not recognise; never acted on. */
+  /** A status this adapter does not recognize; never acted on. */
   | 'unknown';
 
 export interface ProviderOrder {
@@ -186,10 +186,10 @@ export interface WebhookStatus {
   readonly detail?: string;
 }
 
-export interface FulfilmentProviderService {
-  readonly health: () => Effect.Effect<void, FulfilmentProviderError>;
+export interface FulfillmentProviderService {
+  readonly health: () => Effect.Effect<void, FulfillmentProviderError>;
   /** Whether a webhook configuration exists on the provider account, and where it points. */
-  readonly getWebhookStatus: () => Effect.Effect<WebhookStatus, FulfilmentProviderError>;
+  readonly getWebhookStatus: () => Effect.Effect<WebhookStatus, FulfillmentProviderError>;
   /** Verify a raw webhook body against the provider's signature headers. */
   readonly verifyWebhook: (
     rawBody: string,
@@ -201,62 +201,62 @@ export interface FulfilmentProviderService {
   ) => Effect.Effect<ProviderWebhookEvent, ProviderWebhookRejected>;
   readonly listShipments: (
     providerOrderId: string,
-  ) => Effect.Effect<ReadonlyArray<ProviderShipment>, FulfilmentProviderError>;
+  ) => Effect.Effect<ReadonlyArray<ProviderShipment>, FulfillmentProviderError>;
   /** The provider order created for a Pressline Order ID, if any (the idempotency lookup, ADR-0009). */
   readonly findOrderByExternalId: (
     externalId: string,
-  ) => Effect.Effect<ProviderOrder | undefined, FulfilmentProviderError>;
+  ) => Effect.Effect<ProviderOrder | undefined, FulfillmentProviderError>;
   readonly createOrderDraft: (
     draft: ProviderOrderDraft,
-  ) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
-  readonly confirmOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
+  ) => Effect.Effect<ProviderOrder, FulfillmentProviderError>;
+  readonly confirmOrder: (id: string) => Effect.Effect<ProviderOrder, FulfillmentProviderError>;
   /**
    * Cancel a provider order when the provider allows it. Printful v2 deletes
    * drafts, failed and on-hold orders; an order already in production answers
-   * `not_cancellable` and must be handled with the provider directly.
+   * `not_cancelable` and must be handled with the provider directly.
    */
   readonly cancelOrder: (
     id: string,
-  ) => Effect.Effect<'cancelled' | 'not_cancellable', FulfilmentProviderError>;
+  ) => Effect.Effect<'canceled' | 'not_cancelable', FulfillmentProviderError>;
   /** Replace the recipient on a draft (or held) provider order; a non-retryable error when the provider refuses. */
   readonly updateOrderRecipient: (
     id: string,
     recipient: ProviderRecipient,
-  ) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
-  readonly getOrder: (id: string) => Effect.Effect<ProviderOrder, FulfilmentProviderError>;
+  ) => Effect.Effect<ProviderOrder, FulfillmentProviderError>;
+  readonly getOrder: (id: string) => Effect.Effect<ProviderOrder, FulfillmentProviderError>;
   /** Live shipping options for a destination. Empty when the provider cannot ship there. */
   readonly getShippingRates: (
     req: ShippingRateRequest,
-  ) => Effect.Effect<ReadonlyArray<ShippingRate>, FulfilmentProviderError>;
+  ) => Effect.Effect<ReadonlyArray<ShippingRate>, FulfillmentProviderError>;
   readonly getVariantPrices: (
     variantId: number,
     currency: string,
-  ) => Effect.Effect<VariantPrices, FulfilmentProviderError>;
+  ) => Effect.Effect<VariantPrices, FulfillmentProviderError>;
   readonly getCatalogProduct: (
     id: number,
-  ) => Effect.Effect<CatalogProduct, FulfilmentProviderError>;
+  ) => Effect.Effect<CatalogProduct, FulfillmentProviderError>;
   readonly getCatalogVariant: (
     id: number,
-  ) => Effect.Effect<CatalogVariant, FulfilmentProviderError>;
+  ) => Effect.Effect<CatalogVariant, FulfillmentProviderError>;
   /** Per-placement print area and DPI for a product (Printful: mockup-styles). */
   readonly getPlacementPrintAreas: (
     productId: number,
-  ) => Effect.Effect<ReadonlyArray<PlacementPrintArea>, FulfilmentProviderError>;
-  /** The whole provider catalogue (every page); the CLI searches it by name. */
+  ) => Effect.Effect<ReadonlyArray<PlacementPrintArea>, FulfillmentProviderError>;
+  /** The whole provider catalog (every page); the CLI searches it by name. */
   readonly listCatalogProducts: () => Effect.Effect<
     ReadonlyArray<CatalogProduct>,
-    FulfilmentProviderError
+    FulfillmentProviderError
   >;
   readonly listCatalogVariants: (
     productId: number,
-  ) => Effect.Effect<ReadonlyArray<CatalogVariant>, FulfilmentProviderError>;
+  ) => Effect.Effect<ReadonlyArray<CatalogVariant>, FulfillmentProviderError>;
   /**
    * Point the provider's webhooks at `url` for the events Pressline handles.
    * The signing secret is only revealed when a configuration is created.
    */
   readonly registerWebhook: (
     url: string,
-  ) => Effect.Effect<WebhookRegistration, FulfilmentProviderError>;
+  ) => Effect.Effect<WebhookRegistration, FulfillmentProviderError>;
 }
 
 export interface WebhookRegistration {
@@ -268,7 +268,7 @@ export interface WebhookRegistration {
   readonly publicKey?: string;
 }
 
-export class FulfilmentProvider extends Context.Tag('pressline/FulfilmentProvider')<
-  FulfilmentProvider,
-  FulfilmentProviderService
+export class FulfillmentProvider extends Context.Tag('pressline/FulfillmentProvider')<
+  FulfillmentProvider,
+  FulfillmentProviderService
 >() {}

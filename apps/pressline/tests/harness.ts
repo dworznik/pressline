@@ -9,7 +9,7 @@ import { layerSqliteNode } from '$lib/server/db/sqlite-node';
 import { makeWebHandler, type Services } from '$lib/server/http/handler';
 import { InstanceFacts } from '$lib/server/operator/instance';
 import { OperatorSecrets } from '$lib/server/operator/auth';
-import type { ProviderOrder, ProviderShipment } from '$lib/server/services/fulfilment-provider';
+import type { ProviderOrder, ProviderShipment } from '$lib/server/services/fulfillment-provider';
 import type { Email } from '$lib/server/services/mailer';
 import type {
   CheckoutSession,
@@ -21,12 +21,12 @@ import {
   emptyCatalog,
   makeDesignSourceMemory,
   makePspMemory,
-  makeFulfilmentProviderMemory,
+  makeFulfillmentProviderMemory,
   makeMailerMemory,
   type DesignSourceMemoryOptions,
   type MemoryCatalog,
 } from '$lib/server/services/memory';
-import { demoFulfilmentProvider } from '$lib/server/services/demo';
+import { demoFulfillmentProvider } from '$lib/server/services/demo';
 import { makeHostedFetch, type HostedFile } from '$lib/server/e2e/hosted';
 export type { HostedFile };
 
@@ -48,7 +48,7 @@ export const testConfig: typeof PresslineConfigSchema.Encoded = {
 
 export interface TestAppOptions {
   readonly config?: Partial<typeof PresslineConfigSchema.Encoded>;
-  /** Seed for the in-memory fulfilment provider's catalog. */
+  /** Seed for the in-memory fulfillment provider's catalog. */
   readonly catalog?: MemoryCatalog;
   /** Reuse an existing database (from a previous app's `dbPath`) instead of a fresh temp one. */
   readonly dbPath?: string;
@@ -67,13 +67,13 @@ export interface TestApp {
   readonly sentMail: () => Promise<ReadonlyArray<Email>>;
   /** Make the in-memory Mailer fail every send. */
   readonly mailerDown: (down: boolean) => void;
-  /** How many calls reached the (in-memory) fulfilment provider. */
-  readonly fulfilmentProviderCalls: () => Promise<number>;
+  /** How many calls reached the (in-memory) fulfillment provider. */
+  readonly fulfillmentProviderCalls: () => Promise<number>;
   /** How many design/printfile calls reached the (in-memory) Engines. */
   readonly engineCalls: () => Promise<number>;
   /** Bytes the hosted-file stub handed to the app for a URL (what a real transfer would have cost). */
   readonly bytesServed: (url: string) => number;
-  /** Orders the in-memory fulfilment provider holds. */
+  /** Orders the in-memory fulfillment provider holds. */
   readonly providerOrders: () => ReadonlyArray<ProviderOrder>;
   /** Change a provider order's status (simulates Printful moving it). */
   readonly setProviderOrderStatus: (id: string, status: ProviderOrder['status']) => void;
@@ -137,7 +137,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
   const dbPath = options.dbPath ?? join(dir, 'test.db');
   const mailer = await Effect.runPromise(makeMailerMemory);
   const provider = await Effect.runPromise(
-    makeFulfilmentProviderMemory(options.catalog ?? emptyCatalog),
+    makeFulfillmentProviderMemory(options.catalog ?? emptyCatalog),
   );
   const { clock, advance } = makeSettableClock();
   const psp = await Effect.runPromise(makePspMemory());
@@ -167,7 +167,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     }),
     layerDbMigrated(layerSqliteNode(dbPath)),
     designSource.layer,
-    options.config?.demo ? demoFulfilmentProvider(provider.layer) : provider.layer,
+    options.config?.demo ? demoFulfillmentProvider(provider.layer) : provider.layer,
     psp.layer,
     mailer.layer,
     FetchHttpClient.layer.pipe(
@@ -189,7 +189,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     },
     sentMail: () => Effect.runPromise(mailer.sent),
     mailerDown: mailer.setDown,
-    fulfilmentProviderCalls: () => Effect.runPromise(provider.calls),
+    fulfillmentProviderCalls: () => Effect.runPromise(provider.calls),
     engineCalls: () => Effect.runPromise(designSource.calls),
     bytesServed: (url) => served.get(url) ?? 0,
     providerOrders: provider.providerOrders,

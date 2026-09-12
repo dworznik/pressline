@@ -5,7 +5,7 @@ import { rotateStatusToken, transition } from '$lib/server/orders/orders';
 import type { PublicOrder } from '$lib/server/orders/public';
 import type { OrderState } from '$lib/server/orders/state';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, type TestApp } from './harness';
 
@@ -20,7 +20,7 @@ const URL_OK = 'https://engine.test/files/heron/front.png';
 
 const boot = () =>
   makeTestApp({
-    config: { catalogue: { offers } },
+    config: { catalog: { offers } },
     catalog,
     engines: {
       engines: {
@@ -149,7 +149,7 @@ describe('Customer-language display of every state', () => {
     'in_production',
     'shipped',
     'fulfilled',
-    'cancelled',
+    'canceled',
     'refunded',
   ];
   it.each(states)('%s has a label, a detail and a step', (state) => {

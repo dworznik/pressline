@@ -13,7 +13,7 @@ Webhooks are hints; Reconciliation is the truth pass (ADR-0007, ADR-0009). Every
 | `inboundEvents`      | Inbound Events never settled            | reprocessed                                                 | —                                |
 | `emails`             | failed Customer emails                  | sent again                                                  | failed 5 times                   |
 | `engines`            | every Engine's `/health`                | re-enabled when back                                        | still disabled                   |
-| `catalogue`          | the Catalogue cache                     | refreshed from Printful                                     | an Offer that no longer resolves |
+| `catalog`            | the Catalog cache                       | refreshed from Printful                                     | an Offer that no longer resolves |
 
 The report of the last run is on **Operator → Reconciliation**, where you can also run one now.
 

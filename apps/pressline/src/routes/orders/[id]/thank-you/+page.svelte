@@ -15,8 +15,8 @@
       ? 'confirming'
       : order.state === 'expired'
         ? 'expired'
-        : order.state === 'cancelled' || order.state === 'refunded'
-          ? 'cancelled'
+        : order.state === 'canceled' || order.state === 'refunded'
+          ? 'canceled'
           : 'confirmed',
   );
 </script>

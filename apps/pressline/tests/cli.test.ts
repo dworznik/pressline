@@ -5,7 +5,7 @@ import type { DesignResponse } from '@pressline/contract';
 import { Effect, Layer } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
@@ -24,7 +24,7 @@ const URL_OK = 'https://engine.test/files/heron/front.png';
 const URL_SMALL = 'https://engine.test/files/heron/small.jpg';
 const boot = () =>
   makeTestApp({
-    config: { catalogue: { offers }, checkout: { publicUrl: 'https://shop.example' } },
+    config: { catalog: { offers }, checkout: { publicUrl: 'https://shop.example' } },
     catalog,
     engines: {
       engines: {
@@ -119,12 +119,12 @@ describe('pressline CLI', () => {
     expect(ok.out).toContain('✓ printful reachable');
 
     const bad = await run(app, ['doctor'], 'nope');
-    expect(bad.error).toContain('unauthorised');
+    expect(bad.error).toContain('unauthorized');
   });
 
-  it('catalogue search prints Specs, variants and an Offer snippet; check verifies every Offer', async () => {
+  it('catalog search prints Specs, variants and an Offer snippet; check verifies every Offer', async () => {
     app = await boot();
-    const search = await run(app, ['catalogue', 'search', 'staple']);
+    const search = await run(app, ['catalog', 'search', 'staple']);
     expect(search.error).toBeUndefined();
     expect(search.out).toContain('71  Unisex Staple T-Shirt | Bella + Canvas 3001');
     expect(search.out).toContain('front / dtg: 1800×2400px @ 150 dpi, png, alpha allowed');
@@ -134,10 +134,10 @@ describe('pressline CLI', () => {
     );
     expect(search.out).toContain('catalogProductId: 71,');
 
-    const none = await run(app, ['catalogue', 'search', 'hoodie']);
+    const none = await run(app, ['catalog', 'search', 'hoodie']);
     expect(none.out).toBe('No products match "hoodie".');
 
-    const check = await run(app, ['catalogue', 'check']);
+    const check = await run(app, ['catalog', 'check']);
     expect(check.error).toBeUndefined();
     expect(check.lines).toEqual([
       '✓ tee-black-front: 1 variants',
@@ -146,16 +146,16 @@ describe('pressline CLI', () => {
     ]);
   });
 
-  it('catalogue check names the Offer that does not resolve and exits non-zero', async () => {
+  it('catalog check names the Offer that does not resolve and exits non-zero', async () => {
     app = await makeTestApp({
       config: {
-        catalogue: {
+        catalog: {
           offers: [...offers, { ...offers[0]!, slug: 'tee-gone', catalogProductId: 999 }],
         },
       },
       catalog,
     });
-    const check = await run(app, ['catalogue', 'check']);
+    const check = await run(app, ['catalog', 'check']);
     expect(check.lines[2]).toMatch(/^✗ tee-gone: .*999/);
     expect(check.error).toContain('1 of 3 Offers do not resolve');
   });
@@ -224,7 +224,7 @@ describe('pressline CLI', () => {
     const dry = await run(app, ['reconcile', '--dry-run']);
     expect(dry.error).toBeUndefined();
     expect(dry.lines[0]).toMatch(/^Reconciliation \(dry run\) took \d+ ms$/);
-    expect(dry.out).toContain('  catalogue: 2 checked, 0 repaired');
+    expect(dry.out).toContain('  catalog: 2 checked, 0 repaired');
     expect(dry.out).toContain('No alarms.');
     const real = await run(app, ['reconcile']);
     expect(real.lines[0]).toMatch(/^Reconciliation took \d+ ms$/);

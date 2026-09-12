@@ -48,10 +48,10 @@ export const describeState = (state: OrderState): StateDisplay => {
         detail: 'Everything in this order has shipped.',
         step: 'done',
       };
-    case 'cancelled':
+    case 'canceled':
       return {
-        label: 'Cancelled',
-        detail: 'This order was cancelled. Any payment is refunded to the same method.',
+        label: 'Canceled',
+        detail: 'This order was canceled. Any payment is refunded to the same method.',
         step: 'closed',
       };
     case 'refunded':

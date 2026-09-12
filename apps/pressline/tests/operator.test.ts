@@ -2,7 +2,7 @@ import type { DesignResponse } from '@pressline/contract';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { InstanceHealth, OrderDetail, OrderList } from '$lib/server/operator/read';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
@@ -20,7 +20,7 @@ const design: DesignResponse = {
 const URL_OK = 'https://engine.test/files/heron/front.png';
 const boot = () =>
   makeTestApp({
-    config: { catalogue: { offers } },
+    config: { catalog: { offers } },
     catalog,
     engines: {
       engines: {

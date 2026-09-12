@@ -28,8 +28,8 @@ const chunk = (type: string, data: Uint8Array) => {
 export interface PngOptions {
   width: number;
   height: number;
-  /** 0 grey, 2 rgb, 3 palette, 4 grey+alpha, 6 rgba */
-  colourType?: 0 | 2 | 3 | 4 | 6;
+  /** 0 gray, 2 rgb, 3 palette, 4 gray+alpha, 6 rgba */
+  colorType?: 0 | 2 | 3 | 4 | 6;
   /** Add a tRNS chunk (transparency without an alpha channel). */
   trns?: boolean;
   /** Pad with junk so the file has this total size. */
@@ -47,13 +47,13 @@ export const concat = (parts: Uint8Array[]) => {
 };
 
 /** A structurally valid PNG prefix: signature, IHDR, optional tRNS, then padding "IDAT". */
-export const png = ({ width, height, colourType = 6, trns = false, totalBytes }: PngOptions) => {
+export const png = ({ width, height, colorType = 6, trns = false, totalBytes }: PngOptions) => {
   const ihdr = new Uint8Array(13);
   const v = new DataView(ihdr.buffer);
   v.setUint32(0, width);
   v.setUint32(4, height);
   ihdr[8] = 8;
-  ihdr[9] = colourType;
+  ihdr[9] = colorType;
   const parts = [
     new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),

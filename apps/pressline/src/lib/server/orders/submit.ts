@@ -2,10 +2,10 @@ import { Duration, Effect, Option, Schedule } from 'effect';
 import { Config } from '../config/schema';
 import { toDecimalString } from '../money';
 import {
-  FulfilmentProvider,
-  type FulfilmentProviderError,
+  FulfillmentProvider,
+  type FulfillmentProviderError,
   type ProviderOrder,
-} from '../services/fulfilment-provider';
+} from '../services/fulfillment-provider';
 import { attachProviderOrder, findOrder, transition, type Order } from './orders';
 import { toProviderRecipient } from './recipient';
 import type { Cause } from './state';
@@ -80,7 +80,7 @@ const mismatch = (
 };
 
 /**
- * Submit a paid Order to the fulfilment provider (ADR-0009):
+ * Submit a paid Order to the fulfillment provider (ADR-0009):
  * lookup by external id → draft → check → confirm. Safe to run again after
  * any partial failure: an existing draft is reused, an already confirmed
  * provider order is simply recorded. Retryable provider errors are retried
@@ -109,7 +109,7 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
       return yield* fail(order, cause, causeRef, 'no Recipient on the Order');
     }
     const config = yield* Config;
-    const offer = config.catalogue.offers.find((o) => o.slug === order.offer);
+    const offer = config.catalog.offers.find((o) => o.slug === order.offer);
     const catalogVariantId = offer?.variants[order.variant]?.catalogVariantId;
     if (!offer || catalogVariantId === undefined) {
       return yield* fail(
@@ -119,8 +119,8 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
         `Offer "${order.offer}" / variant "${order.variant}" is no longer configured`,
       );
     }
-    const provider = yield* FulfilmentProvider;
-    const retrying = <A>(eff: Effect.Effect<A, FulfilmentProviderError>) =>
+    const provider = yield* FulfillmentProvider;
+    const retrying = <A>(eff: Effect.Effect<A, FulfillmentProviderError>) =>
       eff.pipe(Effect.retry({ schedule: SUBMIT_RETRY, while: (e) => e.retryable }));
 
     // 1. Lookup by external id: the idempotency step.
@@ -179,14 +179,14 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
       providerOrderId: confirmed.id,
     }).pipe(Effect.catchTag('TransitionRefused', () => Effect.void));
     if (config.demo) {
-      // Demo Mode: the provider layer cancelled the draft instead of confirming it; the ledger says so.
-      yield* transition(order.id, 'cancelled', cause, causeRef, {
-        note: 'Demo Mode: provider draft cancelled instead of confirmed; nothing is produced',
+      // Demo Mode: the provider layer canceled the draft instead of confirming it; the ledger says so.
+      yield* transition(order.id, 'canceled', cause, causeRef, {
+        note: 'Demo Mode: provider draft canceled instead of confirmed; nothing is produced',
       }).pipe(Effect.catchTag('TransitionRefused', () => Effect.void));
     }
     return { outcome: 'submitted', providerOrderId: confirmed.id } satisfies SubmitOutcome;
   }).pipe(
-    Effect.catchTag('FulfilmentProviderError', (e) =>
+    Effect.catchTag('FulfillmentProviderError', (e) =>
       Effect.gen(function* () {
         if (e.retryable) {
           yield* Effect.logWarning(

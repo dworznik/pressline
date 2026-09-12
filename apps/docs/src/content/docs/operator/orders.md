@@ -9,21 +9,25 @@ Every Order is a row plus append-only **Transitions**, each with a **Cause** (`s
 
 Mirrored by hand from [`apps/pressline/src/lib/server/orders/state.ts`](https://github.com/dworznik/pressline/blob/main/apps/pressline/src/lib/server/orders/state.ts), which is the source of truth (ADR-0009). Each row is a state and the states it may move to. The [Order flow](/architecture/order-flow/) view walks the happy path; the [Reconciliation](/architecture/reconciliation/) view shows how a missed webhook is caught up.
 
-| State           | May move to                                                                 |
-| --------------- | --------------------------------------------------------------------------- |
-| `checkout_open` | `expired`, `paid`, `cancelled`                                              |
-| `paid`          | `submitted`, `submit_failed`, `cancelled`, `refunded`                       |
-| `submit_failed` | `submitted`, `cancelled`                                                    |
-| `submitted`     | `in_production`, `on_hold`, `shipped`, `fulfilled`, `cancelled`, `refunded` |
-| `on_hold`       | `submitted`, `in_production`, `cancelled`, `refunded`                       |
-| `in_production` | `shipped`, `fulfilled`, `on_hold`, `cancelled`, `refunded`                  |
-| `shipped`       | `fulfilled`, `cancelled`, `refunded`                                        |
-| `expired`       | none                                                                        |
-| `fulfilled`     | `refunded` (a goodwill refund can still be recorded after fulfilment)       |
-| `cancelled`     | `refunded`                                                                  |
-| `refunded`      | none                                                                        |
+| State           | May move to                                                                |
+| --------------- | -------------------------------------------------------------------------- |
+| `checkout_open` | `expired`, `paid`, `canceled`                                              |
+| `paid`          | `submitted`, `submit_failed`, `canceled`, `refunded`                       |
+| `submit_failed` | `submitted`, `canceled`                                                    |
+| `submitted`     | `in_production`, `on_hold`, `shipped`, `fulfilled`, `canceled`, `refunded` |
+| `on_hold`       | `submitted`, `in_production`, `canceled`, `refunded`                       |
+| `in_production` | `shipped`, `fulfilled`, `on_hold`, `canceled`, `refunded`                  |
+| `shipped`       | `fulfilled`, `canceled`, `refunded`                                        |
+| `expired`       | none                                                                       |
+| `fulfilled`     | `refunded` (a goodwill refund can still be recorded after fulfillment)     |
+| `canceled`      | `refunded`                                                                 |
+| `refunded`      | none                                                                       |
 
-`expired`, `fulfilled`, `cancelled` and `refunded` are terminal for fulfilment: nothing more will ship, and `orders purge` may strip personal data.
+`expired`, `fulfilled`, `canceled` and `refunded` are terminal for fulfillment: nothing more will ship, and `orders purge` may strip personal data.
+
+## What the provider reports
+
+Printful's status moves the Order, never the delivery body: `pending` and `inreview` → `submitted`, `onhold` → `on_hold`, `inprocess` → `in_production`, `partial` → `shipped`, `fulfilled` → `fulfilled`, `canceled` → `canceled`. A Printful `failed` is `submit_failed` only while the Order is still `paid`; once confirmed, `failed` (payment not taken, a file rejected late) puts the Order `on_hold` with the reason on the Transition, and Reconciliation raises an alarm until it is sorted out at Printful or canceled. `orders resubmit` on an `on_hold` Order re-confirms it at Printful, which is how a payment is retried. When the provider fails an Order that is already `on_hold`, the ledger keeps the reason as a same-state Transition, written once per reason (ADR-0009).
 
 The **Operator View** (`/operator`, log in with the operator token) is read-only: health, orders, one order's Transitions, Inbound Events and emails, the last Reconciliation report. Actions are the CLI's:
 
@@ -38,4 +42,4 @@ pressline orders purge --older-than 90     # strips personal data from finished 
 pressline reconcile [--dry-run]
 ```
 
-**Reconciliation** runs nightly (and on demand): stale checkouts verified at Stripe, stuck `paid` orders resubmitted, provider status caught up, refunds and disputes recorded, unprocessed webhooks replayed, failed emails retried, Engines re-checked, the Catalogue refreshed. Every repair is a Transition with Cause `reconciliation`; Alarms are emailed to `email.operator` only when there are any. Details: [reconciliation](https://github.com/dworznik/pressline/blob/main/docs/operator/reconciliation.md).
+**Reconciliation** runs nightly (and on demand): stale checkouts verified at Stripe, stuck `paid` orders resubmitted, provider status caught up, refunds and disputes recorded, unprocessed webhooks replayed, failed emails retried, Engines re-checked, the Catalog refreshed. Every repair is a Transition with Cause `reconciliation`; Alarms are emailed to `email.operator` only when there are any. Details: [reconciliation](https://github.com/dworznik/pressline/blob/main/docs/operator/reconciliation.md).

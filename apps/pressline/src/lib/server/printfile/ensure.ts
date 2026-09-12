@@ -1,7 +1,7 @@
 import {
   PrintfileInvalid,
   validatePrintfile,
-  type CatalogueVariant,
+  type OfferVariant,
   type PrintfileReady,
 } from '@pressline/contract';
 import { Clock, Duration, Effect, Option, Schema } from 'effect';
@@ -131,9 +131,7 @@ export const ensurePrintfile = (req: EnsureRequest) =>
       });
     }
     const offer = page.offers.find((o) => o.slug === req.offer);
-    const variant: CatalogueVariant | undefined = offer?.variants.find(
-      (v) => v.key === req.variant,
-    );
+    const variant: OfferVariant | undefined = offer?.variants.find((v) => v.key === req.variant);
     if (!offer || !variant) {
       return yield* new PrintfileUnavailable({
         reason: 'not_eligible',

@@ -1,7 +1,7 @@
 {
   "name": "@pressline/cli",
   "version": "0.1.0",
-  "description": "Operator CLI for a Pressline instance: doctor, catalogue search and check, webhooks register, orders, reconcile, printfile check",
+  "description": "Operator CLI for a Pressline instance: doctor, catalog search and check, webhooks register, orders, reconcile, printfile check",
   "license": "MIT",
   "type": "module",
   "repository": {

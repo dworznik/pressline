@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { findOrder } from '$lib/server/orders/orders';
 import type { PublicOrder } from '$lib/server/orders/public';
 import type { Quote } from '$lib/server/quote/quote';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
-import { makeTestApp, type TestApp } from './harness';
+import { PROVIDER_FAILED_NOTE } from '$lib/server/webhooks/printful';
+import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
 const design: DesignResponse = {
   id: 'design-portrait-1',
@@ -18,7 +19,7 @@ const URL_OK = 'https://engine.test/files/heron/front.png';
 
 const boot = () =>
   makeTestApp({
-    config: { catalogue: { offers } },
+    config: { catalog: { offers } },
     catalog,
     engines: {
       engines: {
@@ -131,6 +132,73 @@ describe('POST /webhooks/printful', () => {
     expect((await stateOf(app, orderId, token)).state).toBe('in_production');
   });
 
+  it('order_failed after confirmation (payment, file) → on_hold with a note for the Operator, never submit_failed', async () => {
+    app = await boot();
+    const { orderId, token, providerOrderId } = await submittedOrder(app);
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const { body } = await app.printfulWebhook({
+      type: 'order_failed',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    });
+    expect(body.outcome).toBe('applied');
+    expect((await stateOf(app, orderId, token)).state).toBe('on_hold');
+    const detail = (
+      await app.json<{ transitions: ReadonlyArray<{ to: string; note?: string | null }> }>(
+        `/api/operator/orders/${orderId}`,
+        { headers: { authorization: `Bearer ${OPERATOR_TOKEN}` } },
+      )
+    ).body;
+    expect(detail.transitions.at(-1)).toMatchObject({
+      to: 'on_hold',
+      note: expect.stringContaining('provider reports the order failed'),
+    });
+  });
+
+  it('order_failed on an order already on_hold: a same-state Transition carries the reason, once', async () => {
+    app = await boot();
+    const { orderId, token, providerOrderId } = await submittedOrder(app);
+    app.setProviderOrderStatus(providerOrderId, 'onhold');
+    await app.printfulWebhook({
+      type: 'order_put_hold',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId }, reason: 'address' } as never,
+    });
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const first = await app.printfulWebhook({
+      type: 'order_failed',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    });
+    expect(first.body.outcome).toBe('applied:noted');
+    expect((await stateOf(app, orderId, token)).state).toBe('on_hold');
+    const read = async () =>
+      (
+        await app.json<{
+          transitions: ReadonlyArray<{ from: string | null; to: string; note?: string }>;
+          inboundEvents: ReadonlyArray<{ eventType: string }>;
+        }>(`/api/operator/orders/${orderId}`, {
+          headers: { authorization: `Bearer ${OPERATOR_TOKEN}` },
+        })
+      ).body;
+    let detail = await read();
+    expect(detail.transitions.at(-1)).toMatchObject({
+      from: 'on_hold',
+      to: 'on_hold',
+      note: PROVIDER_FAILED_NOTE,
+    });
+    expect(detail.inboundEvents.at(-1)).toMatchObject({ eventType: 'order_failed' });
+    // The same reason again adds nothing.
+    const again = await app.printfulWebhook({
+      type: 'order_failed',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    });
+    expect(again.body.outcome).toBe('applied:already');
+    detail = await read();
+    expect(detail.transitions.filter((t) => t.to === 'on_hold')).toHaveLength(2);
+  });
+
   it('shipment_sent → shipped with tracking number, carrier and URL', async () => {
     app = await boot();
     const { orderId, token, providerOrderId } = await submittedOrder(app);
@@ -161,7 +229,7 @@ describe('POST /webhooks/printful', () => {
     });
   });
 
-  it('shipped → fulfilled when the provider reports fulfilled; cancelled on order_canceled', async () => {
+  it('shipped → fulfilled when the provider reports fulfilled; canceled on order_canceled', async () => {
     app = await boot();
     const { orderId, token, providerOrderId } = await submittedOrder(app);
     app.setProviderOrderStatus(providerOrderId, 'fulfilled');
@@ -186,7 +254,7 @@ describe('POST /webhooks/printful', () => {
       occurred_at: new Date().toISOString(),
       data: { order: { id: second.providerOrderId, external_id: second.orderId } },
     });
-    expect((await stateOf(app, second.orderId, second.token)).state).toBe('cancelled');
+    expect((await stateOf(app, second.orderId, second.token)).state).toBe('canceled');
   });
 
   it('acknowledges a duplicate delivery and refuses an out-of-order one', async () => {
@@ -200,7 +268,7 @@ describe('POST /webhooks/printful', () => {
     };
     expect((await app.printfulWebhook(ev)).body.outcome).toMatch(/^applied/);
     expect((await app.printfulWebhook(ev)).body.outcome).toMatch(/^duplicate:applied/); // Printful's retry
-    // A stale "in process" arriving after fulfilment (different occurred_at) is refused: fulfilled is terminal.
+    // A stale "in process" arriving after fulfillment (different occurred_at) is refused: fulfilled is terminal.
     app.setProviderOrderStatus(providerOrderId, 'inprocess');
     const stale = await app.printfulWebhook({
       ...ev,

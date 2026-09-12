@@ -1,7 +1,7 @@
 /**
  * A small PNG writer: 8-bit RGB or RGBA, filter 0, zlib via CompressionStream
  * (available on Node 18+, Workers and browsers). Writes sRGB + gAMA so the
- * file declares its colour space, and pHYs for the Spec's DPI.
+ * file declares its color space, and pHYs for the Spec's DPI.
  */
 const SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -54,7 +54,7 @@ export const encodePng = async (img: PngImage): Promise<Uint8Array> => {
   v.setUint32(0, width);
   v.setUint32(4, height);
   ihdr[8] = 8; // bit depth
-  ihdr[9] = channels === 4 ? 6 : 2; // colour type: RGBA or RGB
+  ihdr[9] = channels === 4 ? 6 : 2; // color type: RGBA or RGB
   const stride = width * channels;
   const raw = new Uint8Array((stride + 1) * height);
   for (let y = 0; y < height; y++) {
@@ -66,7 +66,7 @@ export const encodePng = async (img: PngImage): Promise<Uint8Array> => {
   const pv = new DataView(phys.buffer);
   pv.setUint32(0, ppm);
   pv.setUint32(4, ppm);
-  phys[8] = 1; // unit: metre
+  phys[8] = 1; // unit: meter
   const gama = new Uint8Array(4);
   new DataView(gama.buffer).setUint32(0, 45455);
   const parts = [

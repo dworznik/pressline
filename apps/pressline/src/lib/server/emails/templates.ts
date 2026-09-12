@@ -5,7 +5,7 @@ import type { Email } from '../services/mailer';
 /**
  * Customer emails (ticket #12): plain server-rendered HTML with a text
  * twin. No template engine: the two emails are short, and every value is
- * escaped here. Branding is the Operator's name and colours from config.
+ * escaped here. Branding is the Operator's name and colors from config.
  */
 export interface EmailContext {
   readonly shopName: string;
@@ -49,7 +49,7 @@ const shell = (title: string, body: string, ctx: EmailContext) => `<!doctype htm
 
 const ref = (order: Order) => orderReference(order.id);
 
-/** The one call to action, in the Operator's colours. */
+/** The one call to action, in the Operator's colors. */
 const button = (ctx: EmailContext) =>
   `display: inline-block; padding: 0.6rem 1.2rem; border-radius: 6px; background: ${esc(ctx.accent)}; color: ${esc(ctx.accentText)}; text-decoration: none;`;
 

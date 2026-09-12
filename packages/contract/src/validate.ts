@@ -43,12 +43,12 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 export const parseImageHeader = (bytes: Uint8Array): ImageHeader | undefined => {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.length >= 33 && PNG_SIGNATURE.every((b, i) => bytes[i] === b)) {
-    // IHDR is always first: length(4) 'IHDR'(4) width(4) height(4) depth(1) colour type(1)
+    // IHDR is always first: length(4) 'IHDR'(4) width(4) height(4) depth(1) color type(1)
     const width = view.getUint32(16);
     const height = view.getUint32(20);
-    const colourType = bytes[25]!;
-    let hasAlpha = colourType === 4 || colourType === 6;
-    // A palette or greyscale/RGB image can still carry transparency in a tRNS chunk.
+    const colorType = bytes[25]!;
+    let hasAlpha = colorType === 4 || colorType === 6;
+    // A palette or grayscale/RGB image can still carry transparency in a tRNS chunk.
     let offset = 8;
     while (!hasAlpha && offset + 8 <= bytes.length) {
       const length = view.getUint32(offset);

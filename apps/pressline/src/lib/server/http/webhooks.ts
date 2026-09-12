@@ -1,6 +1,6 @@
 import { HttpApiBuilder, HttpServerRequest } from '@effect/platform';
 import { Effect } from 'effect';
-import { ProviderWebhookRejected } from '../services/fulfilment-provider';
+import { ProviderWebhookRejected } from '../services/fulfillment-provider';
 import { WebhookRejected } from '../services/psp';
 import { handlePrintfulWebhook } from '../webhooks/printful';
 import { handleStripeWebhook } from '../webhooks/stripe';

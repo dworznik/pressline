@@ -86,7 +86,7 @@ export const render = async (
     );
   }
   if (spec.alpha === 'forbidden' && background === 'transparent') {
-    throw new RenderRefused('alpha', 'this Spec forbids transparency; give a background colour');
+    throw new RenderRefused('alpha', 'this Spec forbids transparency; give a background color');
   }
   // The Spec alone can be over budget; the source's header can push it over too. Both are known before any pixel is decoded.
   const specBudget = fitsBudget(spec, backend, options);

@@ -3,11 +3,11 @@ import type { HttpClientError } from '@effect/platform';
 
 import { Duration, Effect, Layer, Schema } from 'effect';
 import {
-  FulfilmentProvider,
-  FulfilmentProviderError,
+  FulfillmentProvider,
+  FulfillmentProviderError,
   type CatalogProduct,
   type CatalogVariant,
-  type FulfilmentProviderService,
+  type FulfillmentProviderService,
   type PlacementPrintArea,
   type ProviderOrder,
   type ProviderOrderStatus,
@@ -17,13 +17,13 @@ import {
   ProviderWebhookRejected,
   type ShippingRate,
   type VariantPrices,
-} from './fulfilment-provider';
+} from './fulfillment-provider';
 import { DecimalString, toMinorUnits } from '../money';
 
 /**
  * Printful API v2 adapter (ADR-0007). The only place Printful's wire shapes
  * appear. Decoding is lenient (only the fields we use are required) so a
- * beta-time field shuffle degrades to a FulfilmentProviderError, not a crash.
+ * beta-time field shuffle degrades to a FulfillmentProviderError, not a crash.
  */
 export interface PrintfulOptions {
   readonly token: string;
@@ -345,11 +345,11 @@ const ErrorWire = Schema.Struct({
   error: Schema.optional(Schema.Struct({ message: Schema.optional(Schema.String) })),
 });
 
-const toFulfilmentProviderError = (
-  e: HttpClientError.HttpClientError | FulfilmentProviderError,
-): FulfilmentProviderError => {
-  if (e instanceof FulfilmentProviderError) return e;
-  return new FulfilmentProviderError({ message: `Printful: ${e.message}`, retryable: true });
+const toFulfillmentProviderError = (
+  e: HttpClientError.HttpClientError | FulfillmentProviderError,
+): FulfillmentProviderError => {
+  if (e instanceof FulfillmentProviderError) return e;
+  return new FulfillmentProviderError({ message: `Printful: ${e.message}`, retryable: true });
 };
 
 const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
@@ -363,7 +363,7 @@ const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
     Effect.flatMap((body) => {
       const detail = body.result ?? body.error?.message ?? res.status.toString();
       const retryable = res.status === 429 || res.status >= 500;
-      return new FulfilmentProviderError({
+      return new FulfillmentProviderError({
         message: `Printful ${res.status}: ${detail}`,
         retryable,
         status: res.status,
@@ -387,7 +387,7 @@ export const makePrintful = (options: PrintfulOptions) =>
             ? HttpClientResponse.schemaBodyJson(schema)(res).pipe(
                 Effect.mapError(
                   (e) =>
-                    new FulfilmentProviderError({
+                    new FulfillmentProviderError({
                       message: `Printful ${path}: ${e.message}`,
                       retryable: false,
                     }),
@@ -395,13 +395,13 @@ export const makePrintful = (options: PrintfulOptions) =>
               )
             : failStatus(res),
         ),
-        Effect.mapError(toFulfilmentProviderError),
+        Effect.mapError(toFulfillmentProviderError),
         Effect.scoped,
         // Bounds the request and the body decode together; a stall is retryable.
         Effect.timeoutFail({
           duration: timeout,
           onTimeout: () =>
-            new FulfilmentProviderError({
+            new FulfillmentProviderError({
               message: `Printful ${path}: no response within ${Duration.format(timeout)}`,
               retryable: true,
             }),
@@ -413,7 +413,7 @@ export const makePrintful = (options: PrintfulOptions) =>
         HttpClientRequest.bodyJson(body),
         Effect.mapError(
           (e) =>
-            new FulfilmentProviderError({
+            new FulfillmentProviderError({
               message: `Printful ${path}: could not encode request body (${e.reason._tag})`,
               retryable: false,
             }),
@@ -424,7 +424,7 @@ export const makePrintful = (options: PrintfulOptions) =>
             ? HttpClientResponse.schemaBodyJson(schema)(res).pipe(
                 Effect.mapError(
                   (e) =>
-                    new FulfilmentProviderError({
+                    new FulfillmentProviderError({
                       message: `Printful ${path}: ${e.message}`,
                       retryable: false,
                     }),
@@ -432,12 +432,12 @@ export const makePrintful = (options: PrintfulOptions) =>
               )
             : failStatus(res),
         ),
-        Effect.mapError(toFulfilmentProviderError),
+        Effect.mapError(toFulfillmentProviderError),
         Effect.scoped,
         Effect.timeoutFail({
           duration: timeout,
           onTimeout: () =>
-            new FulfilmentProviderError({
+            new FulfillmentProviderError({
               message: `Printful ${path}: no response within ${Duration.format(timeout)}`,
               retryable: true,
             }),
@@ -449,7 +449,7 @@ export const makePrintful = (options: PrintfulOptions) =>
         HttpClientRequest.bodyJson(body),
         Effect.mapError(
           (e) =>
-            new FulfilmentProviderError({
+            new FulfillmentProviderError({
               message: `Printful ${path}: could not encode request body (${e.reason._tag})`,
               retryable: false,
             }),
@@ -460,7 +460,7 @@ export const makePrintful = (options: PrintfulOptions) =>
             ? HttpClientResponse.schemaBodyJson(schema)(res).pipe(
                 Effect.mapError(
                   (e) =>
-                    new FulfilmentProviderError({
+                    new FulfillmentProviderError({
                       message: `Printful ${path}: ${e.message}`,
                       retryable: false,
                     }),
@@ -468,12 +468,12 @@ export const makePrintful = (options: PrintfulOptions) =>
               )
             : failStatus(res),
         ),
-        Effect.mapError(toFulfilmentProviderError),
+        Effect.mapError(toFulfillmentProviderError),
         Effect.scoped,
         Effect.timeoutFail({
           duration: timeout,
           onTimeout: () =>
-            new FulfilmentProviderError({
+            new FulfillmentProviderError({
               message: `Printful ${path}: no response within ${Duration.format(timeout)}`,
               retryable: true,
             }),
@@ -500,7 +500,7 @@ export const makePrintful = (options: PrintfulOptions) =>
         } satisfies ProviderWebhookEvent;
       });
 
-    const service: FulfilmentProviderService = {
+    const service: FulfillmentProviderService = {
       health: () => get('/v2/catalog-products?limit=1', Schema.Unknown).pipe(Effect.asVoid),
 
       getWebhookStatus: () =>
@@ -634,13 +634,13 @@ export const makePrintful = (options: PrintfulOptions) =>
           client.execute,
           Effect.flatMap((res) =>
             res.status >= 200 && res.status < 300
-              ? Effect.succeed('cancelled' as const)
+              ? Effect.succeed('canceled' as const)
               : // Printful refuses to delete an order it has started on (409); that is an answer, not a failure.
                 res.status === 409
-                ? Effect.succeed('not_cancellable' as const)
+                ? Effect.succeed('not_cancelable' as const)
                 : failStatus(res),
           ),
-          Effect.mapError(toFulfilmentProviderError),
+          Effect.mapError(toFulfillmentProviderError),
           Effect.scoped,
         ),
 
@@ -819,4 +819,4 @@ export const makePrintful = (options: PrintfulOptions) =>
   });
 
 export const layerPrintful = (options: PrintfulOptions) =>
-  Layer.effect(FulfilmentProvider, makePrintful(options));
+  Layer.effect(FulfillmentProvider, makePrintful(options));

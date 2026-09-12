@@ -1,18 +1,18 @@
 # Pressline
 
-A self-hostable bridge from an image-generating app to physical print-on-demand products. Pressline owns ordering, payment and fulfilment; the design itself comes from outside.
+A self-hostable bridge from an image-generating app to physical print-on-demand products. Pressline owns ordering, payment and fulfillment; the design itself comes from outside.
 
 ## Language
 
 ### Parties
 
 **Operator**:
-The single person or organisation that deploys a Pressline instance and owns the Printful and Stripe accounts it uses. One instance, one Operator.
+The single person or organization that deploys a Pressline instance and owns the Printful and Stripe accounts it uses. One instance, one Operator.
 _Avoid_: Tenant, merchant, admin, shop owner
 
 **Engine**:
 An external application, controlled by the Operator, that produces designs and implements the DesignSource contract. An instance may be wired to several Engines; all are trusted.
-_Avoid_: Image-generating app, design app, source, provider (reserved for fulfilment)
+_Avoid_: Image-generating app, design app, source, provider (reserved for fulfillment)
 
 **Engine developer**:
 The person who builds and runs an Engine and integrates it against the DesignSource contract. Often the same person as the Operator wearing a different hat: the Operator owns the instance and its accounts, the Engine developer owns the design tool.
@@ -35,11 +35,11 @@ A piece of artwork an Engine has produced, identified by an Engine-scoped, ungue
 _Avoid_: Image, artwork (use for the raw pixels only), generation
 
 **Printfile**:
-The finished, print-ready file for one Design on one Placement: exact pixel dimensions, DPI and transparency as the fulfilment provider requires. Produced by the Engine, validated by Pressline.
+The finished, print-ready file for one Design on one Placement: exact pixel dimensions, DPI and transparency as the fulfillment provider requires. Produced by the Engine, validated by Pressline.
 _Avoid_: Print file, asset, render, output
 
 **Printfile Spec**:
-The requirements a Printfile must satisfy for a given Product and Placement (dimensions, DPI, format, colour, transparency). Pressline derives it from the fulfilment provider and hands it to the Engine. Canonically serialisable, so Pressline and Engine compute the same Spec Hash.
+The requirements a Printfile must satisfy for a given Product and Placement (dimensions, DPI, format, color, transparency). Pressline derives it from the fulfillment provider and hands it to the Engine. Canonically serializable, so Pressline and Engine compute the same Spec Hash.
 _Avoid_: Dims, constraints, requirements
 
 **Spec Hash**:
@@ -57,17 +57,17 @@ Turning a Design into a Printfile that satisfies a Printfile Spec. Done by the E
 Pressline checking a Printfile against its Printfile Spec by inspecting the file, without decoding or altering pixels.
 
 **Printfile URL**:
-The immutable, publicly fetchable address at which the Engine hosts a Printfile. Pressline validates against it and hands the same URL to the fulfilment provider, which may re-fetch it months later.
+The immutable, publicly fetchable address at which the Engine hosts a Printfile. Pressline validates against it and hands the same URL to the fulfillment provider, which may re-fetch it months later.
 _Avoid_: File link, asset URL, download URL
 
-### Catalogue
+### Catalog
 
-**Catalogue**:
-The Operator-curated set of Offers a Pressline instance sells. Owned by Pressline; the Engine never sees fulfilment-provider identifiers.
-_Avoid_: Products (ambiguous with Printful's catalogue), store, inventory
+**Catalog**:
+The Operator-curated set of Offers a Pressline instance sells. Owned by Pressline; the Engine never sees fulfillment-provider identifiers.
+_Avoid_: Products (ambiguous with Printful's catalog), store, inventory
 
 **Offer**:
-One sellable thing in the Catalogue: a product family, a Placement, a print technique and a retail price, referenced by a stable slug (e.g. `tee-black-front`). A Customer buys one Offer bearing one Design.
+One sellable thing in the Catalog: a product family, a Placement, a print technique and a retail price, referenced by a stable slug (e.g. `tee-black-front`). A Customer buys one Offer bearing one Design.
 _Avoid_: Product, SKU, listing, item
 
 **Placement**:
@@ -75,12 +75,12 @@ The printable area on a product where a Design goes (front, back, sleeve, full-w
 _Avoid_: Print area, position, side
 
 **Eligibility**:
-Which Offers a given Design may be sold on: the Catalogue intersected with the Offer slugs the Engine lists for that Design (default: all).
+Which Offers a given Design may be sold on: the Catalog intersected with the Offer slugs the Engine lists for that Design (default: all).
 _Avoid_: Supported products, compatibility
 
-### Fulfilment and payment
+### Fulfillment and payment
 
-**Fulfilment Provider**:
+**Fulfillment Provider**:
 The service that prints and ships an Order. Printful is the only shipped implementation.
 _Avoid_: Provider (alone), vendor, supplier, printer
 
@@ -91,7 +91,7 @@ _Avoid_: Payment gateway, processor
 ### Orders
 
 **Order**:
-One Customer's purchase of one Offer bearing one Design, tracked from quote to delivery. Pressline's own record; the fulfilment provider's order and the PSP's session are references on it, not the thing itself.
+One Customer's purchase of one Offer bearing one Design, tracked from quote to delivery. Pressline's own record; the fulfillment provider's order and the PSP's session are references on it, not the thing itself.
 _Avoid_: Purchase, transaction, checkout, Printful order (say "provider order")
 
 **Transition**:
@@ -103,11 +103,11 @@ What made a Transition happen: a PSP webhook, a provider webhook, an operator ac
 _Avoid_: Source, trigger, reason
 
 **Inbound Event**:
-A webhook delivery received from the PSP or the fulfilment provider, recorded by the provider's event ID so it is processed at most once.
+A webhook delivery received from the PSP or the fulfillment provider, recorded by the provider's event ID so it is processed at most once.
 _Avoid_: Webhook (the mechanism), notification, message
 
 **Reconciliation**:
-The scheduled comparison of every open Order against the PSP and the fulfilment provider, producing Transitions for anything the webhooks missed.
+The scheduled comparison of every open Order against the PSP and the fulfillment provider, producing Transitions for anything the webhooks missed.
 _Avoid_: Sync, cron, repair
 
 ### Selling
@@ -117,11 +117,11 @@ The Pressline-hosted customer-facing pages: choose an Offer and its variant, cho
 _Avoid_: Widget, checkout page, shop, frontend (ambiguous with the Engine's UI)
 
 **Quote**:
-The locked price for one Order: Offer retail price plus the fulfilment provider's shipping rate for the chosen country, with tax added by the PSP. What the Customer pays; never adjusted after payment.
+The locked price for one Order: Offer retail price plus the fulfillment provider's shipping rate for the chosen country, with tax added by the PSP. What the Customer pays; never adjusted after payment.
 _Avoid_: Estimate (that word is reserved for the Operator's cost), price calculation
 
 **Provider Cost Estimate**:
-What the fulfilment provider quoted the Operator for product and shipping at Quote time. May differ from the final provider invoice; the Operator absorbs the difference.
+What the fulfillment provider quoted the Operator for product and shipping at Quote time. May differ from the final provider invoice; the Operator absorbs the difference.
 _Avoid_: Cost, wholesale price, margin basis
 
 **Sellable**:
@@ -129,7 +129,7 @@ Whether the Engine currently permits a Design to be ordered. Declared by the Eng
 _Avoid_: Published, active, enabled
 
 **Recipient**:
-The name, postal address, email and phone the Customer entered at the PSP, copied onto the Order and sent to the fulfilment provider. The only personal data Pressline stores.
+The name, postal address, email and phone the Customer entered at the PSP, copied onto the Order and sent to the fulfillment provider. The only personal data Pressline stores.
 _Avoid_: Shipping details, address, contact
 
 **Mailer**:
@@ -149,7 +149,7 @@ A Reconciliation finding that needs the Operator: an Order stuck in `paid`, `sub
 _Avoid_: Alert, notification, warning
 
 **Demo Mode**:
-An instance configured so no money and no goods move: the PSP runs in test mode and the fulfilment provider creates drafts but never confirms them. Everything else is real. The demo instance runs this way.
+An instance configured so no money and no goods move: the PSP runs in test mode and the fulfillment provider creates drafts but never confirms them. Everything else is real. The demo instance runs this way.
 _Avoid_: Sandbox, test mode (the PSP's own term), staging
 
 **Withdrawal Notice**:

@@ -1,17 +1,17 @@
 import { DesignNotFound } from '@pressline/contract';
 import { Effect } from 'effect';
-import type { CatalogueError } from '../catalogue/catalogue';
+import type { CatalogError } from '../catalog/catalog';
 import type { DesignSourceError, UnknownEngine } from '../services/design-source';
-import type { FulfilmentProviderError } from '../services/fulfilment-provider';
-import { CatalogueUnavailable, EngineError } from './api';
+import type { FulfillmentProviderError } from '../services/fulfillment-provider';
+import { CatalogUnavailable, EngineError } from './api';
 
-type DomainFailure = UnknownEngine | DesignSourceError | CatalogueError | FulfilmentProviderError;
+type DomainFailure = UnknownEngine | DesignSourceError | CatalogError | FulfillmentProviderError;
 
 const DOMAIN_TAGS: ReadonlySet<string> = new Set([
   'UnknownEngine',
   'DesignSourceError',
-  'CatalogueError',
-  'FulfilmentProviderError',
+  'CatalogError',
+  'FulfillmentProviderError',
 ]);
 
 const isDomainFailure = <E extends { readonly _tag: string }>(
@@ -25,19 +25,19 @@ const mapDomainFailure = (designId: string, e: DomainFailure) => {
       return new DesignNotFound({ designId });
     case 'DesignSourceError':
       return new EngineError({ engine: e.engine, message: e.message });
-    case 'CatalogueError':
-      return new CatalogueUnavailable({
+    case 'CatalogError':
+      return new CatalogUnavailable({
         message: `Offer "${e.offer}": ${e.message}`,
         offer: e.offer,
       });
-    case 'FulfilmentProviderError':
-      return new CatalogueUnavailable({ message: e.message });
+    case 'FulfillmentProviderError':
+      return new CatalogUnavailable({ message: e.message });
   }
 };
 
 /**
  * One mapping from domain failures to API errors, shared by every endpoint
- * that reaches an Engine or the Catalogue. Errors that already are API errors
+ * that reaches an Engine or the Catalog. Errors that already are API errors
  * (DesignNotFound, EngineUnavailable, PrintfileUnavailable) pass through.
  */
 export const toApiError = <A, E extends { readonly _tag: string }, R>(
@@ -45,13 +45,13 @@ export const toApiError = <A, E extends { readonly _tag: string }, R>(
   effect: Effect.Effect<A, E | DomainFailure, R>,
 ): Effect.Effect<
   A,
-  Exclude<E, DomainFailure> | DesignNotFound | EngineError | CatalogueUnavailable,
+  Exclude<E, DomainFailure> | DesignNotFound | EngineError | CatalogUnavailable,
   R
 > =>
   effect.pipe(
     Effect.catchIf(isDomainFailure<E>, (e) => Effect.fail(mapDomainFailure(designId, e))),
   ) as Effect.Effect<
     A,
-    Exclude<E, DomainFailure> | DesignNotFound | EngineError | CatalogueUnavailable,
+    Exclude<E, DomainFailure> | DesignNotFound | EngineError | CatalogUnavailable,
     R
   >;

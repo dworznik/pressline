@@ -16,7 +16,7 @@ export default defineConfig({
     starlight({
       title: 'Pressline',
       description:
-        'A self-hostable bridge from image-generating apps to print-on-demand: Printful fulfils, Stripe Checkout pays.',
+        'A self-hostable bridge from image-generating apps to print-on-demand: Printful fulfills, Stripe Checkout pays.',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/dworznik/pressline' }],
       editLink: { baseUrl: 'https://github.com/dworznik/pressline/edit/main/apps/docs/' },
       sidebar: [
@@ -46,7 +46,7 @@ export default defineConfig({
         {
           label: 'Print preparation',
           items: [
-            { label: 'Files, DPI, colour, transparency', slug: 'print/files' },
+            { label: 'Files, DPI, color, transparency', slug: 'print/files' },
             { label: 'Print areas and product limits', slug: 'print/products' },
           ],
         },
@@ -74,7 +74,7 @@ export default defineConfig({
           items: [
             { label: 'Effect primer', slug: 'contributing/effect' },
             { label: 'Test seams and fixtures', slug: 'contributing/testing' },
-            { label: 'Licences', slug: 'contributing/licences' },
+            { label: 'Licenses', slug: 'contributing/licenses' },
           ],
         },
       ],

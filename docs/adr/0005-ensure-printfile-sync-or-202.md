@@ -14,5 +14,5 @@ Pressline runs on Workers and Vercel where a blocking outbound call must finish 
 
 ## Consequences
 
-- The Printfile Spec must be canonically serialisable so both sides derive the same Spec Hash.
+- The Printfile Spec must be canonically serializable so both sides derive the same Spec Hash.
 - Checkout entry must tolerate a "rendering, retry" state.

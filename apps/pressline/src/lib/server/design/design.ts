@@ -1,6 +1,6 @@
-import type { CatalogueOffer, DesignResponse } from '@pressline/contract';
+import type { CatalogOffer, DesignResponse } from '@pressline/contract';
 import { Effect, Schema } from 'effect';
-import { resolveCatalogue } from '../catalogue/catalogue';
+import { resolveCatalog } from '../catalog/catalog';
 import { STRIPE_TEST_CARD } from '../config/demo';
 import { Config } from '../config/schema';
 import { Db } from '../db/db';
@@ -14,15 +14,15 @@ export class EngineUnavailable extends Schema.TaggedError<EngineUnavailable>()(
 ) {}
 
 /**
- * Eligibility (CONTEXT.md): Catalogue ∩ the Offer slugs the Engine lists for
+ * Eligibility (CONTEXT.md): Catalog ∩ the Offer slugs the Engine lists for
  * the Design (absent = all) ∩ Offers whose aspect range accepts the Design ∩
  * Offers the Engine has not rejected for this Design (ticket #6).
  */
 export const eligibleOffers = (
   design: DesignResponse,
-  offers: ReadonlyArray<CatalogueOffer>,
+  offers: ReadonlyArray<CatalogOffer>,
   rejected: ReadonlySet<string> = new Set(),
-): ReadonlyArray<CatalogueOffer> => {
+): ReadonlyArray<CatalogOffer> => {
   const ratio = design.aspect.w / design.aspect.h;
   const listed = design.offers ? new Set(design.offers) : undefined;
   return offers.filter(
@@ -53,14 +53,14 @@ export const loadDesign = (engine: string, designId: string) =>
     }
     const source = yield* DesignSource;
     const design = yield* source.getDesign(engine, designId);
-    const catalogue = yield* resolveCatalogue;
+    const catalog = yield* resolveCatalog;
     const rejected = yield* rejectedOffers(engine, designId);
     const config = yield* Config;
     return {
       engine,
       design,
-      offers: design.sellable ? eligibleOffers(design, catalogue.offers, rejected) : [],
-      currency: catalogue.currency,
+      offers: design.sellable ? eligibleOffers(design, catalog.offers, rejected) : [],
+      currency: catalog.currency,
       storefront: {
         name: config.name,
         ...(config.branding.logoUrl ? { logoUrl: config.branding.logoUrl } : {}),

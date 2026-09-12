@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { conformance } from '@pressline/conformance';
-import type { CatalogueResponse } from '@pressline/contract';
+import type { CatalogResponse } from '@pressline/contract';
 import { nodeBackend } from '@pressline/render/node';
 import { afterEach, describe, expect, it } from 'vitest';
 import { finalize, loadDesign } from '$lib/server/designs';
@@ -24,7 +24,7 @@ const spec = (width: number, height: number) => ({
   placement: 'front',
   technique: 'dtg',
 });
-const catalogue: CatalogueResponse = {
+const catalog: CatalogResponse = {
   protocolVersion: '1',
   currency: 'EUR',
   offers: [
@@ -68,7 +68,7 @@ const boot = () => {
     {
       store: fsStore(dir, 'https://engine.test'),
       backend: nodeBackend,
-      catalogue: async () => catalogue,
+      catalog: async () => catalog,
     },
   );
   return runtime;

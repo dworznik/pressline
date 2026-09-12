@@ -13,7 +13,7 @@ The manifest is the repo-root `wrangler.toml` (the button and `wrangler deploy` 
 
 After the first deploy:
 
-1. Edit `pressline.config.ts` (Catalogue, Engines, branding), commit, redeploy.
+1. Edit `pressline.config.ts` (Catalog, Engines, branding), commit, redeploy.
 2. `npx @pressline/cli --url https://<your worker> --token $OPERATOR_TOKEN webhooks register`, then `wrangler secret put STRIPE_WEBHOOK_SECRET`, `PRINTFUL_WEBHOOK_SECRET`, `PRINTFUL_WEBHOOK_PUBLIC_KEY` with what it printed.
 3. `npx @pressline/cli … doctor`.
 

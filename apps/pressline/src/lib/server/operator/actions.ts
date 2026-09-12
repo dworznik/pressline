@@ -15,7 +15,7 @@ import {
 import { submitOrder, type SubmitOutcome } from '../orders/submit';
 import { ensurePrintfile } from '../printfile/ensure';
 import { makeQuote } from '../quote/quote';
-import { FulfilmentProvider } from '../services/fulfilment-provider';
+import { FulfillmentProvider } from '../services/fulfillment-provider';
 import { Psp } from '../services/psp';
 import { toProviderRecipient } from '../orders/recipient';
 import { OrderDetail, orderDetail } from './read';
@@ -143,7 +143,7 @@ export const resubmit = (orderId: string, note = 'resubmitted by the Operator') 
     yield* mustBe(order, ['submit_failed', 'on_hold'], 'resubmit');
     if (order.state === 'on_hold') {
       if (!order.providerOrderId) return yield* refuse('on hold without a provider order id');
-      const provider = yield* FulfilmentProvider;
+      const provider = yield* FulfillmentProvider;
       const confirmed = yield* provider
         .confirmOrder(order.providerOrderId)
         .pipe(Effect.mapError((e) => refuse(`provider refused: ${e.message}`)));
@@ -178,7 +178,7 @@ export const fixAddress = (orderId: string, recipient: Recipient) =>
     // Provider first: if it refuses, the ledger is untouched. The new Recipient
     // then rides on the resubmit's Transition, so the change has a Cause.
     if (order.providerOrderId) {
-      const provider = yield* FulfilmentProvider;
+      const provider = yield* FulfillmentProvider;
       yield* provider
         .updateOrderRecipient(order.providerOrderId, toProviderRecipient(recipient))
         .pipe(Effect.mapError((e) => refuse(`provider refused the new address: ${e.message}`)));
@@ -206,7 +206,7 @@ export const cancel = (orderId: string) =>
     );
     let atProvider = 'no provider order';
     if (order.state === 'checkout_open' && order.psp.sessionId) {
-      // A Customer mid-payment must not be able to pay for a cancelled Order.
+      // A Customer mid-payment must not be able to pay for a canceled Order.
       const psp = yield* Psp;
       yield* psp
         .expireCheckoutSession(order.psp.sessionId)
@@ -218,16 +218,16 @@ export const cancel = (orderId: string) =>
       atProvider = 'checkout session expired at the PSP';
     }
     if (order.providerOrderId) {
-      const provider = yield* FulfilmentProvider;
+      const provider = yield* FulfillmentProvider;
       const result = yield* provider
         .cancelOrder(order.providerOrderId)
         .pipe(Effect.mapError((e) => refuse(`provider: ${e.message}`)));
       atProvider =
-        result === 'cancelled'
-          ? `provider order ${order.providerOrderId} cancelled`
-          : `provider order ${order.providerOrderId} is already in production and could not be cancelled through the API; contact the provider`;
+        result === 'canceled'
+          ? `provider order ${order.providerOrderId} canceled`
+          : `provider order ${order.providerOrderId} is already in production and could not be canceled through the API; contact the provider`;
     }
-    yield* transition(orderId, 'cancelled', CAUSE, order.providerOrderId, {
+    yield* transition(orderId, 'canceled', CAUSE, order.providerOrderId, {
       note: atProvider,
     }).pipe(Effect.mapError(movedMeanwhile));
     return {

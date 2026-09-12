@@ -23,7 +23,7 @@ export const migrations: ReadonlyArray<Migration> = [
   },
   {
     version: 2,
-    name: 'catalogue_cache',
+    name: 'catalogue_cache', // renamed by migration 12; an applied migration is never edited
     statements: [
       `CREATE TABLE catalogue_cache (
          key TEXT PRIMARY KEY,
@@ -223,6 +223,18 @@ export const migrations: ReadonlyArray<Migration> = [
     statements: [
       // PII purge (ticket #17): when the Recipient and consent were stripped from a terminal Order.
       `ALTER TABLE orders ADD COLUMN purged_at INTEGER`,
+    ],
+  },
+  {
+    version: 12,
+    name: 'american_english',
+    statements: [
+      // The codebase moved to American English; stored names follow.
+      `ALTER TABLE catalogue_cache RENAME TO catalog_cache`,
+      `UPDATE orders SET state = 'canceled' WHERE state = 'cancelled'`,
+      `UPDATE order_transitions SET from_state = 'canceled' WHERE from_state = 'cancelled'`,
+      `UPDATE order_transitions SET to_state = 'canceled' WHERE to_state = 'cancelled'`,
+      `UPDATE reconciliation_runs SET report = replace(report, '"catalogue', '"catalog')`,
     ],
   },
 ];

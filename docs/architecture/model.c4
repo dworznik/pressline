@@ -8,7 +8,7 @@ model {
   }
   operator = person 'Operator' {
     description '
-      The single person or organisation that deploys a Pressline instance and
+      The single person or organization that deploys a Pressline instance and
       owns the Printful and Stripe accounts it uses. One instance, one Operator.
     '
     link https://github.com/dworznik/pressline/blob/main/docs/adr/0001-single-operator.md 'ADR-0001'
@@ -23,7 +23,7 @@ model {
   pressline = system 'Pressline' {
     description '
       Self-hostable bridge from an Engine to print-on-demand products. Owns
-      ordering, payment and fulfilment; never renders or stores image bytes.
+      ordering, payment and fulfillment; never renders or stores image bytes.
       Self-hosted: one deployable on Cloudflare Workers or Vercel.
     '
     link https://github.com/dworznik/pressline/blob/main/docs/adr/0001-single-operator.md 'ADR-0001'
@@ -62,7 +62,7 @@ model {
       httpApi = component 'HttpApi' {
         technology 'Effect @effect/platform HttpApi'
         description '
-          /api/*: health, catalogue, designs, printfiles, quotes, orders,
+          /api/*: health, catalog, designs, printfiles, quotes, orders,
           operator, cron. Schema-first; the generated OpenAPI is what the CLI
           and Engine developers use. A validated Printfile exists before any
           Checkout session is created.
@@ -83,7 +83,7 @@ model {
         technology 'Effect; Cloudflare Cron Trigger, Vercel Cron or the CLI'
         description '
           Scheduled comparison of every open Order against the PSP and the
-          Fulfilment Provider, producing Transitions for anything the webhooks
+          Fulfillment Provider, producing Transitions for anything the webhooks
           missed, and Alarms for the Operator.
         '
         link https://github.com/dworznik/pressline/blob/main/docs/adr/0009-order-state-machine.md 'ADR-0009'
@@ -94,7 +94,7 @@ model {
       technology 'SQLite: D1, libSQL or a file'
       description '
         Orders, Transitions, Inbound Events, Quotes, Printfile validations,
-        emails, Reconciliation runs, the Catalogue cache. A platform binding
+        emails, Reconciliation runs, the Catalog cache. A platform binding
         beside the app. Every write is a single statement or a batch.
       '
       link https://github.com/dworznik/pressline/blob/main/docs/adr/0008-sqlite-dialect-d1-and-libsql.md 'ADR-0008'
@@ -103,7 +103,7 @@ model {
     cli = container '@pressline/cli' {
       technology 'Node, Effect CLI'
       description '
-        Operator CLI: doctor, catalogue search and check, webhooks register,
+        Operator CLI: doctor, catalog search and check, webhooks register,
         orders, reconcile, printfile check. Talks to the operator API with the
         operator token.
       '
@@ -153,7 +153,7 @@ model {
     }
   }
 
-  fulfilmentProvider = external 'Fulfilment Provider' {
+  fulfillmentProvider = external 'Fulfillment Provider' {
     description '
       Prints and ships Orders. Printful is the only shipped implementation.
     '
@@ -180,7 +180,7 @@ model {
   operator -> pressline.app.operatorView 'inspects Orders, Transitions, Reconciliation results'
   operator -> pressline.cli 'runs doctor, webhooks register, reconcile'
   engineDeveloper -> engine.app 'builds and runs; implements DesignSource with @pressline/contract and @pressline/render'
-  engineDeveloper -> pressline.app.httpApi 'integrates against the Catalogue and Printfile Spec endpoints; checks with @pressline/conformance'
+  engineDeveloper -> pressline.app.httpApi 'integrates against the Catalog and Printfile Spec endpoints; checks with @pressline/conformance'
 
   // Entry points that go through the HttpApi in-process
   pressline.app.storefront -> pressline.app.httpApi 'Design, Eligibility, Quote and Orders over /api/*'
@@ -191,15 +191,15 @@ model {
   pressline.app.httpApi -> engine.app 'requests the Printfile for a Spec Hash and validates it by headers, never pixels (ADR-0002, ADR-0004)'
 
   // Pressline -> providers
-  pressline.app.httpApi -> fulfilmentProvider 'shipping rates, Provider Cost Estimate, submits the provider order with the Printfile URL'
+  pressline.app.httpApi -> fulfillmentProvider 'shipping rates, Provider Cost Estimate, submits the provider order with the Printfile URL'
   pressline.app.httpApi -> psp 'creates the Checkout session after Printfile validation (ADR-0004)'
   psp -> pressline.app.webhooks 'session completed, refund, dispute'
-  fulfilmentProvider -> pressline.app.webhooks 'provider order status'
+  fulfillmentProvider -> pressline.app.webhooks 'provider order status'
   pressline.app.webhooks -> psp 're-fetches the session before any Transition (ADR-0007)'
-  pressline.app.webhooks -> fulfilmentProvider 're-fetches the provider order; submits it once paid'
+  pressline.app.webhooks -> fulfillmentProvider 're-fetches the provider order; submits it once paid'
   pressline.app.webhooks -> mailer 'order confirmation, shipped with tracking'
   pressline.app.reconciliation -> psp 're-fetches every open Order'
-  pressline.app.reconciliation -> fulfilmentProvider 're-fetches every open Order'
+  pressline.app.reconciliation -> fulfillmentProvider 're-fetches every open Order'
   pressline.app.reconciliation -> mailer 'Alarms to the Operator'
 
   // Ledger
@@ -212,5 +212,5 @@ model {
 
   // Engine internals and the provider fetch
   engine.app -> engine.fileStore 'writes Printfiles and Previews'
-  fulfilmentProvider -> engine.fileStore 'fetches the Printfile URL, possibly months later (ADR-0003)'
+  fulfillmentProvider -> engine.fileStore 'fetches the Printfile URL, possibly months later (ADR-0003)'
 }

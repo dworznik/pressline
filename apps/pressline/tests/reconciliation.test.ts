@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { OrderDetail } from '$lib/server/operator/read';
 import type { Quote } from '$lib/server/quote/quote';
 import type { ReconciliationReport } from '$lib/server/reconciliation/run';
-import { catalog, offers } from './fixtures/catalogue';
+import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
 import { CRON_SECRET, makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
@@ -19,7 +19,7 @@ const design: DesignResponse = {
 const URL_OK = 'https://engine.test/files/heron/front.png';
 const boot = (orders?: { createRejects?: string; createRetryableFailures?: number }) =>
   makeTestApp({
-    config: { catalogue: { offers }, email: { operator: 'ops@shop.example' } },
+    config: { catalog: { offers }, email: { operator: 'ops@shop.example' } },
     catalog: orders ? { ...catalog, orders } : catalog,
     engines: {
       engines: {
@@ -107,7 +107,7 @@ describe('Reconciliation entry points', () => {
       'inboundEvents',
       'emails',
       'engines',
-      'catalogue',
+      'catalog',
     ]);
     expect(report.alarms).toEqual([]);
     const latest = await app.json<ReconciliationReport>('/api/operator/reconciliation/latest', {
@@ -222,6 +222,45 @@ describe('Reconciliation repairs', () => {
     );
   });
 
+  it('a confirmed order the provider then fails (payment, file) goes on_hold and alarms', async () => {
+    app = await boot();
+    const { orderId, session } = await checkout(app);
+    await pay(app, session);
+    const providerOrderId = (await detail(app, orderId)).order.providerOrderId!;
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const report = await reconcile(app);
+    expect((await detail(app, orderId)).order.state).toBe('on_hold');
+    expect(report.alarms).toEqual([
+      {
+        kind: 'on_hold',
+        orderId,
+        message: expect.stringContaining('provider reports the order failed'),
+      },
+    ]);
+  });
+
+  it('an order already on_hold that the provider then fails stays put, and the alarm carries the reason', async () => {
+    app = await boot();
+    const { orderId, session } = await checkout(app);
+    await pay(app, session);
+    const providerOrderId = (await detail(app, orderId)).order.providerOrderId!;
+    app.setProviderOrderStatus(providerOrderId, 'onhold');
+    await reconcile(app);
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const report = await reconcile(app);
+    expect(report.steps.providerCatchUp?.repaired).toBe(0);
+    const after = await detail(app, orderId);
+    expect(after.order.state).toBe('on_hold');
+    expect(after.transitions.filter((t) => t.to === 'on_hold')).toHaveLength(1);
+    expect(report.alarms).toEqual([
+      {
+        kind: 'on_hold',
+        orderId,
+        message: expect.stringContaining('provider reports the order failed'),
+      },
+    ]);
+  });
+
   it('records refunds and disputes the Operator handled at the PSP', async () => {
     // The provider is unreachable, so every Order below stays paid (not yet stale).
     app = await boot({ createRetryableFailures: 100 });
@@ -304,15 +343,15 @@ describe('Reconciliation repairs', () => {
     expect((await detail(app, orderId)).emails.map((e) => e.kind)).toEqual(['confirmation']);
   });
 
-  it('reports Engines that are down and a Catalogue that no longer resolves', async () => {
+  it('reports Engines that are down and a Catalog that no longer resolves', async () => {
     const gone = { ...offers[0]!, slug: 'tee-gone', catalogProductId: 999 };
     app = await makeTestApp({
-      config: { catalogue: { offers: [...offers, gone] }, email: { operator: 'ops@shop.example' } },
+      config: { catalog: { offers: [...offers, gone] }, email: { operator: 'ops@shop.example' } },
       catalog,
       engines: { engines: { sample: { designs: {}, down: true } } },
     });
     const report = await reconcile(app);
-    expect(report.alarms.map((a) => a.kind)).toEqual(['engine_disabled', 'catalogue']);
+    expect(report.alarms.map((a) => a.kind)).toEqual(['engine_disabled', 'catalog']);
     expect(report.alarms[1]?.message).toContain('tee-gone');
     expect(report.steps.engines).toMatchObject({ checked: 1 });
     const mail = await app.sentMail();

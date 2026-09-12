@@ -1,4 +1,4 @@
-import type { CatalogueResponse } from '@pressline/contract';
+import type { CatalogResponse } from '@pressline/contract';
 import { nodeBackend } from '@pressline/render/node';
 import type { Backend } from '@pressline/render';
 import { makeEngineHandler } from './api.js';
@@ -12,7 +12,7 @@ import { r2Store } from './store/r2.js';
  * in env, nothing secret in code):
  *
  * - `ENGINE_SECRET`   the shared secret Pressline sends (required to serve the protocol)
- * - `PRESSLINE_URL`   the Pressline instance whose catalogue we pre-render for (optional)
+ * - `PRESSLINE_URL`   the Pressline instance whose catalog we pre-render for (optional)
  * - `ENGINE_SLUG`     how Pressline names this Engine (default `sample`)
  * - `PUBLIC_URL`      this app's public origin (for the fs store's file URLs)
  * - `FILES`           `fs` (default), `r2` (Cloudflare, with the FILES_BUCKET binding and FILES_PUBLIC_URL) or `blob` (Vercel, BLOB_READ_WRITE_TOKEN)
@@ -100,12 +100,12 @@ const backendFrom = async (
   return nodeBackend;
 };
 
-/** Pressline's public catalogue, when an instance is configured. */
-const catalogueFrom = (settings: Settings) => async (): Promise<CatalogueResponse | undefined> => {
+/** Pressline's public catalog, when an instance is configured. */
+const catalogFrom = (settings: Settings) => async (): Promise<CatalogResponse | undefined> => {
   if (!settings.presslineUrl) return undefined;
   const res = await fetch(`${settings.presslineUrl}/api/offers`);
   if (!res.ok) throw new Error(`Pressline answered ${res.status}`);
-  return (await res.json()) as CatalogueResponse;
+  return (await res.json()) as CatalogResponse;
 };
 
 export interface Runtime {
@@ -125,7 +125,7 @@ export const getRuntime = (platform: App.Platform | undefined): Promise<Runtime>
     const engine: Engine = {
       store: storeFrom(env, platform, settings.publicUrl),
       backend: await backendFrom(env, platform, settings.publicUrl),
-      catalogue: catalogueFrom(settings),
+      catalog: catalogFrom(settings),
     };
     return { settings, engine, handler: makeEngineHandler(engine, settings.secret) };
   })();

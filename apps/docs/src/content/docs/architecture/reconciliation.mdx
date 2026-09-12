@@ -9,4 +9,4 @@ import ArchitectureView from '../../../components/ArchitectureView.astro';
 
 <ArchitectureView view="reconciliation" title="Reconciliation, one pass" height={640} sequence />
 
-The other half of "webhooks are hints": what happens when one never arrives. On schedule, Reconciliation reads every open Order, re-fetches it from the PSP and the Fulfilment Provider, writes a Transition for anything the webhooks missed with Cause `reconciliation`, and emails Alarms to the Operator only when there are any.
+The other half of "webhooks are hints": what happens when one never arrives. On schedule, Reconciliation reads every open Order, re-fetches it from the PSP and the Fulfillment Provider, writes a Transition for anything the webhooks missed with Cause `reconciliation`, and emails Alarms to the Operator only when there are any.

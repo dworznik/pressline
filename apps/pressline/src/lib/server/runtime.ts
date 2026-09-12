@@ -102,7 +102,10 @@ const buildWebHandler = async (platform: App.Platform | undefined): Promise<WebH
     ? demoFulfilmentProvider(RealProvider)
     : RealProvider;
   const PspLive = env.STRIPE_SECRET_KEY
-    ? layerStripe({ secretKey: env.STRIPE_SECRET_KEY })
+    ? layerStripe({
+        secretKey: env.STRIPE_SECRET_KEY,
+        ...(env.STRIPE_WEBHOOK_SECRET ? { webhookSecret: env.STRIPE_WEBHOOK_SECRET } : {}),
+      })
     : layerPspMemory;
   // Resend when a key and a sender are configured; `console` for local runs; else `none`.
   if (

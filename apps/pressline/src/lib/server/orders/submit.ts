@@ -18,6 +18,15 @@ export const SUBMIT_RETRY = Schedule.exponential(Duration.millis(100)).pipe(
 /** Wall-clock cap on one submit attempt: a webhook handler must answer well within the Inbound Event claim TTL. */
 export const SUBMIT_BUDGET = Duration.seconds(20);
 
+/** Pauses between re-reads of a draft whose costs are still calculating; about 7 s in all, inside the budget. */
+export const COSTS_POLL: ReadonlyArray<Duration.Duration> = [
+  Duration.millis(300),
+  Duration.millis(700),
+  Duration.seconds(1),
+  Duration.seconds(2),
+  Duration.seconds(3),
+];
+
 export type SubmitOutcome =
   | { readonly outcome: 'submitted'; readonly providerOrderId: string }
   | { readonly outcome: 'already_submitted'; readonly providerOrderId: string }
@@ -159,6 +168,23 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
         }),
       );
       yield* attachProviderOrder(order.id, draft.id);
+    }
+
+    // 2b. Wait for the provider's costs: Printful prices a draft asynchronously and refuses
+    // to confirm until it is done, usually within a few seconds.
+    for (const wait of COSTS_POLL) {
+      if (draft.costs && !draft.costs.calculating) break;
+      yield* Effect.sleep(wait);
+      draft = yield* retrying(provider.getOrder(draft.id));
+    }
+    if (!draft.costs || draft.costs.calculating) {
+      yield* Effect.logWarning(
+        `order ${order.id}: provider draft ${draft.id} still calculating costs, will retry later`,
+      );
+      return {
+        outcome: 'retry_later',
+        reason: `provider draft ${draft.id} still calculating costs`,
+      } satisfies SubmitOutcome;
     }
 
     // 3. Check.

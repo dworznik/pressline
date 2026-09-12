@@ -362,7 +362,9 @@ const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
     ),
     Effect.flatMap((body) => {
       const detail = body.result ?? body.error?.message ?? res.status.toString();
-      const retryable = res.status === 429 || res.status >= 500;
+      // Printful refuses to confirm a draft while its cost calculation runs (a 400); that clears in seconds.
+      const retryable =
+        res.status === 429 || res.status >= 500 || /cost calculations still running/i.test(detail);
       return new FulfillmentProviderError({
         message: `Printful ${res.status}: ${detail}`,
         retryable,

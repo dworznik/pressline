@@ -10,14 +10,17 @@
   );
   // Stripe redirects here as soon as payment succeeds; the webhook that marks
   // the Order paid may land a moment later, so "still confirming" is normal.
+  // In Demo Mode every paid Order is canceled at once; say so instead of promising a shipment.
   const tone = $derived(
     order.state === 'checkout_open'
       ? 'confirming'
       : order.state === 'expired'
         ? 'expired'
-        : order.state === 'canceled' || order.state === 'refunded'
-          ? 'canceled'
-          : 'confirmed',
+        : order.demo
+          ? 'demo'
+          : order.state === 'canceled' || order.state === 'refunded'
+            ? 'canceled'
+            : 'confirmed',
   );
 </script>
 

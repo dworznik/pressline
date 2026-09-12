@@ -15,5 +15,9 @@ export const load: PageServerLoad = async ({ params, url, fetch }) => {
   if (res.status === 404) error(404, copy.status.notFound);
   if (!res.ok) error(502, copy.status.tryAgain);
   const order = decode(await res.json());
-  return { order, display: describeState(order.state), reference: orderReference(order.id) };
+  return {
+    order,
+    display: describeState(order.state, order.demo),
+    reference: orderReference(order.id),
+  };
 };

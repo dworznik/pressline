@@ -60,6 +60,10 @@ export const copy = {
       title: 'This order was canceled',
       text: 'If you were charged, the refund will arrive on the same payment method.',
     },
+    demo: {
+      title: 'Thank you!',
+      text: 'This is a demo shop. Your test payment went through, the print order was created at the print provider and canceled straight away, so nothing is produced, shipped or charged. A real order takes exactly this path, minus the cancellation.',
+    },
     reference: 'Order reference:',
     track: 'Track this order',
   },

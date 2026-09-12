@@ -11,7 +11,16 @@ export interface StateDisplay {
   readonly step: 'placed' | 'paid' | 'making' | 'shipped' | 'done' | 'closed';
 }
 
-export const describeState = (state: OrderState): StateDisplay => {
+export const describeState = (state: OrderState, demo = false): StateDisplay => {
+  // Demo Mode: a paid Order is created at the print provider and canceled straight away.
+  if (demo && state !== 'checkout_open' && state !== 'expired') {
+    return {
+      label: 'Demo order',
+      detail:
+        'This is a demo shop: the print order was created at the print provider and canceled straight away. Nothing is produced, shipped or charged.',
+      step: 'closed',
+    };
+  }
   switch (state) {
     case 'checkout_open':
       return {

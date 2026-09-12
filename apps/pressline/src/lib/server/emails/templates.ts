@@ -21,6 +21,8 @@ export interface EmailContext {
   readonly previewUrl?: string;
   readonly statusUrl: string;
   readonly currency: string;
+  /** Demo Mode: say the order is canceled at once rather than promise production. */
+  readonly demo: boolean;
 }
 
 const esc = (s: string) =>
@@ -61,13 +63,18 @@ export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
     `${ctx.offerName} · ${ctx.variantLabel}`,
     `Total paid: ${money(total, ctx.currency)} (incl. shipping${order.amountTax ? ' and tax' : ''})`,
   ];
-  const contact = ctx.contactEmail
-    ? `Need to change the size or address? Write to ${ctx.contactEmail} straight away; production starts soon.`
-    : 'Need to change the size or address? Reply to this email straight away; production starts soon.';
+  const contact = ctx.demo
+    ? 'This is a demo shop: the print order was created at the print provider and canceled straight away. Nothing is produced, shipped or charged.'
+    : ctx.contactEmail
+      ? `Need to change the size or address? Write to ${ctx.contactEmail} straight away; production starts soon.`
+      : 'Need to change the size or address? Reply to this email straight away; production starts soon.';
+  const intro = ctx.demo
+    ? `We have your demo order ${ref(order)}; here is what a real order would look like.`
+    : `We have your order ${ref(order)} and are sending it to print.`;
   const html = shell(
     `Thanks, ${esc(order.recipient?.name?.split(/\s+/)[0] ?? 'there')}!`,
     `
-    <p>We have your order <strong>${esc(ref(order))}</strong> and are sending it to print.</p>
+    <p>${esc(intro)}</p>
     ${ctx.previewUrl ? `<p><img src="${esc(ctx.previewUrl)}" alt="Your design" style="max-width: 100%; border-radius: 6px;"></p>` : ''}
     <p>${esc(lines[0]!)}<br>${esc(lines[1]!)}</p>
     <p><a href="${esc(ctx.statusUrl)}" style="${button(ctx)}">Track this order</a></p>
@@ -76,7 +83,7 @@ export const confirmationEmail = (order: Order, ctx: EmailContext): Email => {
     ctx,
   );
   const text = [
-    `Thanks! We have your order ${ref(order)} and are sending it to print.`,
+    `Thanks! ${intro}`,
     ...lines,
     `Track this order: ${ctx.statusUrl}`,
     contact,

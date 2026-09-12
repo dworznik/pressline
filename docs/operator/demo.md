@@ -4,6 +4,7 @@
 
 - **Stripe** must hold a test-mode key; the instance refuses to boot with `sk_live_…` while `demo` is on. The design page tells Customers to pay with `4242 4242 4242 4242`.
 - **Printful** drafts are created for real and then canceled where the confirmation would be. The Order reaches `submitted` and immediately `canceled`, with a Transition note saying why.
+- **Customers are told.** The thank-you page, the order-status page and the confirmation email say the order was created at the print provider and canceled straight away, and that nothing is produced, shipped or charged; they never promise a shipment.
 - **Operator View** is readable without logging in, so visitors can watch an Order move; every action (CLI, `POST /api/operator/*`) still needs the operator token.
 
 The demo instance runs this way.

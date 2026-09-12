@@ -8,7 +8,7 @@ Everything that is not a secret is in `apps/pressline/pressline.config.ts`, vali
 ```ts
 export default defineConfig({
   name: 'My Shop',
-  currency: 'EUR',
+  currency: 'USD',
   engines: [{ slug: 'sample', baseUrl: 'https://engine.example' }],
   catalog: {
     offers: [

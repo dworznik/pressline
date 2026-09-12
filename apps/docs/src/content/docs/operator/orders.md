@@ -25,6 +25,10 @@ Mirrored by hand from [`apps/pressline/src/lib/server/orders/state.ts`](https://
 
 `expired`, `fulfilled`, `canceled` and `refunded` are terminal for fulfillment: nothing more will ship, and `orders purge` may strip personal data.
 
+## What the provider reports
+
+Printful's status moves the Order, never the delivery body: `pending` and `inreview` → `submitted`, `onhold` → `on_hold`, `inprocess` → `in_production`, `partial` → `shipped`, `fulfilled` → `fulfilled`, `canceled` → `canceled`. A Printful `failed` is `submit_failed` only while the Order is still `paid`; once confirmed, `failed` (payment not taken, a file rejected late) puts the Order `on_hold` with the reason on the Transition, and Reconciliation raises an alarm until it is sorted out at Printful or canceled. `orders resubmit` on an `on_hold` Order re-confirms it at Printful, which is how a payment is retried. When the provider fails an Order that is already `on_hold`, the ledger keeps the reason as a same-state Transition, written once per reason (ADR-0009).
+
 The **Operator View** (`/operator`, log in with the operator token) is read-only: health, orders, one order's Transitions, Inbound Events and emails, the last Reconciliation report. Actions are the CLI's:
 
 ```sh

@@ -5,8 +5,17 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let t = $state<Template>({ ...data.template });
+  // The background is either transparent (the garment shows through) or a colour the picker holds.
+  let transparent = $state(data.template.background === 'none');
+  let backgroundColour = $state(
+    data.template.background === 'none' ? '#0a7d5a' : data.template.background,
+  );
+  const template = $derived<Template>({
+    ...t,
+    background: transparent ? 'none' : backgroundColour,
+  });
   // Shown as an image, never injected as markup: the browser treats it as a picture only.
-  const preview = $derived(`data:image/svg+xml,${encodeURIComponent(toSvg(t))}`);
+  const preview = $derived(`data:image/svg+xml,${encodeURIComponent(toSvg(template))}`);
 </script>
 
 <svelte:head><title>Sample Engine · Design something</title></svelte:head>
@@ -19,7 +28,15 @@
     <h1>Design something</h1>
     <label>Text <input name="text" bind:value={t.text} maxlength="40" /></label>
     <label>Text colour <input type="color" name="textColor" bind:value={t.textColor} /></label>
-    <label>Background <input type="color" name="background" bind:value={t.background} /></label>
+    <label class="check">
+      <input type="checkbox" name="transparent" bind:checked={transparent} /> No background (the garment
+      shows through)
+    </label>
+    {#if !transparent}
+      <label
+        >Background <input type="color" name="background" bind:value={backgroundColour} /></label
+      >
+    {/if}
     <label>
       Shape
       <select name="shape" bind:value={t.shape}>
@@ -60,6 +77,12 @@
     width: 100%;
     height: auto;
     border-radius: 0.5rem;
+    /* A light backdrop, so a transparent design still shows its edges. */
+    background: #f1f1f1;
+  }
+  .check input {
+    width: auto;
+    margin-right: 0.4rem;
   }
   label {
     display: block;

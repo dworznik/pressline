@@ -21,7 +21,7 @@ export const actions: Actions = {
     const template = sanitise({
       text: String(form.get('text') ?? ''),
       textColor: String(form.get('textColor') ?? ''),
-      background: String(form.get('background') ?? ''),
+      background: form.get('transparent') ? 'none' : String(form.get('background') ?? ''),
       shape: String(form.get('shape') ?? '') as never,
       shapeColor: String(form.get('shapeColor') ?? ''),
     });

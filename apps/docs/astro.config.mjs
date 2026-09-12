@@ -15,6 +15,12 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Pressline',
+      logo: { src: './src/assets/mark.svg' },
+      favicon: '/favicon.svg',
+      head: [
+        { tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
+      ],
       description:
         'A self-hostable bridge from image-generating apps to print-on-demand: Printful fulfills, Stripe Checkout pays.',
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/dworznik/pressline' }],

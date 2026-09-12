@@ -11,7 +11,15 @@
 </script>
 
 <svelte:head>
-  {#if b.logoUrl}<link rel="icon" href={b.logoUrl} />{/if}
+  <!-- The Storefront is the Operator's shop, so their icon wins; Pressline's mark is
+       only the default. The Operator View is ours and always shows the mark. -->
+  {#if storefront && (b.faviconUrl || b.logoUrl)}
+    <link rel="icon" href={b.faviconUrl ?? b.logoUrl} />
+  {:else}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  {/if}
 </svelte:head>
 
 <div

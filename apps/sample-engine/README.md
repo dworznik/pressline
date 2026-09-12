@@ -11,6 +11,7 @@ ENGINE_SECRET=dev-secret PRESSLINE_URL=http://localhost:5173 pnpm dev   # http:/
 - `GET /designs/<id>`, `POST /designs/<id>/printfile`, `GET /health` — the protocol, bearer-protected by `ENGINE_SECRET`.
 - `FileStore`: filesystem (`./data`, served at `/files/*`), R2 (`FILES=r2`) or Vercel Blob (`FILES=blob`). URLs are public and immutable.
 - AI: set `OPENAI_API_KEY` and a prompt box appears; the image goes through the same render path.
+- Text is emitted as outlines from a bundled open-licensed font (`src/lib/fonts/`, SIL OFL 1.1), so the render needs no font on the host; Vercel functions and Workers ship none.
 
 The sample renders synchronously and always answers 200; an Engine whose renders take longer than a request may answer `202 { retryAfterMs }` and finish in the background (ADR-0005) — Pressline polls.
 

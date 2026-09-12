@@ -5,13 +5,13 @@ import { conformance } from '@pressline/conformance';
 import type { CatalogueResponse } from '@pressline/contract';
 import { nodeBackend } from '@pressline/render/node';
 import { afterEach, describe, expect, it } from 'vitest';
-import { finalise, loadDesign } from '$lib/server/designs';
+import { finalize, loadDesign } from '$lib/server/designs';
 import { makeRuntime, type Runtime } from '$lib/server/runtime';
 import { fsStore } from '$lib/server/store/fs';
 
 /**
  * The sample Engine's own tests are the conformance suite run in-process
- * (docs/SPEC.md seam 4), plus the designer's finalise path through the same
+ * (docs/SPEC.md seam 4), plus the designer's finalize path through the same
  * runtime a request would use.
  */
 const spec = (width: number, height: number) => ({
@@ -93,9 +93,9 @@ const engineFetch: typeof fetch = async (input, init) => {
 describe('sample Engine', () => {
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  it('finalises a template design, pre-renders every fitting Offer, and marks the rest ineligible', async () => {
+  it('finalizes a template design, pre-renders every fitting Offer, and marks the rest ineligible', async () => {
     const { engine } = boot();
-    const design = await finalise(engine, { template: { text: 'Hello', background: '#123456' } });
+    const design = await finalize(engine, { template: { text: 'Hello', background: '#123456' } });
     expect(design.id).toMatch(/^[A-Za-z0-9_-]{16}$/);
     expect(design.previewUrl).toBe(`https://engine.test/files/previews/${design.id}.png`);
     // The 3:4 tee is rendered; the 27:11 mug does not fit and is left out of `offers`.
@@ -112,7 +112,7 @@ describe('sample Engine', () => {
 
   it('passes the conformance suite', async () => {
     const { engine } = boot();
-    const design = await finalise(engine, { template: { text: 'Conformant' } });
+    const design = await finalize(engine, { template: { text: 'Conformant' } });
     const report = await conformance({
       baseUrl: 'https://engine.test',
       secret: SECRET,
@@ -159,7 +159,7 @@ describe('the /files route', () => {
     const { engine } = boot();
     process.env['FILES_DIR'] = dir;
     process.env['ENGINE_SECRET'] = SECRET;
-    const design = await finalise(engine, { template: { text: 'Files' } });
+    const design = await finalize(engine, { template: { text: 'Files' } });
     const { GET } = await import('../src/routes/files/[...path]/+server');
     const get = (path: string, headers: Record<string, string> = {}) =>
       GET({

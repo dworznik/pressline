@@ -39,6 +39,8 @@
     width: 100%;
     height: auto;
     border-radius: 0.5rem;
+    /* A light backdrop, so a transparent design still shows its edges. */
+    background: #f1f1f1;
   }
   .meta {
     color: #555;

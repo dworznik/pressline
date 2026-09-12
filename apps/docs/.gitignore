@@ -1,2 +1,4 @@
 .astro/
 public/openapi.json
+# built by scripts/build-architecture.mjs from docs/architecture
+public/architecture/

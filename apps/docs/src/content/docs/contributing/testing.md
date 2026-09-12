@@ -13,3 +13,7 @@ Four seams, highest first (`docs/SPEC.md → Testing Decisions`):
 No module-level tests of the ledger; a test asserts what a caller can observe.
 
 `pnpm verify` runs format, lint, typecheck, ADR check, tests and builds; CI runs the same plus the e2e job and the platform builds. Maintainers re-record fixtures from the live APIs with `pnpm --filter pressline fixtures:refresh` (needs `PRINTFUL_TOKEN` and a test-mode `STRIPE_SECRET_KEY`) and review the diff; the nightly live smoke (`test:live`) is what tells us an API changed shape.
+
+## Architecture model
+
+The C4 views in the [Architecture](/architecture/overview/) section are rendered from `docs/architecture/*.c4`, a [LikeC4](https://likec4.dev) model reviewed like any other code. `pnpm --filter pressline-docs architecture:dev` previews it with hot reload. `pnpm verify` runs `likec4 validate` on it and the model test suite in `apps/docs/tests`, which checks that every workspace is drawn or named, that every ADR link resolves and the load-bearing ADRs are all linked, that every container and component has a technology, and that no title or description spells a domain name. Element names come from `CONTEXT.md`; a box that encodes an ADR links to it.

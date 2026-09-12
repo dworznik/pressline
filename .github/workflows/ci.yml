@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   checks:
-    name: format · lint · typecheck · adr · test · build
+    name: format · lint · typecheck · adr · architecture · test · build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,6 +29,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm check
       - run: pnpm adr:check
+      - run: pnpm architecture:check
       - run: pnpm test
       - run: pnpm build
 

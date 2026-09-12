@@ -8,3 +8,4 @@ coverage
 pnpm-lock.yaml
 CHANGELOG.md
 apps/docs/public/openapi.json
+apps/docs/public/architecture

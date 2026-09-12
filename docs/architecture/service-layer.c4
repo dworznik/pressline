@@ -1,0 +1,122 @@
+// The Effect service layer (ticket #65): five services, one per external
+// dependency, each a Context.Tag with adapters chosen at boot from the config
+// file and the platform environment, memoised per isolate. In-memory, console
+// and none stand-ins are described on their service, not drawn. Config,
+// Engines, InstanceFacts, OperatorSecrets and OperatorPrincipal are plumbing
+// and are not drawn either.
+model {
+  extend pressline.app {
+    dbService = component 'Db' {
+      technology 'Effect service (Context.Tag)'
+      description '
+        SQLite through one of three drivers, picked from the platform: D1 when
+        Cloudflare binds it, libSQL when a Turso URL is set, else a file
+        through better-sqlite3 (Node only). Every write is a single statement
+        or a batch; migrations run at boot.
+      '
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0008-sqlite-dialect-d1-and-libsql.md 'ADR-0008'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0011-effect-throughout.md 'ADR-0011'
+
+      d1 = component 'D1 driver' {
+        technology 'Cloudflare D1 binding'
+      }
+      libsql = component 'libSQL driver' {
+        technology '@libsql/client (Turso)'
+      }
+      sqliteNode = component 'better-sqlite3 driver' {
+        technology 'better-sqlite3, Node bundles only'
+      }
+    }
+
+    designSourceService = component 'DesignSource' {
+      technology 'Effect service (Context.Tag)'
+      description '
+        Obtains a Design, its Preview and a Printfile for a Spec Hash from an
+        Engine. Production is the HTTP client derived from @pressline/contract,
+        one per configured Engine; tests use an in-memory Engine.
+      '
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0002-engine-renders-pressline-validates.md 'ADR-0002'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0003-engine-hosts-printfiles-pull-protocol.md 'ADR-0003'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0011-effect-throughout.md 'ADR-0011'
+
+      http = component 'HTTP client' {
+        technology '@pressline/contract client over @effect/platform HttpClient'
+      }
+    }
+
+    fulfilmentService = component 'FulfilmentProvider' {
+      technology 'Effect service (Context.Tag)'
+      description '
+        Catalogue, shipping rates, Provider Cost Estimate, provider orders and
+        their webhooks. Printful is the shipped adapter; Demo Mode wraps it so
+        drafts are created but never confirmed; tests use an in-memory
+        provider with a recorded catalogue.
+      '
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0007-printful-api-v2.md 'ADR-0007'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0011-effect-throughout.md 'ADR-0011'
+
+      printful = component 'Printful adapter' {
+        technology 'Printful API v2 over HttpClient'
+        link https://github.com/dworznik/pressline/blob/main/docs/adr/0007-printful-api-v2.md 'ADR-0007'
+      }
+      demo = component 'Demo Mode wrapper' {
+        technology 'Layer over the Printful adapter'
+        description 'Confirms nothing: a draft is created, then cancelled, so no goods move.'
+      }
+    }
+
+    pspService = component 'Psp' {
+      technology 'Effect service (Context.Tag)'
+      description '
+        Creates and re-fetches Checkout sessions, verifies webhook signatures,
+        reports refunds and disputes. Stripe Checkout is the shipped adapter;
+        tests use an in-memory PSP.
+      '
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0004-printfile-before-payment.md 'ADR-0004'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0011-effect-throughout.md 'ADR-0011'
+
+      stripe = component 'Stripe Checkout adapter' {
+        technology 'Stripe SDK over fetch'
+      }
+    }
+
+    mailerService = component 'Mailer' {
+      technology 'Effect service (Context.Tag)'
+      description '
+        Sends Customer emails and Operator Alarms. Resend is the shipped
+        adapter; none and console exist for setup and local runs; tests use an
+        in-memory outbox.
+      '
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0011-effect-throughout.md 'ADR-0011'
+      link https://github.com/dworznik/pressline/blob/main/docs/adr/0014-config-in-repo-operator-view-read-only.md 'ADR-0014'
+
+      resend = component 'Resend adapter' {
+        technology 'Resend API over HttpClient'
+      }
+    }
+  }
+
+  // Entry points as callers (Storefront and Operator View call the HttpApi)
+  pressline.app.httpApi -> pressline.app.designSourceService 'fetches the Design; requests and validates the Printfile (ADR-0004)'
+  pressline.app.httpApi -> pressline.app.fulfilmentService 'catalogue, rates, Provider Cost Estimate'
+  pressline.app.httpApi -> pressline.app.pspService 'creates the Checkout session'
+  pressline.app.httpApi -> pressline.app.dbService 'Orders, Transitions, Quotes, reads for the Storefront and Operator View'
+  pressline.app.webhooks -> pressline.app.pspService 'verifies, re-fetches the session'
+  pressline.app.webhooks -> pressline.app.fulfilmentService 'verifies, re-fetches, submits the provider order'
+  pressline.app.webhooks -> pressline.app.mailerService 'confirmation, shipped with tracking'
+  pressline.app.webhooks -> pressline.app.dbService 'Inbound Events, Transitions'
+  pressline.app.reconciliation -> pressline.app.pspService 're-fetches every open Order'
+  pressline.app.reconciliation -> pressline.app.fulfilmentService 're-fetches every open Order'
+  pressline.app.reconciliation -> pressline.app.mailerService 'Alarms'
+  pressline.app.reconciliation -> pressline.app.dbService 'Transitions, Cause reconciliation'
+
+  // Adapters to what they talk to
+  pressline.app.dbService.d1 -> pressline.ledger 'D1 (ADR-0008)'
+  pressline.app.dbService.libsql -> pressline.ledger 'libSQL (ADR-0008)'
+  pressline.app.dbService.sqliteNode -> pressline.ledger 'SQLite file (ADR-0008)'
+  pressline.app.designSourceService.http -> engine.app 'the three DesignSource endpoints (@pressline/contract)'
+  pressline.app.fulfilmentService.printful -> fulfilmentProvider 'Printful API v2 (ADR-0007)'
+  pressline.app.fulfilmentService.demo -> pressline.app.fulfilmentService.printful 'wraps in Demo Mode'
+  pressline.app.pspService.stripe -> psp 'Stripe Checkout'
+  pressline.app.mailerService.resend -> mailer 'Resend'
+}

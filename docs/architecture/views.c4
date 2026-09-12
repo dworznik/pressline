@@ -1,0 +1,69 @@
+// The three static views: landscape, containers, service layer. The two
+// dynamic views live in dynamic-views.c4. Each view is embedded by one page
+// of the docs site's Architecture section.
+views {
+  view landscape {
+    title 'Landscape'
+    description '
+      Who and what stands around Pressline: three people, the Engine, and the
+      three external systems Pressline talks to by role.
+    '
+    include customer, operator, engineDeveloper, pressline, engine, fulfilmentProvider, psp, mailer
+    autoLayout TopBottom
+  }
+
+  view containers of pressline {
+    title 'Containers'
+    description '
+      Inside the one SvelteKit deployable: Storefront, Operator View, HttpApi,
+      Webhook receivers, Reconciliation. Beside it the Ledger and the CLI. The
+      Engine boundary holds any Engine app and its FileStore. Published
+      packages are labels on edges, not boxes.
+    '
+    include
+      customer, operator, engineDeveloper,
+      pressline.app,
+      pressline.app.storefront, pressline.app.operatorView, pressline.app.httpApi,
+      pressline.app.webhooks, pressline.app.reconciliation,
+      pressline.ledger, pressline.cli,
+      engine, engine.app, engine.fileStore,
+      fulfilmentProvider, psp, mailer
+    autoLayout TopBottom
+  }
+
+  view service-layer of pressline.app {
+    title 'Effect service layer'
+    description '
+      The five services and their adapters, chosen at boot from the config
+      file and the platform environment and memoised per isolate. The entry
+      points from the container view are drawn as callers; test doubles are
+      described, not drawn.
+    '
+    include
+      pressline.app,
+      pressline.app.storefront, pressline.app.operatorView, pressline.app.httpApi,
+      pressline.app.webhooks, pressline.app.reconciliation,
+      pressline.app.dbService, pressline.app.dbService.*,
+      pressline.app.designSourceService, pressline.app.designSourceService.*,
+      pressline.app.fulfilmentService, pressline.app.fulfilmentService.*,
+      pressline.app.pspService, pressline.app.pspService.*,
+      pressline.app.mailerService, pressline.app.mailerService.*,
+      pressline.ledger, engine.app, fulfilmentProvider, psp, mailer
+    // The entry points reach the outside only through a service: hide the
+    // container view's direct edges so every call goes via an adapter here.
+    exclude
+      pressline.app.httpApi -> engine.app,
+      pressline.app.httpApi -> pressline.ledger,
+      pressline.app.httpApi -> fulfilmentProvider,
+      pressline.app.httpApi -> psp,
+      pressline.app.webhooks -> pressline.ledger,
+      pressline.app.webhooks -> fulfilmentProvider,
+      pressline.app.webhooks -> psp,
+      pressline.app.webhooks -> mailer,
+      pressline.app.reconciliation -> pressline.ledger,
+      pressline.app.reconciliation -> fulfilmentProvider,
+      pressline.app.reconciliation -> psp,
+      pressline.app.reconciliation -> mailer
+    autoLayout TopBottom
+  }
+}

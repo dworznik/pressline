@@ -23,6 +23,7 @@ export default ts.config(
       '**/.wrangler/',
       '**/.vercel/',
       '**/.astro/',
+      'apps/docs/public/architecture/',
       '**/coverage/',
       'pnpm-lock.yaml',
     ],

@@ -1,0 +1,22 @@
+---
+// One LikeC4 view embedded from the built SPA under /architecture/ (hash
+// history, so the routes live after the #). scripts/apply-base.mjs prefixes
+// src and href with DOCS_BASE after the build. The inline height wins over
+// Starlight's `height: auto` for media elements.
+interface Props {
+  view: string;
+  title: string;
+  height: number;
+  sequence?: boolean;
+}
+const { view, title, height, sequence = false } = Astro.props;
+const query = sequence ? 'padding=20&dynamic=sequence' : 'padding=20';
+---
+
+<iframe
+  src={`/architecture/#/embed/${view}/?${query}`}
+  title={title}
+  loading="lazy"
+  style={`width: 100%; height: ${height}px; border: 1px solid var(--sl-color-hairline); border-radius: 0.5rem; background: var(--sl-color-bg)`}
+></iframe>
+<p><a href={`/architecture/#/view/${view}/`}>Open full screen</a></p>

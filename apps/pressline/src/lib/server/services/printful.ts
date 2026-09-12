@@ -289,11 +289,22 @@ const ORDER_STATUSES: ReadonlySet<string> = new Set([
   'fulfilled',
 ]);
 
+/**
+ * Printful caps `external_id` at 32 characters; an Order id is a 36-character
+ * UUID. Send it without hyphens and put them back on the way in, so the rest
+ * of the bridge keeps talking in Order ids.
+ */
+const toExternalId = (orderId: string) => orderId.replaceAll('-', '');
+const fromExternalId = (externalId: string) =>
+  /^[0-9a-f]{32}$/i.test(externalId)
+    ? externalId.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5')
+    : externalId;
+
 const toProviderOrder = (o: typeof OrderWire.Type): ProviderOrder => {
   const costs = o.costs ?? undefined;
   return {
     id: String(o.id),
-    ...(o.external_id ? { externalId: o.external_id } : {}),
+    ...(o.external_id ? { externalId: fromExternalId(o.external_id) } : {}),
     status: (ORDER_STATUSES.has(o.status) ? o.status : 'unknown') as ProviderOrderStatus,
     recipient: {
       countryCode: o.recipient.country_code,
@@ -481,7 +492,7 @@ export const makePrintful = (options: PrintfulOptions) =>
           occurredAt: Number.isFinite(occurredAt) ? occurredAt : 0,
           ...(parsed.data.order ? { providerOrderId: String(parsed.data.order.id) } : {}),
           ...(parsed.data.order?.external_id
-            ? { orderExternalId: parsed.data.order.external_id }
+            ? { orderExternalId: fromExternalId(parsed.data.order.external_id) }
             : {}),
           ...(parsed.data.shipment ? { shipmentId: String(parsed.data.shipment.id) } : {}),
         } satisfies ProviderWebhookEvent;
@@ -568,7 +579,10 @@ export const makePrintful = (options: PrintfulOptions) =>
         ),
 
       findOrderByExternalId: (externalId) =>
-        get(`/v2/orders/@${encodeURIComponent(externalId)}`, Envelope(OrderWire)).pipe(
+        get(
+          `/v2/orders/@${encodeURIComponent(toExternalId(externalId))}`,
+          Envelope(OrderWire),
+        ).pipe(
           Effect.map(({ data }) => toProviderOrder(data)),
           Effect.catchIf(
             (e) => e.status === 404,
@@ -580,7 +594,7 @@ export const makePrintful = (options: PrintfulOptions) =>
         post(
           '/v2/orders',
           {
-            external_id: d.externalId,
+            external_id: toExternalId(d.externalId),
             shipping: d.shippingMethod,
             recipient: toRecipientWire(d.recipient),
             order_items: [

@@ -20,7 +20,13 @@ export default defineConfig({
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/dworznik/pressline' }],
       editLink: { baseUrl: 'https://github.com/dworznik/pressline/edit/main/apps/docs/' },
       sidebar: [
-        { label: 'Start here', items: [{ label: 'What Pressline is', slug: 'index' }] },
+        {
+          label: 'Start here',
+          items: [
+            { label: 'What Pressline is', slug: 'index' },
+            { label: 'Try the demo', slug: 'try-the-demo' },
+          ],
+        },
         {
           label: 'Operator guide',
           items: [

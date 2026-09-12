@@ -274,6 +274,12 @@ describe('Printful v2 adapter', () => {
       });
     });
 
+    it('reads a fresh draft whose costs are still calculating (every money field null) as "no costs yet"', async () => {
+      const fresh = await run(Effect.flatMap(FulfilmentProvider, (p) => p.getOrder('125')));
+      expect(fresh).toMatchObject({ id: '125', status: 'draft' });
+      expect(fresh.costs).toBeUndefined();
+    });
+
     it('confirms a draft and surfaces a failed placement with its explanation', async () => {
       const confirmed = await run(Effect.flatMap(FulfilmentProvider, (p) => p.confirmOrder('123')));
       expect(confirmed.status).toBe('pending');

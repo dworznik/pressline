@@ -238,14 +238,15 @@ const PricesWire = Schema.Struct({
 const cleanMethodName = (name: string) =>
   name.replace(/\s*\(estimated delivery:[^)]*\)\s*/i, '').trim();
 
+/** While `calculation_status` is `calculating` (a fresh draft), every money field, the currency included, is `null`. */
 const OrderCostsWire = Schema.Struct({
   calculation_status: Schema.optional(Schema.String),
-  currency: Schema.String,
-  subtotal: Schema.optional(DecimalString),
-  shipping: Schema.optional(DecimalString),
-  tax: Schema.optional(DecimalString),
-  vat: Schema.optional(DecimalString),
-  total: Schema.optional(DecimalString),
+  currency: Schema.NullOr(Schema.String),
+  subtotal: Schema.optional(Schema.NullOr(DecimalString)),
+  shipping: Schema.optional(Schema.NullOr(DecimalString)),
+  tax: Schema.optional(Schema.NullOr(DecimalString)),
+  vat: Schema.optional(Schema.NullOr(DecimalString)),
+  total: Schema.optional(Schema.NullOr(DecimalString)),
 });
 
 const OrderWire = Schema.Struct({
@@ -320,7 +321,8 @@ const toProviderOrder = (o: typeof OrderWire.Type): ProviderOrder => {
           : {}),
       };
     }),
-    ...(costs
+    // No currency yet means nothing is priced yet: report no costs rather than zeros.
+    ...(costs && costs.currency
       ? {
           costs: {
             currency: costs.currency,

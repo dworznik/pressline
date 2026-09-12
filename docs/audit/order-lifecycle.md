@@ -141,6 +141,12 @@ Worth recording so they are not re-audited.
   identical bytes.
 - **`complete` is never treated as paid**, which is exactly Stripe's own
   guidance for delayed-notification methods.
+- **A cancelled order stays visible to v2; an archived one does not.** After the
+  v1 cancel, `GET /v2/orders/{id}` and `GET /v2/orders/@{external_id}` both
+  answer 200 with `status: canceled`, so `submit`'s idempotency lookup finds it
+  and fails legibly instead of colliding blindly. Neither a cancelled nor an
+  archived order ever releases its `external_id`, so a resubmission needs a
+  fresh one (#77).
 - **v2's DELETE archives rather than deletes**, which their own docs get wrong.
   Tested during this audit: a draft created with an `external_id`, deleted with a
   204, then read back. v2 answers 404 by internal id and by external id, while v1

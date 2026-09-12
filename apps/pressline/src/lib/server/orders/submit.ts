@@ -133,21 +133,25 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
       eff.pipe(Effect.retry({ schedule: SUBMIT_RETRY, while: (e) => e.retryable }))
 
     // 1. Lookup by external id: the idempotency step.
-    let draft = yield* retrying(provider.findOrderByExternalId(order.id))
+    let attempt = order.providerAttempt
+    let draft = yield* retrying(provider.findOrderByExternalId(order.id, attempt))
     if (draft && CONFIRMED.has(draft.status)) {
       yield* transition(order.id, 'submitted', cause, causeRef, { providerOrderId: draft.id }).pipe(
         Effect.catchTag('TransitionRefused', () => Effect.void),
       )
       return { outcome: 'already_submitted', providerOrderId: draft.id } satisfies SubmitOutcome
     }
-    if (draft && (draft.status === 'failed' || draft.status === 'canceled')) {
-      return yield* fail(
-        order,
-        cause,
-        causeRef,
-        `provider order ${draft.id} is ${draft.status}`,
-        draft.id,
+    if (draft && draft.status === 'canceled') {
+      // Someone canceled it at the provider while this Order is still owed. The
+      // external id it used is gone for good (#77), so the next attempt gets a
+      // new one derived from the same Order and we create again.
+      attempt += 1
+      yield* Effect.logInfo(
+        `order ${order.id}: provider order ${draft.id} is canceled; submitting again as attempt ${attempt}`,
       )
+      draft = undefined
+    } else if (draft && draft.status === 'failed') {
+      return yield* fail(order, cause, causeRef, `provider order ${draft.id} is failed`, draft.id)
     }
 
     // 2. Draft.
@@ -155,6 +159,7 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
       draft = yield* retrying(
         provider.createOrderDraft({
           externalId: order.id,
+          attempt,
           shippingMethod: order.shippingMethod.id,
           recipient: toProviderRecipient(order.recipient),
           item: {
@@ -167,7 +172,7 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
           currency: order.currency,
         }),
       )
-      yield* attachProviderOrder(order.id, draft.id)
+      yield* attachProviderOrder(order.id, draft.id, attempt)
     }
 
     // 2b. Wait for the provider's costs: Printful prices a draft asynchronously and refuses

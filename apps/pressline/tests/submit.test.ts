@@ -183,6 +183,36 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
     expect(await stateOf(app, orderId, token)).toBe('submit_failed')
   })
 
+  it('a provider order canceled underneath us is submitted again as a new attempt (#77)', async () => {
+    // Confirmation keeps failing, so the Order stays paid with a draft waiting:
+    // the state Reconciliation's stuckPaid and the Operator's resubmit act on.
+    app = await boot({ confirmRetryableFailures: 100 })
+    const { orderId, token, sessionId } = await payFor(app)
+    expect(await stateOf(app, orderId, token)).toBe('paid')
+    expect(app.providerOrders()).toHaveLength(1)
+    const first = app.providerOrders().at(-1)!
+    expect(first.attempt ?? 0).toBe(0)
+
+    // Someone cancels that draft at the provider. Its external id is gone for
+    // good, so submitting again cannot reuse it.
+    app.setProviderOrderStatus(first.id, 'canceled')
+    const again = await app.pspWebhook({
+      id: 'evt_resubmit',
+      type: 'checkout.session.completed',
+      sessionId,
+    })
+    expect(again.status).toBe(200)
+
+    // A second provider order, for the same Order, on the next attempt.
+    expect(app.providerOrders()).toHaveLength(2)
+    const second = app.providerOrders().at(-1)!
+    expect(second.id).not.toBe(first.id)
+    expect(second.externalId).toBe(orderId)
+    expect(second.attempt).toBe(1)
+    // Before #77 this could not happen: the create collided on an external id
+    // the provider never releases, and the Order was stuck for good.
+  })
+
   it('a non-retryable provider rejection → submit_failed', async () => {
     app = await boot({ createRejects: 'Recipient address is invalid' })
     const { orderId, token, ack } = await payFor(app)

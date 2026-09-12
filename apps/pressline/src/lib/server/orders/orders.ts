@@ -64,6 +64,8 @@ export const Order = Schema.Struct({
   recipient: Schema.optional(Recipient),
   consentAcceptedAt: Schema.optional(Schema.Int),
   providerOrderId: Schema.optional(Schema.String),
+  /** Which submission attempt the provider's external id encodes (#77); 0 is the first. */
+  providerAttempt: Schema.Int,
   tracking: Schema.optional(Tracking),
   /** Origin the Order was placed on (`https://shop.example`), for links in emails. */
   publicOrigin: Schema.optional(Schema.String),
@@ -129,6 +131,7 @@ type Row = {
   recipient: string | null
   consent_accepted_at: number | null
   provider_order_id: string | null
+  provider_attempt: number | null
   tracking: string | null
   public_origin: string | null
   preview_url: string | null
@@ -185,6 +188,7 @@ const fromRow = (r: Row): Effect.Effect<Order> =>
       ...(recipient ? { recipient } : {}),
       ...(r.consent_accepted_at !== null ? { consentAcceptedAt: r.consent_accepted_at } : {}),
       ...(r.provider_order_id !== null ? { providerOrderId: r.provider_order_id } : {}),
+      providerAttempt: r.provider_attempt ?? 0,
       ...(tracking ? { tracking } : {}),
       ...(r.public_origin !== null ? { publicOrigin: r.public_origin } : {}),
       ...(r.preview_url !== null ? { previewUrl: r.preview_url } : {}),
@@ -363,15 +367,16 @@ export const rotateStatusToken = (orderId: string) =>
   }).pipe(Effect.catchTag('DbError', (e) => Effect.die(e)))
 
 /** Record the provider's order id as soon as a draft exists, so a re-run finds it even before confirmation. */
-export const attachProviderOrder = (orderId: string, providerOrderId: string) =>
+export const attachProviderOrder = (orderId: string, providerOrderId: string, attempt = 0) =>
   Effect.gen(function* () {
     const db = yield* Db
     const now = yield* Clock.currentTimeMillis
-    yield* db.run('UPDATE orders SET provider_order_id = ?, updated_at = ? WHERE id = ?', [
-      providerOrderId,
-      now,
-      orderId,
-    ])
+    // The attempt is stored with the provider order id because it is what the
+    // external id encoded (#77): without it a later lookup asks for the wrong one.
+    yield* db.run(
+      'UPDATE orders SET provider_order_id = ?, provider_attempt = ?, updated_at = ? WHERE id = ?',
+      [providerOrderId, attempt, now, orderId],
+    )
   }).pipe(Effect.orDie)
 
 /** Column updates that may accompany a Transition (all optional). */
@@ -382,6 +387,8 @@ export interface OrderPatch {
   readonly amountTax?: number
   readonly amountTotal?: number
   readonly providerOrderId?: string
+  /** Bumped when a provider-side cancellation forces a fresh external id (#77). */
+  readonly providerAttempt?: number
   readonly tracking?: Tracking
   /** Recorded on the Transition, not the Order: why this move happened. */
   readonly note?: string
@@ -471,6 +478,10 @@ export const transition = (
     if (patch.providerOrderId !== undefined) {
       sets.push('provider_order_id = ?')
       params.push(patch.providerOrderId)
+    }
+    if (patch.providerAttempt !== undefined) {
+      sets.push('provider_attempt = ?')
+      params.push(patch.providerAttempt)
     }
     if (patch.tracking) {
       sets.push('tracking = ?')

@@ -103,6 +103,8 @@ export type ProviderOrderStatus =
 export interface ProviderOrder {
   readonly id: string
   readonly externalId?: string
+  /** Which submission attempt the external id encoded (#77); absent means the first. */
+  readonly attempt?: number
   readonly status: ProviderOrderStatus
   readonly recipient: { readonly countryCode: string; readonly stateCode?: string }
   readonly items: ReadonlyArray<{
@@ -138,6 +140,13 @@ export interface ProviderRecipient {
 export interface ProviderOrderDraft {
   /** Pressline Order ID; the provider stores it as the external id. */
   readonly externalId: string
+  /**
+   * Which submission attempt this is (#77). A provider never releases an
+   * external id, not even for a canceled order, so a resubmission after one
+   * needs a different id derived from the same Order. 0, the default, is the
+   * first attempt and keeps the plain Order ID.
+   */
+  readonly attempt?: number
   readonly shippingMethod: string
   readonly recipient: ProviderRecipient
   readonly item: {
@@ -205,6 +214,7 @@ export interface FulfillmentProviderService {
   /** The provider order created for a Pressline Order ID, if any (the idempotency lookup, ADR-0009). */
   readonly findOrderByExternalId: (
     externalId: string,
+    attempt?: number,
   ) => Effect.Effect<ProviderOrder | undefined, FulfillmentProviderError>
   readonly createOrderDraft: (
     draft: ProviderOrderDraft,

@@ -402,6 +402,9 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
     let createFailuresLeft = catalog.orders?.createRetryableFailures ?? 0
     let confirmFailuresLeft = catalog.orders?.confirmRetryableFailures ?? 0
     let costsCalculatingLeft = catalog.orders?.costsCalculatingReads ?? 0
+    // External ids are never released, not even by a canceled order (#77), so a
+    // second draft for the same (Order, attempt) is refused the way Printful does.
+    const usedExternalIds = new Set<string>()
     /** While the counter runs, every read shows the draft with costs still calculating. */
     const stillCalculating = (o: ProviderOrder): ProviderOrder => {
       if (costsCalculatingLeft <= 0 || !o.costs) return o
@@ -453,9 +456,13 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
           Ref.update(calls, (n) => n + 1).pipe(
             Effect.map(() => shipments.get(providerOrderId) ?? []),
           ),
-        findOrderByExternalId: (externalId) =>
+        findOrderByExternalId: (externalId, attempt) =>
           Ref.update(calls, (n) => n + 1).pipe(
-            Effect.map(() => [...providerOrders.values()].find((o) => o.externalId === externalId)),
+            Effect.map(() =>
+              [...providerOrders.values()].find(
+                (o) => o.externalId === externalId && (o.attempt ?? 0) === (attempt ?? 0),
+              ),
+            ),
           ),
         createOrderDraft: (d: ProviderOrderDraft) =>
           Ref.update(calls, (n) => n + 1).pipe(
@@ -480,10 +487,22 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
                   }),
                 )
               }
+              const key = `${d.externalId}#${d.attempt ?? 0}`
+              if (usedExternalIds.has(key)) {
+                return Effect.fail(
+                  new FulfillmentProviderError({
+                    message: `External ID validation error. external_id must be unique per store, ${key} is already used`,
+                    retryable: false,
+                    status: 400,
+                  }),
+                )
+              }
+              usedExternalIds.add(key)
               const id = String(1000 + providerOrders.size)
               const order: ProviderOrder = {
                 id,
                 externalId: d.externalId,
+                attempt: d.attempt ?? 0,
                 status: 'draft',
                 recipient: {
                   countryCode: cfg.draftCountryOverride ?? d.recipient.countryCode,

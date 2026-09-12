@@ -24,6 +24,7 @@ export default defineConfig({
         {
           label: 'Operator guide',
           items: [
+            { label: 'Overview', slug: 'operator' },
             { label: 'Deploy', slug: 'operator/deploy' },
             { label: 'Configure', slug: 'operator/configure' },
             { label: 'Secrets and webhooks', slug: 'operator/secrets-and-webhooks' },
@@ -36,6 +37,7 @@ export default defineConfig({
         {
           label: 'Engine developer guide',
           items: [
+            { label: 'Overview', slug: 'engine' },
             { label: 'The protocol', slug: 'engine/protocol' },
             { label: 'Pre-rendering and hosting', slug: 'engine/hosting' },
             { label: 'Rendering with @pressline/render', slug: 'engine/render' },
@@ -46,6 +48,7 @@ export default defineConfig({
         {
           label: 'Print preparation',
           items: [
+            { label: 'Overview', slug: 'print' },
             { label: 'Files, DPI, color, transparency', slug: 'print/files' },
             { label: 'Print areas and product limits', slug: 'print/products' },
           ],
@@ -53,6 +56,7 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
+            { label: 'Overview', slug: 'reference' },
             { label: 'CLI', slug: 'reference/cli' },
             { label: 'JSON API (OpenAPI)', slug: 'reference/api' },
             { label: 'Configuration', slug: 'reference/config' },
@@ -72,6 +76,7 @@ export default defineConfig({
         {
           label: 'Contributing',
           items: [
+            { label: 'Overview', slug: 'contributing' },
             { label: 'Effect primer', slug: 'contributing/effect' },
             { label: 'Test seams and fixtures', slug: 'contributing/testing' },
             { label: 'Licenses', slug: 'contributing/licenses' },

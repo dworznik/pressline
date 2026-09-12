@@ -1,4 +1,4 @@
-import { head, put } from '@vercel/blob';
+import { get, head, put } from '@vercel/blob';
 import type { FileStore } from './file-store.js';
 
 /** Vercel Blob (`BLOB_READ_WRITE_TOKEN`): public, and the key is the path so URLs are stable. */
@@ -36,10 +36,11 @@ export const blobStore = (token: string): FileStore => {
       urls.set(key, res.url);
     },
     get: async (key) => {
-      const existing = await head(key, { token }).catch(() => undefined);
-      if (!existing) return undefined;
-      const res = await fetch(existing.url);
-      return res.ok ? new Uint8Array(await res.arrayBuffer()) : undefined;
+      // Straight from origin storage, never the CDN: the Design record is overwritten as
+      // Printfiles are added, and a cached copy read back would drop them on the next write.
+      const found = await get(key, { access: 'public', useCache: false, token }).catch(() => null);
+      if (!found) return undefined;
+      return new Uint8Array(await new Response(found.stream).arrayBuffer());
     },
   };
 };

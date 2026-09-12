@@ -388,6 +388,44 @@ export interface OrderPatch {
 }
 
 /**
+ * Record a fact that moved nothing: a same-state Transition row carrying a
+ * note (the provider failing an Order already on hold). Written once per
+ * reason, so a repeat of the latest note is a no-op; one INSERT (ADR-0008),
+ * conditional on the state read, like `transition`. Answers whether it wrote.
+ */
+export const annotate = (
+  orderId: string,
+  cause: Cause,
+  causeRef: string | undefined,
+  note: string,
+) =>
+  Effect.gen(function* () {
+    const order = yield* findOrder(orderId);
+    const latest = (yield* listTransitions(orderId)).at(-1);
+    if (latest && latest.to === order.state && latest.note === note) return false;
+    const db = yield* Db;
+    const now = yield* Clock.currentTimeMillis;
+    yield* db
+      .run(
+        `INSERT INTO order_transitions (order_id, from_state, to_state, cause, cause_ref, note, at)
+         SELECT ?, ?, ?, ?, ?, ?, ? FROM orders WHERE id = ? AND state = ?`,
+        [
+          orderId,
+          order.state,
+          order.state,
+          cause,
+          causeRef ?? null,
+          note,
+          now,
+          orderId,
+          order.state,
+        ],
+      )
+      .pipe(Effect.orDie);
+    return true;
+  });
+
+/**
  * Move an Order to a new state, recording the Transition and any patch in
  * one batch. Refused (typed) when the state machine forbids the move or when
  * a concurrent writer moved the Order elsewhere first; if that writer made

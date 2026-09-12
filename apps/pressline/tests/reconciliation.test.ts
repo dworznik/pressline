@@ -239,6 +239,28 @@ describe('Reconciliation repairs', () => {
     ]);
   });
 
+  it('an order already on_hold that the provider then fails stays put, and the alarm carries the reason', async () => {
+    app = await boot();
+    const { orderId, session } = await checkout(app);
+    await pay(app, session);
+    const providerOrderId = (await detail(app, orderId)).order.providerOrderId!;
+    app.setProviderOrderStatus(providerOrderId, 'onhold');
+    await reconcile(app);
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const report = await reconcile(app);
+    expect(report.steps.providerCatchUp?.repaired).toBe(0);
+    const after = await detail(app, orderId);
+    expect(after.order.state).toBe('on_hold');
+    expect(after.transitions.filter((t) => t.to === 'on_hold')).toHaveLength(1);
+    expect(report.alarms).toEqual([
+      {
+        kind: 'on_hold',
+        orderId,
+        message: expect.stringContaining('provider reports the order failed'),
+      },
+    ]);
+  });
+
   it('records refunds and disputes the Operator handled at the PSP', async () => {
     // The provider is unreachable, so every Order below stays paid (not yet stale).
     app = await boot({ createRetryableFailures: 100 });

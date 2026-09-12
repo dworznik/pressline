@@ -5,6 +5,7 @@ import type { PublicOrder } from '$lib/server/orders/public';
 import type { Quote } from '$lib/server/quote/quote';
 import { catalog, offers } from './fixtures/catalog';
 import { png } from './fixtures/images';
+import { PROVIDER_FAILED_NOTE } from '$lib/server/webhooks/printful';
 import { makeTestApp, OPERATOR_TOKEN, type TestApp } from './harness';
 
 const design: DesignResponse = {
@@ -152,6 +153,50 @@ describe('POST /webhooks/printful', () => {
       to: 'on_hold',
       note: expect.stringContaining('provider reports the order failed'),
     });
+  });
+
+  it('order_failed on an order already on_hold: a same-state Transition carries the reason, once', async () => {
+    app = await boot();
+    const { orderId, token, providerOrderId } = await submittedOrder(app);
+    app.setProviderOrderStatus(providerOrderId, 'onhold');
+    await app.printfulWebhook({
+      type: 'order_put_hold',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId }, reason: 'address' } as never,
+    });
+    app.setProviderOrderStatus(providerOrderId, 'failed');
+    const first = await app.printfulWebhook({
+      type: 'order_failed',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    });
+    expect(first.body.outcome).toBe('applied:noted');
+    expect((await stateOf(app, orderId, token)).state).toBe('on_hold');
+    const read = async () =>
+      (
+        await app.json<{
+          transitions: ReadonlyArray<{ from: string | null; to: string; note?: string }>;
+          inboundEvents: ReadonlyArray<{ eventType: string }>;
+        }>(`/api/operator/orders/${orderId}`, {
+          headers: { authorization: `Bearer ${OPERATOR_TOKEN}` },
+        })
+      ).body;
+    let detail = await read();
+    expect(detail.transitions.at(-1)).toMatchObject({
+      from: 'on_hold',
+      to: 'on_hold',
+      note: PROVIDER_FAILED_NOTE,
+    });
+    expect(detail.inboundEvents.at(-1)).toMatchObject({ eventType: 'order_failed' });
+    // The same reason again adds nothing.
+    const again = await app.printfulWebhook({
+      type: 'order_failed',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    });
+    expect(again.body.outcome).toBe('applied:already');
+    detail = await read();
+    expect(detail.transitions.filter((t) => t.to === 'on_hold')).toHaveLength(2);
   });
 
   it('shipment_sent → shipped with tracking number, carrier and URL', async () => {

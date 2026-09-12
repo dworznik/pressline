@@ -4,6 +4,7 @@ import type { Db } from '../db/db';
 import type { DesignSource } from '../services/design-source';
 import type { Mailer } from '../services/mailer';
 import {
+  annotate,
   findOrder,
   findOrderByProviderOrder,
   transition,
@@ -87,9 +88,14 @@ const recordTransition = (
         : Effect.succeed(result('applied')),
     ),
     Effect.catchTag('TransitionRefused', (r) =>
-      Effect.succeed(
-        r.from === to ? result('applied', 'already') : result('refused', `${r.from}->${r.to}`),
-      ),
+      r.from !== to
+        ? Effect.succeed(result('refused', `${r.from}->${r.to}`))
+        : patch.note
+          ? // Same state but a reason worth keeping: a same-state Transition row, once per reason.
+            annotate(order.id, cause, ref, patch.note).pipe(
+              Effect.map((wrote) => result('applied', wrote ? 'noted' : 'already')),
+            )
+          : Effect.succeed(result('applied', 'already')),
     ),
     Effect.catchTag('OrderNotFound', () => Effect.succeed(result('unknown_order'))),
   );

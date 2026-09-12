@@ -1,6 +1,6 @@
 # Pressline
 
-Self-hostable, open-source bridge from an image-generating app to physical print-on-demand products. Printful fulfills, Stripe Checkout takes payment, no Shopify in between.
+Self-hostable, open-source bridge from an image-generating app to physical print-on-demand products. Printful fulfills, Stripe Checkout takes payment.
 
 - **Docs**: [pressline.0xff.sh](https://pressline.0xff.sh/)
 - **Demo instance**: [the bridge](https://pressline-demo.vercel.app) in Demo Mode, with [the sample Engine](https://pressline-store-demo.vercel.app)

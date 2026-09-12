@@ -4,7 +4,7 @@ Status: ready-for-agent. Vocabulary: `CONTEXT.md`. Decisions: `docs/adr/0001`–
 
 ## Problem Statement
 
-People building apps that generate images (template designers, AI generators, game exporters) have no cheap way to let their users hold the result in their hands. Getting from "here is an image" to "a printed shirt or poster arrives at the customer's door" means integrating a print-on-demand provider, a payment processor, tax, consumer law for personalized goods, webhooks, and a support process; existing bridges assume a Shopify or WooCommerce shop in the middle. An Engine developer wants to add a single "Order a print" button and be done.
+People building apps that generate images (template designers, AI generators, game exporters) have no cheap way to let their users hold the result in their hands. Getting from "here is an image" to "a printed shirt or poster arrives at the customer's door" means integrating a print-on-demand provider, a payment processor, tax, consumer law for personalized goods, webhooks, and a support process; existing bridges assume a storefront platform in the middle. An Engine developer wants to add a single "Order a print" button and be done.
 
 ## Solution
 

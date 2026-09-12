@@ -47,6 +47,14 @@ Pressline: a self-hostable bridge from an image-generating app (an Engine) to pr
 - Name: `<type>/<issue>-<slug>`, e.g. `feat/5-storefront-design-page`, `chore/2-monorepo-skeleton`. `type` is one of the commit-msg types (`feat fix docs test refactor chore ci build perf adr`); `issue` is the GitHub ticket number; slug is short kebab-case. No ticket → drop the number (`chore/bump-effect`). Never `feature/`.
 - The `pre-push` hook warns (never blocks) on a non-conforming name; `dependabot/*` is exempt.
 
+### Provider behavior
+
+`docs/audit/order-lifecycle.md` is the audit of the Stripe and Printful lifecycles
+against their own docs: what each provider state and event means, what we do with
+it, and what proves it. Read it before changing a webhook handler, the submit flow
+or Reconciliation; it also records what is deliberately unhandled and what neither
+provider documents. Gaps are sub-issues of #85.
+
 ### Test seams (see `docs/SPEC.md` → Testing Decisions)
 
 HTTP surface of the bridge with in-memory layers; adapter contract tests on recorded fixtures; render helper by PNG headers; DesignSource conformance suite. Do not add module-level tests of the ledger.

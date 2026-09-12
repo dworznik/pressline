@@ -1,0 +1,6 @@
+{
+  "*.{json,yml,yaml,md,css,html}": "prettier --write",
+  "*.svelte": "prettier --write",
+  "*.{ts,mts,cts,js,mjs,cjs}": ["prettier --write", "oxlint"],
+  "docs/adr/*.md": "node scripts/check-adrs.mjs"
+}

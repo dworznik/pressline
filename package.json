@@ -10,11 +10,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks || true",
+    "prepare": "git rev-parse --git-dir > /dev/null 2>&1 || exit 0; git config core.hooksPath .githooks && git config blame.ignoreRevsFile .git-blame-ignore-revs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "oxlint && node scripts/check-bans.mjs",
+    "lint:fix": "oxlint --fix",
     "check": "pnpm -r --if-present check && tsc -p deploy/cloudflare",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,37 +22,25 @@
     "adr:check": "node scripts/check-adrs.mjs",
     "architecture:check": "pnpm --filter pressline-docs architecture:validate",
     "e2e": "pnpm --filter pressline e2e",
-    "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm architecture:check && pnpm test && pnpm build"
+    "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm architecture:check && pnpm test && pnpm build",
+    "lint:type-aware": "oxlint --type-aware",
+    "bans:check": "node scripts/check-bans.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260911.1",
-    "@eslint/js": "^10.0.1",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
     "@sveltejs/adapter-auto": "^7.0.1",
     "@sveltejs/adapter-cloudflare": "^7.2.9",
     "@sveltejs/adapter-node": "^5.5.7",
     "@sveltejs/adapter-vercel": "^6.3.4",
-    "eslint": "^10.10.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-svelte": "^3.23.0",
-    "globals": "^17.12.0",
     "lint-staged": "^17.5.1",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.9.6",
     "prettier-plugin-svelte": "^4.1.1",
     "svelte": "^5.57.0",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.0",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.0"
-  },
-  "lint-staged": {
-    "*.{ts,js,mjs,svelte}": [
-      "eslint --fix --max-warnings=0",
-      "prettier --write"
-    ],
-    "*.{json,md,yml,yaml,css,html}": [
-      "prettier --write"
-    ],
-    "docs/adr/*.md": [
-      "node scripts/check-adrs.mjs"
-    ]
   }
 }

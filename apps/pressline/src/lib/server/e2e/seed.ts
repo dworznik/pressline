@@ -1,15 +1,15 @@
-import { FetchHttpClient } from '@effect/platform';
-import type { DesignResponse } from '@pressline/contract';
-import { Effect, Layer } from 'effect';
-import { makeHostedFetch, type HostedFile } from './hosted';
-import { png } from './png';
+import { FetchHttpClient } from '@effect/platform'
+import type { DesignResponse } from '@pressline/contract'
+import { Effect, Layer } from 'effect'
+import { makeHostedFetch, type HostedFile } from './hosted'
+import { png } from './png'
 import {
   makeDesignSourceMemory,
   makeFulfillmentProviderMemory,
   makePspMemory,
   type MemoryCatalog,
-} from '../services/memory';
-import { layerMailerNone } from '../services/mailer';
+} from '../services/memory'
+import { layerMailerNone } from '../services/mailer'
 
 /**
  * The world the Playwright e2e run sees (ticket #19): in-memory Engine, provider
@@ -17,7 +17,7 @@ import { layerMailerNone } from '../services/mailer';
  * the Printfile validator fetches. Everything else is the real bridge.
  * Enabled by `PRESSLINE_E2E=1`; never in a real deployment.
  */
-export const E2E_FILE = 'https://engine.e2e/files/sunset/front.png';
+export const E2E_FILE = 'https://engine.e2e/files/sunset/front.png'
 
 const designs: Record<string, DesignResponse> = {
   'sunset-1': {
@@ -42,7 +42,7 @@ const designs: Record<string, DesignResponse> = {
     aspect: { w: 3, h: 4 },
     mockups: { 'tee-black-front': 'https://files.e2e/sunset-on-tee.png' },
   },
-};
+}
 
 const catalog: MemoryCatalog = {
   products: [
@@ -85,14 +85,14 @@ const catalog: MemoryCatalog = {
     ],
   },
   prices: { 4017: { currency: 'EUR', byTechnique: { dtg: 1090 }, placementSurcharge: {} } },
-};
+}
 
 const files: Record<string, HostedFile> = {
   [E2E_FILE]: {
     bytes: png({ width: 1800, height: 2400, totalBytes: 5000 }),
     contentType: 'image/png',
   },
-};
+}
 
 /** Memory services for the e2e run; the PSP's hosted page is the success URL itself. */
 export const e2eServices = Layer.unwrapEffect(
@@ -108,14 +108,14 @@ export const e2eServices = Layer.unwrapEffect(
               kind: 'rendering',
               times: 3,
               retryAfterMs: 300,
-              then: { kind: 'ready', url: E2E_FILE, bytes: 5000 },
+              next: { kind: 'ready', url: E2E_FILE, bytes: 5000 },
             },
           },
         },
       },
-    });
-    const provider = yield* makeFulfillmentProviderMemory(catalog);
-    const psp = yield* makePspMemory({ hostedPage: 'success' });
+    })
+    const provider = yield* makeFulfillmentProviderMemory(catalog)
+    const psp = yield* makePspMemory({ hostedPage: 'success' })
     return Layer.mergeAll(
       designSource.layer,
       provider.layer,
@@ -124,6 +124,6 @@ export const e2eServices = Layer.unwrapEffect(
       FetchHttpClient.layer.pipe(
         Layer.provide(Layer.succeed(FetchHttpClient.Fetch, makeHostedFetch(files, new Map()))),
       ),
-    );
+    )
   }),
-);
+)

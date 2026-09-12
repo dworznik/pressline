@@ -1,0 +1,5 @@
+# Commits git blame should look past. GitHub honors this file; locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# refactor: American English across the repository
+7d6cc71e361003394ba8b09d273de6683f81e8b8

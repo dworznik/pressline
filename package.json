@@ -21,7 +21,8 @@
     "build": "pnpm -r --if-present build",
     "adr:check": "node scripts/check-adrs.mjs",
     "e2e": "pnpm --filter pressline e2e",
-    "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm test && pnpm build"
+    "verify": "pnpm format:check && pnpm lint && pnpm check && pnpm adr:check && pnpm test && pnpm build",
+    "proto:c4": "pnpm --filter pressline-docs architecture:dev"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260911.1",

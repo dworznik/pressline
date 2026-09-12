@@ -1,0 +1,42 @@
+views {
+  view landscape {
+    title 'Landscape'
+    description 'Who and what stands around Pressline (decided on #63).'
+    include customer, operator, engineDeveloper, pressline, engine, fulfilmentProvider, psp, mailer
+    autoLayout TopBottom
+  }
+
+  view containersA of pressline {
+    title 'Candidate A: one box per deployable'
+    description 'Pressline app, the CLI, the Engine as one box. Internals only as descriptions.'
+    include
+      customer, operator, engineDeveloper,
+      pressline.app, pressline.cli,
+      engine,
+      fulfilmentProvider, psp, mailer
+    autoLayout TopBottom
+  }
+
+  view containersB of pressline {
+    title 'Candidate B: split by entry point'
+    description 'Storefront, HttpApi, webhooks, Reconciliation, Operator View, Ledger; the sample Engine and its FileStore; the CLI.'
+    include
+      customer, operator, engineDeveloper,
+      pressline.app, pressline.app.*, pressline.ledger, pressline.cli,
+      engine, engine.*,
+      fulfilmentProvider, psp, mailer
+    autoLayout TopBottom
+  }
+
+  view containersBPackages of pressline {
+    title 'Candidate B + published packages as boxes'
+    description 'Candidate B with @pressline/contract, render and conformance drawn as libraries instead of relationship labels.'
+    include
+      customer, operator, engineDeveloper,
+      pressline.app, pressline.app.*, pressline.ledger, pressline.cli,
+      pressline.contract, pressline.render, pressline.conformance,
+      engine, engine.*,
+      fulfilmentProvider, psp, mailer
+    autoLayout TopBottom
+  }
+}

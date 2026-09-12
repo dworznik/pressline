@@ -1,0 +1,46 @@
+name: release
+
+# Publishing the GitHub Release is the trigger: draft it, click Publish, npm follows.
+on:
+  release:
+    types: [published]
+
+# Never let two releases publish at once, and never cancel one part-way: some
+# packages would be on the registry and the rest would not.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # npm trusted publishing: pnpm exchanges this OIDC token for a short-lived
+  # registry token per package. There is no NPM_TOKEN, by design.
+  id-token: write
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          # No dependency cache here: a release should build from what the
+          # lockfile says, not from whatever a previous run left behind.
+
+      - run: pnpm install --frozen-lockfile
+
+      # The tag names a version; package.json decides what actually ships. Stop
+      # before publishing if they disagree.
+      - name: tag matches package versions
+        run: node scripts/check-release-tag.mjs "${{ github.event.release.tag_name }}"
+
+      - run: pnpm verify
+
+      # Publishes every non-private workspace package whose version is not on the
+      # registry yet, in dependency order, rewriting `workspace:^` to a real range.
+      # --no-git-checks because a release builds from a detached tag checkout.
+      # Do not add --batch: it turns OIDC off and the publish would go unauthenticated.
+      - run: pnpm --recursive publish --no-git-checks

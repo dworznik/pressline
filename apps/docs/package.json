@@ -6,7 +6,7 @@
   "description": "pressline.dev: operator guide, Engine developer guide, print preparation reference, contributor guide, CLI reference, OpenAPI",
   "scripts": {
     "dev": "astro dev --port 4321",
-    "build": "pnpm --filter pressline openapi && astro build",
+    "build": "pnpm --filter pressline openapi && astro build && node scripts/apply-base.mjs",
     "preview": "astro preview",
     "check": "astro check"
   },

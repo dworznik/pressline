@@ -27,8 +27,9 @@ them.
   your own tools instead: every chunk and marker the file must carry, and what
   Pressline checks before payment.
 - **[Checking your Engine](/engine/conformance/)** — run the conformance suite
-  against your Engine before you wire it to anything, and list the Offers and
-  Specs an instance will ask you for.
+  against your Engine before you wire it to anything, Preflight the files it
+  writes before you host them, and list the Offers and Specs an instance will
+  ask you for.
 - **[AI-assisted Engines](/engine/ai/)** — what changes when a render takes
   thirty seconds instead of thirty milliseconds.
 

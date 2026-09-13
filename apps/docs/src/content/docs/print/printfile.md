@@ -243,6 +243,9 @@ of them yet:
 
 ## Checking your files
 
+- `pressline engine preflight <paths…>` is the one to reach for first: it reads
+  a file on disk, whole, and reports both what Validation would refuse and every
+  Deviation from this page. See [Preflight](/engine/conformance/#preflight).
 - `pressline printfile check <url> --offer <slug> --variant <key>` runs the same
   validator the bridge runs, against any URL, and prints the Spec, what it
   found in the file, and each problem. See the [CLI reference](/reference/cli/).

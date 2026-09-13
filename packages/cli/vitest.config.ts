@@ -5,8 +5,8 @@ export default defineConfig({
     // Resolve the workspace packages from source inside the monorepo so tests need no prior build.
     alias: {
       '@pressline/contract': new URL('../contract/src/index.ts', import.meta.url).pathname,
-      '@pressline/cli/preflight': new URL('../cli/src/preflight.ts', import.meta.url).pathname,
+      '@pressline/conformance': new URL('../conformance/src/index.ts', import.meta.url).pathname,
     },
   },
-  test: { name: 'render', include: ['tests/**/*.test.ts'], environment: 'node' },
+  test: { name: 'cli', include: ['tests/**/*.test.ts'], environment: 'node' },
 })

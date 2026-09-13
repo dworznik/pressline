@@ -1,10 +1,11 @@
 import { createRequire } from 'node:module'
 import { Args, Command, Options } from '@effect/cli'
-import { CatalogResponse, type OfferVariant, type PrintfileSpec } from '@pressline/contract'
+import { CatalogResponse } from '@pressline/contract'
 import { Config, Effect, Option, Schema } from 'effect'
-import { api, CliError, Instance, publicGet } from './client.js'
+import { api, failWith, Instance, publicGet } from './client.js'
 import { engine } from './engine.js'
 import { print } from './output.js'
+import { groupBySpec } from './spec-source.js'
 
 /**
  * `pressline` — the command line for one instance. The Operator's commands
@@ -25,9 +26,6 @@ const token = Options.redacted('token').pipe(
 )
 
 const mark = (ok: boolean) => (ok ? '✓' : '✗')
-
-/** Fail the command (exit code 1) with one line. */
-const failWith = (message: string) => Effect.fail(new CliError({ message }))
 
 // ---- doctor ---------------------------------------------------------------
 
@@ -649,23 +647,6 @@ const asJson = Options.boolean('json').pipe(
 
 const aspectNote = (a: { min: number; max: number } | null) =>
   a === null ? '' : a.min === a.max ? `, aspect ${a.min}` : `, aspect ${a.min}–${a.max}`
-
-/** The variants of one Offer that share a Printfile Spec: one Placement, one print size, one Spec Hash. */
-interface SpecGroup {
-  readonly specHash: string
-  readonly spec: PrintfileSpec
-  readonly variants: Array<Omit<OfferVariant, 'spec' | 'specHash'>>
-}
-
-const groupBySpec = (variants: ReadonlyArray<OfferVariant>): SpecGroup[] => {
-  const groups: SpecGroup[] = []
-  for (const { spec, specHash, ...variant } of variants) {
-    const group = groups.find((g) => g.specHash === specHash)
-    if (group) group.variants.push(variant)
-    else groups.push({ specHash, spec, variants: [variant] })
-  }
-  return groups
-}
 
 const offers = Command.make('offers', { json: asJson }, ({ json }) =>
   Effect.gen(function* () {

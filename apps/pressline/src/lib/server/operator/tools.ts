@@ -1,8 +1,10 @@
 import {
-  ALPHA_UNSEEN_ADVICE,
+  checkPrintfile,
+  factsOf,
   inspectPrintfile,
   PrintfileInspection,
   PrintfileSpec,
+  toPrintfileInspection,
 } from '@pressline/contract'
 import { Effect, Schema } from 'effect'
 import { deriveSpec, resolveCatalog } from '../catalog/catalog'
@@ -208,36 +210,14 @@ export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
       Effect.mapError((e) => new ToolError({ message: e.message })),
     )
     const spec = variant.spec
-    const problems: string[] = []
-    if (file.status !== 200 && file.status !== 206)
-      problems.push(`${req.url} answered ${file.status}`)
-    else if (!file.header) problems.push('not a readable PNG or JPEG header')
-    else {
-      if (!spec.formats.includes(file.header.format)) {
-        problems.push(`${file.header.format} is not accepted here (${spec.formats.join(', ')})`)
-      }
-      if (file.header.width !== spec.width || file.header.height !== spec.height) {
-        problems.push(
-          `file is ${file.header.width}×${file.header.height}, spec requires ${spec.width}×${spec.height}`,
-        )
-      }
-      if (spec.alpha === 'forbidden' && file.header.alpha === 'present') {
-        problems.push('file has an alpha channel, this placement forbids transparency')
-      }
-      if (spec.alpha === 'required' && file.header.alpha === 'absent') {
-        problems.push('file has no alpha channel, this placement requires transparency')
-      }
-      if (spec.alpha !== 'allowed' && file.header.alpha === 'unseen') {
-        problems.push(
-          `this placement ${spec.alpha === 'forbidden' ? 'forbids' : 'requires'} transparency, but ${ALPHA_UNSEEN_ADVICE}`,
-        )
-      }
-    }
+    // The same verdict function Validation runs, so the operator's check and the
+    // bridge cannot disagree about the same file (#132).
+    const invalid = checkPrintfile(file.header, spec, factsOf(file, req.url))
     return {
       spec,
       specHash: variant.specHash,
-      file,
-      ok: problems.length === 0,
-      problems,
+      file: toPrintfileInspection(file),
+      ok: invalid === undefined,
+      problems: invalid ? [invalid.message] : [],
     } satisfies PrintfileCheckResult
   })

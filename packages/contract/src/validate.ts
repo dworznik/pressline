@@ -1,4 +1,5 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
+import { HEADER_BYTES, parseImageHeader, type ImageHeader } from './image-header.js'
 import type { PrintfileReady } from './protocol.js'
 import type { PrintfileSpec } from './spec.js'
 import { Duration, Effect, Schema, Stream } from 'effect'
@@ -10,7 +11,6 @@ import { Duration, Effect, Schema, Stream } from 'effect'
  * contract so Pressline and the conformance suite (ticket #21) run the very
  * same code and cannot disagree.
  */
-export const HEADER_BYTES = 64 * 1024
 
 export const InvalidReason = Schema.Literal(
   'unreachable',
@@ -30,107 +30,159 @@ export class PrintfileInvalid extends Schema.TaggedError<PrintfileInvalid>()('Pr
   message: Schema.String,
 }) {}
 
-/**
- * What the header read says about transparency. `unseen` means the chunk
- * table ran past the `HEADER_BYTES` window before IDAT, so the read proved
- * nothing either way (#117); callers must not treat it as `absent`.
- */
-export type AlphaObservation = 'present' | 'absent' | 'unseen'
-
-export interface ImageHeader {
-  readonly format: 'png' | 'jpeg'
-  readonly width: number
-  readonly height: number
-  readonly alpha: AlphaObservation
-}
-
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
-/** A chunk's length never exceeds 2^31 - 1 (PNG §5.3). */
-const MAX_CHUNK_LENGTH = 0x7fffffff
-/** A chunk type is four ASCII letters (PNG §5.4). */
-const isChunkType = (bytes: Uint8Array, at: number) =>
-  bytes.subarray(at, at + 4).every((b) => (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a))
-
-const parsePng = (bytes: Uint8Array, view: DataView): ImageHeader | undefined => {
-  // IHDR is always first and always 13 bytes: length(4) 'IHDR'(4) width(4) height(4) depth(1) color type(1)
-  if (view.getUint32(8) !== 13 || String.fromCharCode(...bytes.subarray(12, 16)) !== 'IHDR') {
-    return undefined
-  }
-  const width = view.getUint32(16)
-  const height = view.getUint32(20)
-  const colorType = bytes[25]!
-  const alpha = colorType === 4 || colorType === 6 ? 'present' : walkForTrns(bytes, view)
-  return alpha === undefined ? undefined : { format: 'png', width, height, alpha }
-}
-
-/**
- * A palette, grayscale or RGB image can still carry transparency in a tRNS
- * chunk, which the PNG ordering rules place before the first IDAT. Walk the
- * chunk table until one of them: IDAT or IEND proves absence, running out of
- * bytes proves nothing. A chunk's 8-byte header is enough to name it, so one
- * that straddles the window still counts. A malformed table is unreadable.
- */
-const walkForTrns = (bytes: Uint8Array, view: DataView): AlphaObservation | undefined => {
-  let offset = 8
-  while (offset + 8 <= bytes.length) {
-    const length = view.getUint32(offset)
-    if (length > MAX_CHUNK_LENGTH || !isChunkType(bytes, offset + 4)) return undefined
-    const type = String.fromCharCode(...bytes.subarray(offset + 4, offset + 8))
-    if (type === 'tRNS') return 'present'
-    if (type === 'IDAT' || type === 'IEND') return 'absent'
-    offset += 12 + length
-  }
-  return 'unseen'
-}
-
-const parseJpeg = (bytes: Uint8Array, view: DataView): ImageHeader | undefined => {
-  let offset = 2
-  while (offset + 2 <= bytes.length) {
-    if (bytes[offset] !== 0xff) return undefined
-    const marker = bytes[offset + 1]!
-    if (marker === 0xff) {
-      offset += 1 // fill byte (T.81 §B.1.1.2): any number may precede a marker
-      continue
-    }
-    // 0xFF00 is a stuffed byte and belongs only inside entropy-coded data; SOS or EOI before
-    // any frame header means there is no frame to read.
-    if (marker === 0x00 || marker === 0xda || marker === 0xd9) return undefined
-    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
-      offset += 2 // standalone markers carry no length
-      continue
-    }
-    if (offset + 4 > bytes.length) break
-    const length = view.getUint16(offset + 2)
-    if (length < 2) return undefined
-    const isSof = marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)
-    if (isSof) {
-      if (offset + 9 > bytes.length) break
-      return {
-        format: 'jpeg',
-        height: view.getUint16(offset + 5),
-        width: view.getUint16(offset + 7),
-        alpha: 'absent', // JPEG has no alpha channel; SOF settles it
-      }
-    }
-    offset += 2 + length
-  }
-  return undefined
-}
-
-/** Parse what the first bytes of a PNG or JPEG say about the image. Pure; exported for tests. */
-export const parseImageHeader = (bytes: Uint8Array): ImageHeader | undefined => {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  if (bytes.length >= 33 && PNG_SIGNATURE.every((b, i) => bytes[i] === b)) {
-    return parsePng(bytes, view)
-  }
-  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) return parseJpeg(bytes, view)
-  return undefined
-}
-
 const fail = (reason: InvalidReason, message: string) => new PrintfileInvalid({ reason, message })
 
 /** Why an `unseen` alpha is rejected, and what the Engine developer changes. */
 export const ALPHA_UNSEEN_ADVICE = `no IDAT chunk was found in the ${HEADER_BYTES / 1024} KiB Pressline reads, so whether the file has an alpha channel could not be seen; keep ancillary chunks (iCCP, eXIf, text) small enough that IDAT starts inside that window`
+
+/**
+ * Everything about a Printfile that is not in its bytes: what the host served,
+ * and what the Engine announced about it. Every field is optional, because the
+ * callers differ — Validation has an Engine's `PrintfileReady`, `printfile
+ * check` has a bare URL, Preflight has a file on disk. A fact nobody has skips
+ * the rules that need it.
+ */
+export interface PrintfileFacts {
+  /** Named in messages, so the operator sees which file answered. */
+  readonly url?: string
+  readonly status?: number
+  /** Content type the host served, parameters stripped. */
+  readonly servedContentType?: string
+  /** Total size the host reported, when it reported a usable one. */
+  readonly servedBytes?: number
+  readonly declaredContentType?: string
+  readonly declaredBytes?: number
+  readonly declaredWidth?: number
+  readonly declaredHeight?: number
+  /** The Spec Hash the Engine echoed, and the one Pressline computed (ADR-0005). */
+  readonly declaredSpecHash?: string
+  readonly expectedSpecHash?: string
+}
+
+/** `image/png` or anything else the protocol allows, as the parser names it. */
+const claimedFormat = (facts: PrintfileFacts) =>
+  facts.declaredContentType === undefined
+    ? undefined
+    : facts.declaredContentType === 'image/png'
+      ? 'png'
+      : 'jpeg'
+
+/**
+ * The rules that need no bytes: the Spec Hash the Engine echoed and the format
+ * it announced. `checkPrintfile` runs them first, and Validation runs them
+ * before it fetches, so a Printfile rendered for the wrong Spec costs no
+ * request.
+ */
+export const checkDeclaration = (
+  spec: PrintfileSpec,
+  facts: PrintfileFacts = {},
+): PrintfileInvalid | undefined => {
+  if (
+    facts.declaredSpecHash !== undefined &&
+    facts.expectedSpecHash !== undefined &&
+    facts.declaredSpecHash !== facts.expectedSpecHash
+  ) {
+    return fail(
+      'spec_hash',
+      `Engine rendered for spec ${facts.declaredSpecHash.slice(0, 12)}…, expected ${facts.expectedSpecHash.slice(0, 12)}…`,
+    )
+  }
+  const claimed = claimedFormat(facts)
+  if (claimed && !spec.formats.includes(claimed)) {
+    return fail(
+      'format',
+      `${facts.declaredContentType} is not accepted for this placement (${spec.formats.join(', ')})`,
+    )
+  }
+  return undefined
+}
+
+/**
+ * The verdict: everything Validation refuses, decided from the parsed header,
+ * the Spec and the facts around them. Pure, so `validatePrintfile`, the
+ * operator's `printfile check` and an Engine developer's Preflight cannot
+ * disagree about the same file. `undefined` means the file is sellable; what it
+ * departs from is `deviations`, not a refusal.
+ */
+export const checkPrintfile = (
+  header: ImageHeader | undefined,
+  spec: PrintfileSpec,
+  facts: PrintfileFacts = {},
+): PrintfileInvalid | undefined => {
+  const where = facts.url ?? 'the file'
+  const claimed = claimedFormat(facts)
+  const declared = checkDeclaration(spec, facts)
+  if (declared) return declared
+  if (facts.status !== undefined && facts.status !== 200 && facts.status !== 206) {
+    return fail('status', `${where} answered ${facts.status}`)
+  }
+  if (
+    facts.declaredContentType !== undefined &&
+    facts.servedContentType !== undefined &&
+    facts.servedContentType !== facts.declaredContentType
+  ) {
+    return fail(
+      'content_type',
+      `served as ${facts.servedContentType || 'unknown'}, declared ${facts.declaredContentType}`,
+    )
+  }
+  if (
+    facts.declaredBytes !== undefined &&
+    facts.servedBytes !== undefined &&
+    facts.servedBytes !== facts.declaredBytes
+  ) {
+    return fail(
+      'content_length',
+      `file is ${facts.servedBytes} bytes, Engine declared ${facts.declaredBytes}`,
+    )
+  }
+
+  if (!header) return fail('header', 'not a readable PNG or JPEG header')
+  if (claimed === undefined) {
+    if (!spec.formats.includes(header.format)) {
+      return fail(
+        'format',
+        `${header.format} is not accepted for this placement (${spec.formats.join(', ')})`,
+      )
+    }
+  } else if (header.format !== claimed) {
+    return fail('format', `file is ${header.format}, declared ${facts.declaredContentType}`)
+  }
+  if (header.width !== spec.width || header.height !== spec.height) {
+    return fail(
+      'dimensions',
+      `file is ${header.width}×${header.height}, spec requires ${spec.width}×${spec.height}`,
+    )
+  }
+  if (
+    (facts.declaredWidth !== undefined && facts.declaredWidth !== header.width) ||
+    (facts.declaredHeight !== undefined && facts.declaredHeight !== header.height)
+  ) {
+    return fail(
+      'dimensions',
+      `Engine declared ${facts.declaredWidth}×${facts.declaredHeight} but the file is ${header.width}×${header.height}`,
+    )
+  }
+  // `unseen` is rejected on both rules: the window proved nothing, and we pay for a wrong
+  // print. Whether it should widen the read or become a Deviation instead is #107's call.
+  if (spec.alpha === 'required' && header.alpha !== 'present') {
+    return fail(
+      'alpha',
+      header.alpha === 'unseen'
+        ? `transparency is required for this placement but ${ALPHA_UNSEEN_ADVICE}`
+        : 'transparency is required for this placement but the file has no alpha channel',
+    )
+  }
+  if (spec.alpha === 'forbidden' && header.alpha !== 'absent') {
+    return fail(
+      'alpha',
+      header.alpha === 'unseen'
+        ? `this placement does not accept transparency and ${ALPHA_UNSEEN_ADVICE}`
+        : 'this placement does not accept transparency but the file has an alpha channel',
+    )
+  }
+  return undefined
+}
 
 /** Read at most `limit` bytes of the response body, then stop (the rest is never transferred). */
 const readPrefix = (stream: Stream.Stream<Uint8Array, unknown>, limit: number) =>
@@ -163,10 +215,22 @@ export const PrintfileInspection = Schema.Struct({
 })
 export type PrintfileInspection = typeof PrintfileInspection.Type
 
-/** What one ranged GET says about a file: status, served type, size, and the parsed header if any. */
+/**
+ * What one ranged GET saw: the response facts, and the header parsed out of the
+ * window. `checkPrintfile` turns it into a verdict, `deviations` into a list.
+ */
+export interface InspectedPrintfile {
+  readonly status: number
+  /** Content type the host served, parameters stripped. */
+  readonly contentType: string
+  readonly bytes?: number
+  readonly header?: ImageHeader
+}
+
+/** Read the head of a Printfile: one ranged GET, at most `HEADER_BYTES`, no pixels decoded. */
 export const inspectPrintfile = (
   url: string,
-): Effect.Effect<PrintfileInspection, PrintfileInvalid, HttpClient.HttpClient> =>
+): Effect.Effect<InspectedPrintfile, PrintfileInvalid, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     const response = yield* client
@@ -179,7 +243,6 @@ export const inspectPrintfile = (
         Effect.timeout(Duration.seconds(10)),
         Effect.mapError((e) => fail('unreachable', `could not fetch ${url}: ${e.message}`)),
       )
-    const contentType = (response.headers['content-type'] ?? '').split(';')[0]!.trim()
     const total =
       response.status === 206
         ? Number(/\/(\d+)$/.exec(response.headers['content-range'] ?? '')?.[1])
@@ -190,15 +253,44 @@ export const inspectPrintfile = (
     const header = parseImageHeader(prefix)
     return {
       status: response.status,
-      contentType,
+      contentType: (response.headers['content-type'] ?? '').split(';')[0]!.trim(),
       ...(Number.isFinite(total) && total > 0 ? { bytes: total } : {}),
       ...(header ? { header } : {}),
     }
   }).pipe(Effect.scoped)
 
+/** What a caller has to say about the file it read, in the facts `checkPrintfile` reads. */
+export const factsOf = (file: InspectedPrintfile, url?: string): PrintfileFacts => ({
+  ...(url === undefined ? {} : { url }),
+  status: file.status,
+  servedContentType: file.contentType,
+  ...(file.bytes === undefined ? {} : { servedBytes: file.bytes }),
+})
+
+/**
+ * The four header fields the operator API publishes. What else the header holds
+ * stays in-process until #112 decides how the API carries it.
+ */
+export const toPrintfileInspection = (file: InspectedPrintfile): PrintfileInspection => ({
+  status: file.status,
+  contentType: file.contentType,
+  ...(file.bytes === undefined ? {} : { bytes: file.bytes }),
+  ...(file.header
+    ? {
+        header: {
+          format: file.header.format,
+          width: file.header.width,
+          height: file.header.height,
+          alpha: file.header.alpha,
+        },
+      }
+    : {}),
+})
+
 /**
  * Validate the Engine's answer against the Spec. `expectedSpecHash` is what
- * Pressline computed; the Engine must echo it (ADR-0005).
+ * Pressline computed; the Engine must echo it (ADR-0005). Fetches, parses and
+ * hands the verdict to `checkPrintfile`, which decides everything.
  */
 export const validatePrintfile = (
   ready: PrintfileReady,
@@ -206,85 +298,20 @@ export const validatePrintfile = (
   expectedSpecHash: string,
 ): Effect.Effect<void, PrintfileInvalid, HttpClient.HttpClient> =>
   Effect.gen(function* () {
-    if (ready.specHash !== expectedSpecHash) {
-      return yield* fail(
-        'spec_hash',
-        `Engine rendered for spec ${ready.specHash.slice(0, 12)}…, expected ${expectedSpecHash.slice(0, 12)}…`,
-      )
-    }
-    const claimedFormat = ready.contentType === 'image/png' ? 'png' : 'jpeg'
-    if (!spec.formats.includes(claimedFormat)) {
-      return yield* fail(
-        'format',
-        `${ready.contentType} is not accepted for this placement (${spec.formats.join(', ')})`,
-      )
-    }
+    const declaration = {
+      url: ready.url,
+      declaredContentType: ready.contentType,
+      declaredBytes: ready.bytes,
+      declaredWidth: ready.width,
+      declaredHeight: ready.height,
+      declaredSpecHash: ready.specHash,
+      expectedSpecHash,
+    } satisfies PrintfileFacts
+    // The Spec Hash and the declared format are settled before a byte moves.
+    const declared = checkDeclaration(spec, declaration)
+    if (declared) return yield* declared
 
-    const client = yield* HttpClient.HttpClient
-    const response = yield* client
-      .execute(
-        HttpClientRequest.get(ready.url).pipe(
-          HttpClientRequest.setHeader('Range', `bytes=0-${HEADER_BYTES - 1}`),
-        ),
-      )
-      .pipe(
-        Effect.timeout(Duration.seconds(10)),
-        Effect.mapError((e) => fail('unreachable', `could not fetch ${ready.url}: ${e.message}`)),
-      )
-    if (response.status !== 200 && response.status !== 206) {
-      return yield* fail('status', `${ready.url} answered ${response.status}`)
-    }
-    const contentType = (response.headers['content-type'] ?? '').split(';')[0]!.trim()
-    if (contentType !== ready.contentType) {
-      return yield* fail(
-        'content_type',
-        `served as ${contentType || 'unknown'}, declared ${ready.contentType}`,
-      )
-    }
-    const total =
-      response.status === 206
-        ? Number(/\/(\d+)$/.exec(response.headers['content-range'] ?? '')?.[1])
-        : Number(response.headers['content-length'])
-    if (Number.isFinite(total) && total > 0 && total !== ready.bytes) {
-      return yield* fail('content_length', `file is ${total} bytes, Engine declared ${ready.bytes}`)
-    }
-
-    const prefix = yield* readPrefix(response.stream, HEADER_BYTES).pipe(
-      Effect.mapError((e) => fail('unreachable', `could not read ${ready.url}: ${String(e)}`)),
-    )
-    const header = parseImageHeader(prefix)
-    if (!header) return yield* fail('header', 'not a readable PNG or JPEG header')
-    if (header.format !== claimedFormat) {
-      return yield* fail('format', `file is ${header.format}, declared ${ready.contentType}`)
-    }
-    if (header.width !== spec.width || header.height !== spec.height) {
-      return yield* fail(
-        'dimensions',
-        `file is ${header.width}×${header.height}, spec requires ${spec.width}×${spec.height}`,
-      )
-    }
-    if (header.width !== ready.width || header.height !== ready.height) {
-      return yield* fail(
-        'dimensions',
-        `Engine declared ${ready.width}×${ready.height} but the file is ${header.width}×${header.height}`,
-      )
-    }
-    // `unseen` is rejected on both rules: the window proved nothing, and we pay for a wrong
-    // print. Whether it should widen the read or become a Deviation instead is #107's call.
-    if (spec.alpha === 'required' && header.alpha !== 'present') {
-      return yield* fail(
-        'alpha',
-        header.alpha === 'unseen'
-          ? `transparency is required for this placement but ${ALPHA_UNSEEN_ADVICE}`
-          : 'transparency is required for this placement but the file has no alpha channel',
-      )
-    }
-    if (spec.alpha === 'forbidden' && header.alpha !== 'absent') {
-      return yield* fail(
-        'alpha',
-        header.alpha === 'unseen'
-          ? `this placement does not accept transparency and ${ALPHA_UNSEEN_ADVICE}`
-          : 'this placement does not accept transparency but the file has an alpha channel',
-      )
-    }
+    const served = yield* inspectPrintfile(ready.url)
+    const invalid = checkPrintfile(served.header, spec, { ...declaration, ...factsOf(served) })
+    if (invalid) return yield* invalid
   }).pipe(Effect.scoped)

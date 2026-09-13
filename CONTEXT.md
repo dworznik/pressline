@@ -60,6 +60,14 @@ Turning a Design into a Printfile that satisfies a Printfile Spec. Done by the E
 **Validation**:
 Pressline checking a Printfile against its Printfile Spec by inspecting the file, without decoding or altering pixels.
 
+**Deviation**:
+A Printfile that satisfies its Printfile Spec but departs from the file requirements the protocol documents or the fulfillment provider promotes. Recorded and surfaced, never blocking, never an Alarm.
+_Avoid_: Warning, advisory, lint, finding (that is Reconciliation's)
+
+**Preflight**:
+An Engine developer's local check of a Printfile against a Printfile Spec and the protocol's file requirements, before the file is hosted. Reports what Validation would refuse and any Deviations; guarantees nothing to anyone but the developer.
+_Avoid_: Validate (that is Validation, Pressline's act), lint, check
+
 **Printfile URL**:
 The immutable, publicly fetchable address at which the Engine hosts a Printfile. Pressline validates against it and hands the same URL to the fulfillment provider, which may re-fetch it months later.
 _Avoid_: File link, asset URL, download URL

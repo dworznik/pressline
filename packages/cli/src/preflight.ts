@@ -1,12 +1,17 @@
 import {
   checkPrintfile,
+  describeHeader,
   deviations,
+  formatInspection,
   HEADER_BYTES,
-  parseImageHeader,
-  type Deviation,
+  inspectImageHeader,
+  inspectionFails,
+  PrintfileInvalid,
+  UNREADABLE_HEADER,
   type ImageHeader,
-  type InvalidReason,
+  type Inspection,
 } from '@pressline/contract'
+import { Effect } from 'effect'
 import { specSummary, type NamedSpec } from './spec-source.js'
 
 /**
@@ -15,40 +20,31 @@ import { specSummary, type NamedSpec } from './spec-source.js'
  * file is hosted. It reports what Validation would refuse and any Deviations,
  * and guarantees nothing to anyone but the developer.
  *
- * Pure: bytes in, a report out. Reading the filesystem is the CLI's business
- * and the verdicts are the contract's, so Preflight cannot disagree with the
- * bridge about the same file. Exported as `@pressline/cli/preflight` for an
- * Engine's own test suite, the way `@pressline/conformance` exports its run.
+ * Bytes in, an Inspection out. Reading the filesystem is the CLI's business and
+ * the verdicts are the contract's, so Preflight cannot disagree with the bridge
+ * about the same file. Exported as `@pressline/cli/preflight` for an Engine's
+ * own test suite, the way `@pressline/conformance` exports its run.
  */
 
 export type { NamedSpec }
 
-/** One thing Validation would refuse, in the words the bridge would use. */
-export interface PreflightProblem {
-  readonly reason: InvalidReason
-  readonly message: string
-}
-
 /**
- * A fact with no verdict attached: `icc_profile`, an embedded profile nobody
- * has identified yet (#116); `header_window`, the bridge's 64 KiB read seeing
- * less than the whole file does.
+ * A fact with no verdict attached: `icc_profile`, a profile Preflight read and
+ * nothing refuses; `header_window`, the bridge's 64 KiB read seeing less than
+ * the whole file does. Notes are Preflight's alone — the bridge has no whole
+ * file to compare its window with.
  */
 export interface PreflightNote {
   readonly code: 'icc_profile' | 'header_window'
   readonly message: string
 }
 
-/** One file against one Spec. Both lists empty is a file that would sell as written. */
-export interface PreflightResult {
+/** One file against one Spec. An Inspection with nothing in either list is a file that would sell as written. */
+export interface PreflightResult extends Inspection {
   readonly path: string
   /** Size of the whole file; Preflight reads all of it, unlike the bridge. */
   readonly bytes: number
   readonly specHash?: string
-  /** What the whole file says about itself; absent when the bytes are no image. */
-  readonly header?: ImageHeader
-  readonly invalid: readonly PreflightProblem[]
-  readonly deviations: readonly Deviation[]
   readonly notes: readonly PreflightNote[]
 }
 
@@ -59,10 +55,7 @@ export interface PreflightEntry {
 }
 
 /** Validation's words for bytes that are no image; a file given no Spec still earns this verdict. */
-const UNREADABLE: PreflightProblem = {
-  reason: 'header',
-  message: 'not a readable PNG or JPEG header',
-}
+const UNREADABLE = new PrintfileInvalid({ reason: 'header', message: UNREADABLE_HEADER })
 
 /**
  * What the bridge's read would have seen but the whole-file read did not, in the
@@ -78,8 +71,16 @@ const windowNote = (whole: ImageHeader, seen: ImageHeader | undefined): string |
 
 const iccNote = (header: ImageHeader): string | undefined => {
   if (header.format !== 'png' || !header.iccProfile) return undefined
-  const { name, compressedBytes } = header.iccProfile
-  return `the PNG embeds an ICC profile named "${name}" (${compressedBytes} bytes, compressed); which profile it is is not checked`
+  const { name, compressedBytes, colorSpace } = header.iccProfile
+  // CMYK and gray are refusals, and a profile nobody could read is a Deviation:
+  // each already names the profile. What is left is a profile nothing says
+  // anything about, and the one thing worth adding is what is not checked.
+  if (colorSpace !== 'rgb' && colorSpace !== 'other') return undefined
+  const declares =
+    colorSpace === 'rgb'
+      ? 'an RGB color space; which RGB is not checked'
+      : 'a color space that is neither RGB, CMYK nor gray'
+  return `the PNG embeds an ICC profile named "${name}" (${compressedBytes} bytes, compressed) declaring ${declares}`
 }
 
 const note = (code: PreflightNote['code'], message: string | undefined) =>
@@ -91,42 +92,55 @@ const note = (code: PreflightNote['code'], message: string | undefined) =>
  * reported header come from the whole file, because that is what the developer
  * can fix.
  */
+export const runPreflight = (
+  file: { readonly path: string; readonly bytes: Uint8Array },
+  spec?: NamedSpec,
+): Effect.Effect<PreflightResult> =>
+  Effect.gen(function* () {
+    const header = yield* inspectImageHeader(file.bytes)
+    const withinWindow = file.bytes.length <= HEADER_BYTES
+    const seen = withinWindow
+      ? header
+      : yield* inspectImageHeader(file.bytes.subarray(0, HEADER_BYTES))
+    return {
+      path: file.path,
+      bytes: file.bytes.length,
+      ...(spec?.specHash === undefined ? {} : { specHash: spec.specHash }),
+      ...(header ? { header } : {}),
+      // Without a Spec there is no rule to break but one, and a file still
+      // answers for itself: unreadable bytes are unreadable.
+      invalid: spec ? checkPrintfile(seen, spec.spec) : header ? [] : [UNREADABLE],
+      deviations: header ? deviations(header, spec?.spec) : [],
+      notes: header
+        ? [
+            ...note('icc_profile', iccNote(header)),
+            ...(withinWindow ? [] : note('header_window', windowNote(header, seen))),
+          ]
+        : [],
+    }
+  })
+
+/**
+ * Promise form, for an Engine's own test suite: an Engine developer should not
+ * have to reach for Effect to check the file they just rendered. The same shape
+ * `@pressline/conformance` exports beside its own run.
+ */
 export const preflight = (
   file: { readonly path: string; readonly bytes: Uint8Array },
   spec?: NamedSpec,
-): PreflightResult => {
-  const header = parseImageHeader(file.bytes)
-  const withinWindow = file.bytes.length <= HEADER_BYTES
-  const seen = withinWindow ? header : parseImageHeader(file.bytes.subarray(0, HEADER_BYTES))
-  const refusal = spec ? checkPrintfile(seen, spec.spec) : undefined
-  const invalid = spec
-    ? refusal
-      ? [{ reason: refusal.reason, message: refusal.message }]
-      : []
-    : header
-      ? []
-      : [UNREADABLE]
-  return {
-    path: file.path,
-    bytes: file.bytes.length,
-    ...(spec?.specHash === undefined ? {} : { specHash: spec.specHash }),
-    ...(header ? { header } : {}),
-    invalid,
-    deviations: header ? deviations(header, spec?.spec) : [],
-    notes: header
-      ? [
-          ...note('icc_profile', iccNote(header)),
-          ...(withinWindow ? [] : note('header_window', windowNote(header, seen))),
-        ]
-      : [],
-  }
-}
+): Promise<PreflightResult> => Effect.runPromise(runPreflight(file, spec))
 
-/** How the report's arithmetic is done, so the summary line and the exit code cannot disagree. */
+/**
+ * How the report's arithmetic is done, so the summary line and the exit code
+ * cannot disagree — and it is the shared exit rule counted per file, so
+ * Preflight cannot disagree with `printfile check` or `engine conformance`
+ * either: a file is refused when it would fail without `--strict`, and
+ * deviating when only `--strict` would fail it.
+ */
 export const tally = (entries: readonly PreflightEntry[]) => {
-  const refused = entries.filter((e) => e.result.invalid.length > 0).length
+  const refused = entries.filter((e) => inspectionFails(e.result)).length
   const deviating = entries.filter(
-    (e) => e.result.invalid.length === 0 && e.result.deviations.length > 0,
+    (e) => !inspectionFails(e.result) && inspectionFails(e.result, true),
   ).length
   return { total: entries.length, refused, deviating, clean: entries.length - refused - deviating }
 }
@@ -136,24 +150,9 @@ export const tally = (entries: readonly PreflightEntry[]) => {
 const describeSpec = (spec: NamedSpec) =>
   `Spec${spec.source ? ` ${spec.source}` : ''}: ${specSummary(spec.spec, spec.specHash)}`
 
-const describeDensity = (header: ImageHeader) => {
-  const d = header.density
-  if (!d) return 'no DPI stamped'
-  if (d.dpiX === undefined || d.dpiY === undefined) return `${d.x}:${d.y} aspect only, no DPI`
-  return `${d.dpiX}×${d.dpiY} dpi`
-}
-
-const describeHeader = (header: ImageHeader) =>
-  header.format === 'png'
-    ? `png ${header.width}×${header.height}, ${header.bitDepth}-bit color type ${header.colorType}${header.interlaced ? ', interlaced' : ''}, alpha ${header.alpha}, ${describeDensity(header)}`
-    : `jpeg ${header.width}×${header.height}, ${header.precision}-bit, ${header.components} channel(s), alpha ${header.alpha}, ${describeDensity(header)}`
-
 const block = ({ result }: PreflightEntry): string[] => [
-  `File ${result.path}: ${result.header ? describeHeader(result.header) : UNREADABLE.message}, ${result.bytes} bytes`,
-  ...(result.invalid.length === 0
-    ? ['  ✓ nothing Validation would refuse']
-    : result.invalid.map((p) => `  ✗ ${p.reason}: ${p.message}`)),
-  ...result.deviations.map((d) => `  ⚠ ${d.code}: ${d.message}`),
+  `File ${result.path}: ${result.header ? describeHeader(result.header) : UNREADABLE_HEADER}, ${result.bytes} bytes`,
+  ...formatInspection(result),
   ...result.notes.map((n) => `  · ${n.message}`),
 ]
 

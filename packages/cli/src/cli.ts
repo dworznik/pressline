@@ -1,6 +1,14 @@
 import { createRequire } from 'node:module'
 import { Args, Command, Options } from '@effect/cli'
-import { CatalogResponse } from '@pressline/contract'
+import {
+  CatalogResponse,
+  describeHeader,
+  Deviation,
+  formatInspection,
+  ImageHeader,
+  inspectionFails,
+  PrintfileInvalid,
+} from '@pressline/contract'
 import { Config, Effect, Option, Schema } from 'effect'
 import { api, failWith, Instance, publicGet } from './client.js'
 import { engine } from './engine.js'
@@ -586,6 +594,11 @@ const reconcile = Command.make('reconcile', { dryRun }, ({ dryRun }) =>
 
 // ---- printfile ------------------------------------------------------------
 
+/**
+ * The instance's answer. Every field the instance may not have is optional, so
+ * a newer CLI reads an older instance rather than refusing it — and `deviations`
+ * missing is itself a fact worth printing, distinct from "no Deviations found".
+ */
 const PrintfileResult = Schema.Struct({
   spec: Spec,
   specHash: Schema.String,
@@ -593,42 +606,54 @@ const PrintfileResult = Schema.Struct({
     status: Schema.Number,
     contentType: Schema.String,
     bytes: Schema.optional(Schema.Number),
-    header: Schema.optional(
-      Schema.Struct({
-        format: Schema.String,
-        width: Schema.Number,
-        height: Schema.Number,
-        alpha: Schema.Literal('present', 'absent', 'unseen'),
-      }),
-    ),
+    header: Schema.optional(ImageHeader),
+    invalid: Schema.optionalWith(Schema.Array(PrintfileInvalid), { default: () => [] }),
+    deviations: Schema.optional(Schema.Array(Deviation)),
   }),
-  ok: Schema.Boolean,
-  problems: Schema.Array(Schema.String),
 })
 
-const alphaNote = { present: ' with alpha', absent: '', unseen: ', alpha unseen in the header' }
 const fileUrl = Args.text({ name: 'url' })
 const offer = Options.text('offer')
 const variant = Options.text('variant')
+const strict = Options.boolean('strict').pipe(
+  Options.withDescription('Fail on Deviations too, not only on what Validation would refuse'),
+)
 
 const printfileCheck = Command.make(
   'check',
-  { fileUrl, offer, variant },
-  ({ fileUrl, offer, variant }) =>
+  { fileUrl, offer, variant, strict },
+  ({ fileUrl, offer, variant, strict }) =>
     Effect.gen(function* () {
       const r = yield* api('POST', '/api/operator/printfile/check', PrintfileResult, {
         url: fileUrl,
         offer,
         variant,
       })
-      const h = r.file.header
+      const file = r.file
+      const size = file.bytes === undefined ? '' : `, ${file.bytes} bytes`
+      // One file's Inspection, in Preflight's own block: an envelope line for
+      // what the host answered, the header, then the refusals and Deviations.
+      const inspection = { invalid: file.invalid, deviations: file.deviations ?? [] }
       yield* print(
         `Spec ${offer}/${variant}: ${specSummary(r.spec, r.specHash)}`,
-        `File: HTTP ${r.file.status}, ${r.file.contentType || 'no content type'}${r.file.bytes ? `, ${r.file.bytes} bytes` : ''}${h ? `, ${h.format} ${h.width}×${h.height}${alphaNote[h.alpha]}` : ''}`,
+        `File: HTTP ${file.status}, ${file.contentType || 'no content type'}${size}`,
+        ...(file.header ? [`  ${describeHeader(file.header)}`] : []),
+        ...formatInspection(inspection),
+        // An instance that predates Deviations reported none because it looked
+        // for none: that is not the same fact as a file that has none.
+        ...(file.deviations ? [] : ['  · this instance does not report Deviations']),
       )
-      if (r.ok) return yield* print('✓ The file satisfies the Spec.')
-      yield* print(...r.problems.map((p) => `✗ ${p}`))
-      return yield* failWith(`${r.problems.length} problem(s)`)
+      // The shared exit rule, plus the one case an Inspection cannot express:
+      // `--strict` cannot pass on an answer that never looked for Deviations.
+      if (!inspectionFails(inspection, strict)) {
+        if (!strict || file.deviations) return
+        return yield* failWith('--strict: this instance does not report Deviations')
+      }
+      return yield* failWith(
+        file.invalid.length > 0
+          ? `${file.invalid.length} problem(s)`
+          : `--strict: ${inspection.deviations.length} Deviation(s)`,
+      )
     }),
 ).pipe(
   Command.withDescription('Check any image URL against the Printfile Spec of an Offer variant'),

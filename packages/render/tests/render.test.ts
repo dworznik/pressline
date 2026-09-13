@@ -50,7 +50,10 @@ describe.each(backends)('render on the %s backend', (_name, make) => {
         { kind: 'raster', bytes: await redLeft() },
         spec({ alpha: rule, formats: rule === 'forbidden' ? ['png', 'jpeg'] : ['png'] }),
       )
-      const report = preflight({ path: `${rule}.png`, bytes: png }, { spec: spec({ alpha: rule }) })
+      const report = await preflight(
+        { path: `${rule}.png`, bytes: png },
+        { spec: spec({ alpha: rule }) },
+      )
       expect(report.invalid).toEqual([])
       expect(report.deviations).toEqual([])
       expect(report.notes).toEqual([])

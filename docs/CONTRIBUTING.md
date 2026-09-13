@@ -50,9 +50,10 @@ also picks the dist-tag, so a prerelease like `v0.2.0-rc.1` publishes under `nex
 and never takes `latest`, and reports which versions the registry already holds,
 so a release that failed half way can simply be published again.
 
-To check a bump before releasing it, run the workflow by hand from the Actions tab
-against its branch: it rehearses the publish and publishes nothing. See below for
-what that proves, and why it is a manual trigger rather than a check on the PR.
+To check a bump before releasing it, run the workflow by hand from the Actions tab:
+it rehearses everything a release does except authenticating and publishing — the
+manifests agree, the tarballs pack, `workspace:^` rewrites to a real range. See
+below for the one thing it cannot tell you.
 
 The workflow holds no npm token. It authenticates with [npm trusted
 publishing](https://docs.npmjs.com/trusted-publishers/): GitHub mints an OIDC
@@ -68,16 +69,30 @@ repository can read it. That matters because packages publish in dependency
 order: a missing registration takes the release down part-way, with `contract`
 on the registry and its dependents not.
 
-That is what the rehearsal is for. pnpm builds its publish options — the token
-exchange included — before it honors `--dry-run`, so it authenticates against npm
-for real while publishing nothing, and fails if any package would have fallen back
-to a credential the workflow does not have.
+**CI deliberately cannot check this.** To prove the credential works you have to
+hold the credential, and `id-token: write` is a licence to publish: npm matches on
+the repository and the workflow filename, not on the event or the branch, so any
+job holding it can publish for real. Only the `publish` job has it, and only a
+`release` can reach that job. Nothing that arrives on a branch or a pull request
+ever runs beside it — which is also why the `rehearse` job, reachable by anyone
+who can dispatch a workflow, has no `id-token` and therefore cannot tell you
+whether trusted publishing is configured.
 
-**It is deliberately not a check on the pull request.** To prove the credential
-works you have to hold the credential, and a job holding `id-token: write` must
-never run code that arrived by pull request: that code could mint the token and
-publish with it. `workflow_dispatch` is the only other way in, and triggering it
-already requires write access to the repository.
+Ask npm instead, from a terminal:
+
+```
+npm trust list @pressline/cli        # needs npm >= 11.10 and a fresh `npm login`
+```
+
+Each of the four should report `type: github`, `file: release.yml`,
+`repository: dworznik/pressline`, and publish permission. Nothing configured means
+a release fails on a token exchange that returns `404` — npm masks `403` as `404`,
+so a missing configuration and a wrong one look identical from CI. To (re)create
+one:
+
+```
+npm trust github @pressline/cli --file release.yml --repo dworznik/pressline --allow-publish
+```
 
 Two things not to change without knowing why:
 

@@ -4,9 +4,7 @@ on:
   # Publishing the GitHub Release is the trigger: draft it, click Publish.
   release:
     types: [published]
-  # Rehearse before releasing. Dispatch is deliberately the only other way in:
-  # this job holds a credential that can publish, so it must never run code that
-  # arrives by pull request. Triggering it already requires write access.
+  # Rehearse before releasing. Never publishes, and holds no credential.
   workflow_dispatch:
 
 # Two releases must not publish at once: they would race for the `latest` tag and
@@ -20,14 +18,77 @@ permissions:
   contents: read
 
 jobs:
+  # What the other two jobs act on, decided once. Needs no credential and no
+  # dependencies: the script reads the manifests and asks the registry.
+  status:
+    name: what is there to publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.status.outputs.version }}
+      pending: ${{ steps.status.outputs.pending }}
+      disttag: ${{ steps.status.outputs.disttag }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      # Fails if a package that releases in lockstep is missing, if they disagree
+      # on a version, or if the release names a different one; otherwise reports
+      # which versions the registry is still missing, so a re-run is harmless.
+      #
+      # The tag goes through the environment: it is attacker-controllable text,
+      # and interpolating it into the script would be a shell injection.
+      - id: status
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: node scripts/release-status.mjs "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  # Everything a release does except authenticate and publish: the manifests
+  # agree, the tarballs pack, `workspace:^` rewrites to a real range.
+  #
+  # It deliberately has no `id-token`, so it cannot mint a publishing credential
+  # however it is triggered. The cost is that it cannot prove trusted publishing
+  # is configured either -- that is `npm trust list @pressline/<pkg>` from a
+  # terminal, not something CI can check without holding the credential it is
+  # checking.
+  rehearse:
+    name: rehearse the publish
+    needs: status
+    if: github.event_name != 'release' && needs.status.outputs.pending != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+
+      - run: pnpm install --frozen-lockfile
+
+      - env:
+          DIST_TAG: ${{ needs.status.outputs.disttag }}
+          VERSION: ${{ needs.status.outputs.version }}
+        run: |
+          pnpm --recursive publish --dry-run --no-git-checks --tag "$DIST_TAG"
+          echo "Packed ${VERSION} for the ${DIST_TAG} tag. Nothing was published, and nothing here was authenticated."
+
+  # The only job that can publish, and the only one that can mint an OIDC token.
+  # Reachable by `release` alone, so no code that arrived on a branch or a pull
+  # request ever runs beside that credential.
   publish:
     name: publish to npm
+    needs: status
+    if: github.event_name == 'release' && needs.status.outputs.pending != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
       # npm trusted publishing: pnpm exchanges this OIDC token for a short-lived
-      # registry token per package. There is no NPM_TOKEN, by design. Scoped to
-      # this job so nothing else in the workflow can mint one.
+      # registry token per package. There is no NPM_TOKEN, by design.
       id-token: write
     steps:
       - uses: actions/checkout@v7
@@ -38,55 +99,14 @@ jobs:
           # No dependency cache here: a release should build from what the
           # lockfile says, not from whatever a previous run left behind.
 
-      # Fails if a package that releases in lockstep is missing, if they disagree
-      # on a version, or if the release names a different one; otherwise reports
-      # which versions the registry is still missing, so a re-run is harmless.
-      #
-      # The tag goes through the environment: it is attacker-controllable text,
-      # and interpolating it into the script would be a shell injection.
-      - name: what is there to publish
-        id: status
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: node scripts/release-status.mjs "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-
-      - if: steps.status.outputs.pending != ''
-        run: pnpm install --frozen-lockfile
-
-      - if: github.event_name == 'release' && steps.status.outputs.pending != ''
-        run: pnpm verify
-
-      # A trusted publisher is configured per package on npmjs.com, and nothing in
-      # this repository can see whether that was done -- so rehearse it rather than
-      # let a release discover it half-finished. pnpm builds its publish options,
-      # the OIDC token exchange included, before it honors --dry-run: this
-      # authenticates for real and publishes nothing.
-      - name: rehearse the publish
-        if: github.event_name != 'release' && steps.status.outputs.pending != ''
-        env:
-          DIST_TAG: ${{ steps.status.outputs.disttag }}
-          VERSION: ${{ steps.status.outputs.version }}
-        run: |
-          set -o pipefail
-          pnpm --recursive publish --dry-run --no-git-checks --tag "$DIST_TAG" 2>&1 | tee dry-run.log
-
-          # pnpm only warns when the token exchange fails and falls back to whatever
-          # credential it can find -- of which this job has none. Treat it as fatal:
-          # a release would fail here, part-way through the dependency order.
-          if grep -qF 'Skipped OIDC' dry-run.log; then
-            echo "::error::A package is missing its trusted publisher on npmjs.com. Configure it against this repository and release.yml before releasing."
-            exit 1
-          fi
-
-          echo "Trusted publishing authenticated for every package. Releasing ${VERSION} will publish cleanly."
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
 
       # Publishes every package whose version is not on the registry yet, in
       # dependency order, rewriting `workspace:^` to a real range. --no-git-checks
       # because the publish branch default is master, and --tag so a prerelease
       # never takes `latest`.
       # Do not add --batch: it turns OIDC off and the publish would go unauthenticated.
-      - name: publish
-        if: github.event_name == 'release' && steps.status.outputs.pending != ''
-        env:
-          DIST_TAG: ${{ steps.status.outputs.disttag }}
+      - env:
+          DIST_TAG: ${{ needs.status.outputs.disttag }}
         run: pnpm --recursive publish --no-git-checks --tag "$DIST_TAG"

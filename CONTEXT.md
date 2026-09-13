@@ -64,6 +64,10 @@ Pressline checking a Printfile against its Printfile Spec by inspecting the file
 A Printfile that satisfies its Printfile Spec but departs from the file requirements the protocol documents or the fulfillment provider promotes. Recorded and surfaced, never blocking, never an Alarm.
 _Avoid_: Warning, advisory, lint, finding (that is Reconciliation's)
 
+**Inspection**:
+What looking at one Printfile concluded: what its header said, what Validation would refuse, and which Deviations it carries. An Inspection is the same whoever looked and however the bytes arrived, so Validation and Preflight can never describe the same file differently.
+_Avoid_: Check, result, report
+
 **Preflight**:
 An Engine developer's local check of a Printfile against a Printfile Spec and the protocol's file requirements, before the file is hosted. Reports what Validation would refuse and any Deviations; guarantees nothing to anyone but the developer.
 _Avoid_: Validate (that is Validation, Pressline's act), lint, check

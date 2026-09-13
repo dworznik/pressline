@@ -17,6 +17,8 @@ export default defineConfig({
       '@pressline/contract': new URL('../../packages/contract/src/index.ts', import.meta.url)
         .pathname,
       '@pressline/cli': new URL('../../packages/cli/src/index.ts', import.meta.url).pathname,
+      '@pressline/conformance': new URL('../../packages/conformance/src/index.ts', import.meta.url)
+        .pathname,
     },
   },
 })

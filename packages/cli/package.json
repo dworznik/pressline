@@ -1,7 +1,7 @@
 {
   "name": "@pressline/cli",
   "version": "0.1.1",
-  "description": "Operator CLI for a Pressline instance: doctor, catalog search and check, webhooks register, orders, reconcile, printfile check",
+  "description": "Command line for a Pressline instance: the Operator's doctor, catalog, webhooks, orders, reconcile and printfile check, and the Engine developer's offers and engine conformance",
   "keywords": [
     "pressline",
     "cli",
@@ -9,7 +9,8 @@
     "printful",
     "stripe",
     "operator",
-    "effect"
+    "effect",
+    "engine"
   ],
   "license": "MIT",
   "type": "module",
@@ -51,6 +52,8 @@
     "@effect/cli": "^0.77.1",
     "@effect/platform": "^0.97.2",
     "@effect/platform-node": "^0.108.2",
+    "@pressline/conformance": "workspace:^",
+    "@pressline/contract": "workspace:^",
     "effect": "^3.22.2"
   },
   "devDependencies": {

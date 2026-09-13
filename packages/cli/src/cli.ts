@@ -1,21 +1,27 @@
 import { createRequire } from 'node:module'
 import { Args, Command, Options } from '@effect/cli'
+import { CatalogResponse, type OfferVariant, type PrintfileSpec } from '@pressline/contract'
 import { Config, Effect, Option, Schema } from 'effect'
-import { api, CliError, Instance } from './client.js'
+import { api, CliError, Instance, publicGet } from './client.js'
+import { engine } from './engine.js'
 import { print } from './output.js'
 
 /**
- * `pressline` — the Operator's command line for one instance. Every command
- * is a thin client of the operator API; nothing here reaches the database or
- * the providers directly (ADR-0014).
+ * `pressline` — the command line for one instance. The Operator's commands
+ * are thin clients of the operator API; nothing here reaches the database or
+ * the providers directly (ADR-0014). The Engine developer's commands
+ * (`offers`, `engine …`) read public endpoints or the Engine itself and need
+ * no token.
  */
 const url = Options.text('url').pipe(
-  Options.withDescription('Base URL of the Pressline instance'),
+  Options.withDescription('Base URL of the Pressline instance; `engine …` commands do not need it'),
   Options.withFallbackConfig(Config.string('PRESSLINE_URL')),
+  Options.optional,
 )
 const token = Options.redacted('token').pipe(
-  Options.withDescription('Operator token'),
+  Options.withDescription('Operator token; only the Operator commands need it'),
   Options.withFallbackConfig(Config.redacted('PRESSLINE_TOKEN')),
+  Options.optional,
 )
 
 const mark = (ok: boolean) => (ok ? '✓' : '✗')
@@ -635,11 +641,82 @@ const printfile = Command.make('printfile').pipe(
   Command.withSubcommands([printfileCheck]),
 )
 
+// ---- offers (public, for Engine developers) ---------------------------------
+
+const asJson = Options.boolean('json').pipe(
+  Options.withDescription('Print the grouped structure as JSON'),
+)
+
+const aspectNote = (a: { min: number; max: number } | null) =>
+  a === null ? '' : a.min === a.max ? `, aspect ${a.min}` : `, aspect ${a.min}–${a.max}`
+
+/** The variants of one Offer that share a Printfile Spec: one Placement, one print size, one Spec Hash. */
+interface SpecGroup {
+  readonly specHash: string
+  readonly spec: PrintfileSpec
+  readonly variants: Array<Omit<OfferVariant, 'spec' | 'specHash'>>
+}
+
+const groupBySpec = (variants: ReadonlyArray<OfferVariant>): SpecGroup[] => {
+  const groups: SpecGroup[] = []
+  for (const { spec, specHash, ...variant } of variants) {
+    const group = groups.find((g) => g.specHash === specHash)
+    if (group) group.variants.push(variant)
+    else groups.push({ specHash, spec, variants: [variant] })
+  }
+  return groups
+}
+
+const offers = Command.make('offers', { json: asJson }, ({ json }) =>
+  Effect.gen(function* () {
+    const c = yield* publicGet('/api/offers', CatalogResponse)
+    // Every size of a tee has the same Placement, so one Spec: group by Spec Hash.
+    const grouped = c.offers.map(({ variants, ...offer }) => ({
+      ...offer,
+      specs: groupBySpec(variants),
+    }))
+    if (json) {
+      return yield* print(
+        JSON.stringify(
+          { protocolVersion: c.protocolVersion, currency: c.currency, offers: grouped },
+          null,
+          2,
+        ),
+      )
+    }
+    for (const o of grouped) {
+      yield* print(
+        `${o.slug}  ${o.name} — ${o.placement} / ${o.technique}${aspectNote(o.aspect)}, ${money(o.retailPrice.amount, o.retailPrice.currency)}`,
+      )
+      for (const g of o.specs) {
+        yield* print(
+          `  ${g.spec.width}×${g.spec.height}px @ ${g.spec.dpi} dpi, ${g.spec.formats.join('/')}, alpha ${g.spec.alpha} (hash ${g.specHash.slice(0, 12)}…)  ${g.variants.map((v) => v.key).join(', ')}`,
+        )
+      }
+    }
+  }),
+).pipe(
+  Command.withDescription(
+    'The Offers this instance sells, with one line per distinct Printfile Spec (public, no token)',
+  ),
+)
+
 // ---- root -----------------------------------------------------------------
 
 const root = Command.make('pressline', { url, token }).pipe(
-  Command.withDescription('Operate a Pressline instance through its operator API'),
-  Command.withSubcommands([doctor, catalog, webhooks, orders, reconcile, printfile]),
+  Command.withDescription(
+    'Operate a Pressline instance through its operator API, and check an Engine against it',
+  ),
+  Command.withSubcommands([
+    doctor,
+    catalog,
+    webhooks,
+    orders,
+    reconcile,
+    printfile,
+    offers,
+    engine,
+  ]),
 )
 
 /** Read from the manifest rather than restated here, so a release cannot leave

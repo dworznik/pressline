@@ -1,8 +1,9 @@
 # @pressline/conformance
 
-Run it against your Engine before wiring it to a Pressline instance:
+Run it against your Engine before wiring it to a Pressline instance. It is `pressline engine conformance` in the CLI; this package's own binary does the same and stays as an alias:
 
 ```sh
+npx @pressline/cli engine conformance https://engine.example --secret $ENGINE_SECRET --design some-design-id
 npx @pressline/conformance https://engine.example --secret $ENGINE_SECRET --design some-design-id
 ```
 

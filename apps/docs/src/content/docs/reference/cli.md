@@ -1,13 +1,15 @@
 ---
 title: CLI
-description: pressline — the Operator's command line.
+description: pressline — the command line for one instance, for the Operator and the Engine developer.
 ---
 
 ```sh
 npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 ```
 
-`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. Every command is a client of the operator API; the CLI never touches the database.
+`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. The CLI never touches the database. The Operator's commands are clients of the operator API and need the token. `offers` reads a public endpoint of the instance and needs only the URL. `engine …` commands talk to the Engine at the base URL they are given and need neither.
+
+## Operator
 
 | Command                                                                     | What it does                                                                                          |
 | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -21,3 +23,12 @@ npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 | `orders purge --older-than <days>`                                          | Strip personal data from finished orders                                                              |
 | `reconcile [--dry-run]`                                                     | Run Reconciliation now                                                                                |
 | `printfile check <url> --offer --variant`                                   | Any image URL against an Offer variant's Spec                                                         |
+
+## Engine developer
+
+| Command                                                                            | What it does                                                                                                       |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `offers [--json]`                                                                  | The Offers this instance sells, one line per distinct Printfile Spec with the variant keys that share it; no token |
+| `engine conformance <baseUrl> --secret --design [--dpi] [--timeout] [--any-shape]` | Run the [conformance suite](/engine/conformance/) against an Engine                                                |
+
+`offers` needs `--url`; `engine …` needs neither `--url` nor `--token`. `pressline-conformance` from `@pressline/conformance` remains as an alias of `engine conformance`.

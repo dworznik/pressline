@@ -27,6 +27,7 @@
     "@effect/platform-node": "^0.108.2",
     "@playwright/test": "^1.63.0",
     "@pressline/cli": "workspace:*",
+    "@pressline/conformance": "workspace:*",
     "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@types/better-sqlite3": "^9.6.0",

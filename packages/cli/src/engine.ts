@@ -10,7 +10,7 @@ import {
 import { Effect, Option } from 'effect'
 import { CliError, failWith } from './client.js'
 import { print } from './output.js'
-import { formatPreflight, preflight, preflightJson, type PreflightCheck } from './preflight.js'
+import { formatPreflight, preflight, tally, type PreflightEntry } from './preflight.js'
 import { resolveSpecs } from './spec-source.js'
 
 /**
@@ -35,7 +35,7 @@ const conformance = Command.make('conformance', conformanceFlags, (a) =>
 
 // ---- preflight --------------------------------------------------------------
 
-/** What a directory contributes. A path named on the command line is checked whatever it is called. */
+/** What a directory contributes. A path named on the command line is Preflighted whatever it is called. */
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg']
 
 /**
@@ -80,7 +80,7 @@ const variant = Options.text('variant').pipe(
   Options.withDescription('The one variant of --offer whose Spec to check against'),
   Options.optional,
 )
-const specFile = Options.text('spec').pipe(
+const specSource = Options.text('spec').pipe(
   Options.withDescription(
     'A Printfile Spec, or a group as `pressline offers --json` prints it, from a file or `-` for stdin',
   ),
@@ -95,7 +95,7 @@ const asJson = Options.boolean('json').pipe(
 
 const preflightCommand = Command.make(
   'preflight',
-  { paths: preflightPaths, offer, variant, spec: specFile, strict, json: asJson },
+  { paths: preflightPaths, offer, variant, spec: specSource, strict, json: asJson },
   (a) =>
     Effect.gen(function* () {
       const specs = yield* resolveSpecs(a)
@@ -104,30 +104,29 @@ const preflightCommand = Command.make(
         return yield* failWith('nothing to check: no .png, .jpg or .jpeg file in the given paths')
       }
       const fs = yield* FileSystem.FileSystem
-      const checks: PreflightCheck[] = []
+      const entries: PreflightEntry[] = []
       for (const path of files) {
         const bytes = yield* fs
           .readFile(path)
           .pipe(Effect.mapError((e) => new CliError({ message: e.message })))
         // No Spec is a legitimate answer: the file still answers for itself.
-        if (specs.length === 0) checks.push({ result: preflight({ path, bytes }) })
-        for (const spec of specs) checks.push({ result: preflight({ path, bytes }, spec), spec })
+        if (specs.length === 0) entries.push({ result: preflight({ path, bytes }) })
+        for (const spec of specs) entries.push({ result: preflight({ path, bytes }, spec), spec })
       }
       yield* a.json
-        ? print(JSON.stringify(preflightJson(checks), null, 2))
-        : print(...formatPreflight(checks))
-      const refused = checks.filter((c) => c.result.invalid.length > 0).length
+        ? print(JSON.stringify({ results: entries.map((e) => e.result) }, null, 2))
+        : print(...formatPreflight(entries))
+      const { total, refused, deviating } = tally(entries)
       if (refused > 0) {
-        return yield* failWith(`${refused} of ${checks.length} would be refused before payment`)
+        return yield* failWith(`${refused} of ${total} would be refused before payment`)
       }
-      const deviating = checks.filter((c) => c.result.deviations.length > 0).length
       if (a.strict && deviating > 0) {
-        return yield* failWith(`--strict: ${deviating} of ${checks.length} have Deviations`)
+        return yield* failWith(`--strict: ${deviating} of ${total} have Deviations`)
       }
     }),
 ).pipe(
   Command.withDescription(
-    "Check local Printfiles against a Spec and the protocol's file requirements, before they are hosted",
+    "Preflight local Printfiles against a Spec and the protocol's file requirements, before they are hosted",
   ),
 )
 

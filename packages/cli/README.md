@@ -6,10 +6,10 @@ The command line for one Pressline instance. The Operator's commands are clients
 npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN doctor
 npx @pressline/cli --url https://shop.example offers
 npx @pressline/cli engine conformance https://engine.example --secret $ENGINE_SECRET --design <id>
-npx @pressline/cli engine preflight ./out --url https://shop.example --offer tee-black-front
+npx @pressline/cli --url https://shop.example engine preflight ./out --offer tee-black-front
 ```
 
-`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. `engine conformance` needs neither; `engine preflight` needs `--url` only when it takes the Spec from an instance.
+`--url` and `--token` belong to the CLI rather than to a subcommand, so they come first, and can instead come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. `engine conformance` needs neither; `engine preflight` needs `--url` only when it takes the Spec from an instance.
 
 Preflight is also a function, for an Engine's own test suite: `import { preflight } from '@pressline/cli/preflight'` checks bytes against a Spec without touching the filesystem or the network.
 

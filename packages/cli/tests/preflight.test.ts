@@ -11,7 +11,7 @@ import {
   srgb,
   trns,
 } from '../../contract/tests/image-bytes.js'
-import { formatPreflight, preflight, type PreflightSpec } from '../src/preflight.js'
+import { formatPreflight, preflight, type NamedSpec } from '../src/preflight.js'
 
 /**
  * Preflight as an Engine developer meets it: bytes and a Spec in, two tiers
@@ -31,7 +31,7 @@ const spec = (over: Partial<PrintfileSpec> = {}): PrintfileSpec => ({
   ...over,
 })
 
-const against = (over: Partial<PrintfileSpec> = {}): PreflightSpec => ({
+const against = (over: Partial<PrintfileSpec> = {}): NamedSpec => ({
   spec: spec(over),
   specHash: 'a'.repeat(64),
   source: 'tee-black-front/black-m',
@@ -101,7 +101,7 @@ describe('preflight', () => {
     expect(r.header).toMatchObject({ alpha: 'absent', pixelDataOffset: 70_066 })
     expect(r.invalid[0]?.reason).toBe('alpha')
     expect(r.deviations.map((d) => d.code)).toEqual(['header_window'])
-    expect(r.notes.join('\n')).toContain(
+    expect(r.notes.find((n) => n.code === 'header_window')?.message).toBe(
       'Pressline reads only the first 65536 bytes, which stop before the pixel data: its read sees alpha as unseen where the whole file says absent',
     )
   })
@@ -116,8 +116,9 @@ describe('preflight', () => {
     )
     const r = preflight({ path: 'front.png', bytes }, against())
     expect(r.deviations).toEqual([])
-    expect(r.notes[0]).toContain('Photoshop ICC')
-    expect(r.notes[0]).toContain('not checked')
+    expect(r.notes[0]?.code).toBe('icc_profile')
+    expect(r.notes[0]?.message).toContain('Photoshop ICC')
+    expect(r.notes[0]?.message).toContain('not checked')
   })
 
   it('says the window holds no header at all when the chunk table never ends', () => {
@@ -147,6 +148,6 @@ describe('the preflight report', () => {
     // One Spec, two files: the Spec line heads the report, it does not repeat.
     expect(lines.filter((l) => l.startsWith('Spec'))).toHaveLength(1)
     expect(lines[3]).toMatch(/^File back\.png: /)
-    expect(lines.at(-1)).toBe('2 files against 1 Spec: 0 refused, 1 with Deviations, 1 clean.')
+    expect(lines.at(-1)).toBe('2 files × 1 Spec: 0 refused, 1 with Deviations, 1 clean.')
   })
 })

@@ -5,7 +5,7 @@ import { Config, Effect, Option, Schema } from 'effect'
 import { api, failWith, Instance, publicGet } from './client.js'
 import { engine } from './engine.js'
 import { print } from './output.js'
-import { groupBySpec } from './spec-source.js'
+import { groupBySpec, specSummary } from './spec-source.js'
 
 /**
  * `pressline` — the command line for one instance. The Operator's commands
@@ -623,7 +623,7 @@ const printfileCheck = Command.make(
       })
       const h = r.file.header
       yield* print(
-        `Spec ${offer}/${variant}: ${r.spec.width}×${r.spec.height}px @ ${r.spec.dpi} dpi, ${r.spec.formats.join('/')}, alpha ${r.spec.alpha} (hash ${r.specHash.slice(0, 12)}…)`,
+        `Spec ${offer}/${variant}: ${specSummary(r.spec, r.specHash)}`,
         `File: HTTP ${r.file.status}, ${r.file.contentType || 'no content type'}${r.file.bytes ? `, ${r.file.bytes} bytes` : ''}${h ? `, ${h.format} ${h.width}×${h.height}${alphaNote[h.alpha]}` : ''}`,
       )
       if (r.ok) return yield* print('✓ The file satisfies the Spec.')
@@ -671,7 +671,7 @@ const offers = Command.make('offers', { json: asJson }, ({ json }) =>
       )
       for (const g of o.specs) {
         yield* print(
-          `  ${g.spec.width}×${g.spec.height}px @ ${g.spec.dpi} dpi, ${g.spec.formats.join('/')}, alpha ${g.spec.alpha} (hash ${g.specHash.slice(0, 12)}…)  ${g.variants.map((v) => v.key).join(', ')}`,
+          `  ${specSummary(g.spec, g.specHash)}  ${g.variants.map((v) => v.key).join(', ')}`,
         )
       }
     }

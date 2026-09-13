@@ -484,7 +484,7 @@ describe('pressline CLI', () => {
     expect(r.out).toContain('Spec tee-black-front/black-m: 1800×2400px')
     expect(r.out).toContain('Spec tee-black-front/black-l: 1950×2550px')
     expect(r.out).toContain('✗ dimensions: file is 1800×2400, spec requires 1950×2550')
-    expect(r.lines.at(-1)).toBe('1 file against 2 Specs: 1 refused, 1 with Deviations, 0 clean.')
+    expect(r.lines.at(-1)).toBe('1 file × 2 Specs: 1 refused, 1 with Deviations, 0 clean.')
     expect(r.error).toContain('1 of 2 would be refused before payment')
   })
 

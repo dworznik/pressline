@@ -9,7 +9,6 @@ import {
 } from '@pressline/contract'
 import { Effect, Option, Schema } from 'effect'
 import { CliError, publicGet, type Instance } from './client.js'
-import type { PreflightSpec } from './preflight.js'
 
 /**
  * Where a Printfile Spec comes from when the caller is not the bridge: the
@@ -18,9 +17,32 @@ import type { PreflightSpec } from './preflight.js'
  * misremembering one is exactly what Preflight exists to catch.
  */
 
+/** A Printfile Spec and, when it is known, the Spec Hash and the name to print for it. */
+export interface NamedSpec {
+  readonly spec: PrintfileSpec
+  readonly specHash?: SpecHash
+  /** `tee-black-front/black-m`. Absent for a Spec read from a file: it is already on the command line. */
+  readonly source?: string
+}
+
+/** The one line that describes a Spec, wherever a command prints one. */
+export const specSummary = (
+  spec: {
+    readonly width: number
+    readonly height: number
+    readonly dpi: number
+    readonly formats: ReadonlyArray<string>
+    readonly alpha: string
+  },
+  hash?: string,
+) =>
+  `${spec.width}×${spec.height}px @ ${spec.dpi} dpi, ${spec.formats.join('/')}, alpha ${spec.alpha}${
+    hash ? ` (hash ${hash.slice(0, 12)}…)` : ''
+  }`
+
 /** The variants of one Offer that share a Printfile Spec: one Placement, one print size, one Spec Hash. */
 export interface SpecGroup {
-  readonly specHash: string
+  readonly specHash: SpecHash
   readonly spec: PrintfileSpec
   readonly variants: Array<Omit<OfferVariant, 'spec' | 'specHash'>>
 }
@@ -50,13 +72,8 @@ const decodeSpec = <A, I>(schema: Schema.Schema<A, I>, value: unknown, from: str
  * `--spec`: a bare Spec, or a group as `pressline offers --json` prints it —
  * anything with a `spec` key. A group's Spec Hash is taken as given; a bare
  * Spec's is recomputed, which is the only way a hand-edited file can be trusted.
- * No `source`: the report names an Offer variant, and the file is already on
- * the command line.
  */
-export const specFromDocument = (
-  text: string,
-  from: string,
-): Effect.Effect<PreflightSpec, CliError> =>
+const specFromDocument = (text: string, from: string): Effect.Effect<NamedSpec, CliError> =>
   Effect.gen(function* () {
     const value: unknown = yield* Effect.try({
       try: () => JSON.parse(text) as unknown,
@@ -77,10 +94,13 @@ export const specFromDocument = (
   })
 
 /** Everything on stdin, for `--spec -`. */
-const stdin = Effect.promise(async () => {
-  const chunks: Uint8Array[] = []
-  for await (const chunk of process.stdin) chunks.push(chunk as Uint8Array)
-  return Buffer.concat(chunks).toString('utf8')
+const stdin = Effect.tryPromise({
+  try: async () => {
+    const chunks: Uint8Array[] = []
+    for await (const chunk of process.stdin) chunks.push(chunk as Uint8Array)
+    return Buffer.concat(chunks).toString('utf8')
+  },
+  catch: (e) => new CliError({ message: `could not read the Spec from stdin: ${String(e)}` }),
 })
 
 /**
@@ -93,7 +113,7 @@ export const resolveSpecs = (options: {
   readonly variant: Option.Option<string>
   readonly spec: Option.Option<string>
 }): Effect.Effect<
-  readonly PreflightSpec[],
+  readonly NamedSpec[],
   CliError,
   Instance | HttpClient.HttpClient | FileSystem.FileSystem
 > =>

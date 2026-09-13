@@ -30,16 +30,15 @@ As a test helper, `conformance({ baseUrl, secret, designId, fetch })` from `@pre
 
 ## Preflight
 
-**Preflight** is the check you run on a file you have just written, before you
-host it. It reads the whole file, compares it with a [Printfile
-Spec](/engine/protocol/) and the [format's
-requirements](/print/printfile/), and reports two tiers: what Validation would
-refuse, and every **Deviation** — legal, sellable, but not what the protocol
-documents. It guarantees nothing to anyone but you; the bridge decides for
-itself when it fetches the file.
+**Preflight** is what you run on a file you have just written, before you host
+it. It reads the whole file, compares it with a [Printfile
+Spec](/engine/protocol/) and the [format's requirements](/print/printfile/), and
+reports two tiers: what Validation would refuse, and every **Deviation** —
+legal, sellable, but not what the protocol documents. It guarantees nothing to
+anyone but you; the bridge decides for itself when it fetches the file.
 
 ```sh
-npx @pressline/cli engine preflight ./out --url https://shop.example --offer tee-black-front --variant black-m
+npx @pressline/cli --url https://shop.example engine preflight ./out --offer tee-black-front --variant black-m
 ```
 
 ```
@@ -49,8 +48,10 @@ File out/front.png: png 1800×2400, 8-bit color type 6, alpha present, 150×150 
 File out/back.png: png 1800×2400, 8-bit color type 2, alpha absent, no DPI stamped, 690112 bytes
   ✓ nothing Validation would refuse
   ⚠ dpi_missing: the file carries no pHYs chunk, so it states no print resolution; stamp 150 dpi into it
-2 files against 1 Spec: 0 refused, 1 with Deviations, 1 clean.
+2 files × 1 Spec: 0 refused, 1 with Deviations, 1 clean.
 ```
+
+`--url` is the CLI's own option, so it comes before `engine`, like `--token`.
 
 **The Spec comes from the instance or from a file, never from your memory.**
 `--offer` with `--variant` takes one variant's Spec from the public offers
@@ -60,7 +61,7 @@ bigger. `--spec` reads a Spec from a file or from `-`, either bare or as a group
 straight out of `pressline offers --json`:
 
 ```sh
-npx @pressline/cli offers --url https://shop.example --json | jq '.offers[0].specs[0]' \
+npx @pressline/cli --url https://shop.example offers --json | jq '.offers[0].specs[0]' \
   | npx @pressline/cli engine preflight ./out/front.png --spec -
 ```
 
@@ -71,7 +72,7 @@ says about itself.
 
 **Paths**: files, or directories. A directory contributes the `.png`, `.jpg` and
 `.jpeg` files directly inside it — not recursed, no hidden files — while a path
-you name is always checked, whatever it is called.
+you name is always read, whatever it is called.
 
 **Exit code**: 1 when any file has something Validation would refuse, 0 when the
 only findings are Deviations. `--strict` fails on Deviations too, which is what
@@ -103,7 +104,7 @@ starts writing fails our suite rather than yours.
 What the instance asks you to render, straight from its public offers endpoint:
 
 ```sh
-npx @pressline/cli offers --url https://shop.example
+npx @pressline/cli --url https://shop.example offers
 ```
 
 ```

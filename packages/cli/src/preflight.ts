@@ -6,8 +6,8 @@ import {
   type Deviation,
   type ImageHeader,
   type InvalidReason,
-  type PrintfileSpec,
 } from '@pressline/contract'
+import { specSummary, type NamedSpec } from './spec-source.js'
 
 /**
  * Preflight (CONTEXT.md): an Engine developer's local check of a Printfile
@@ -21,13 +21,7 @@ import {
  * Engine's own test suite, the way `@pressline/conformance` exports its run.
  */
 
-/** The Spec a file is checked against, and how the report names where it came from. */
-export interface PreflightSpec {
-  readonly spec: PrintfileSpec
-  readonly specHash?: string
-  /** `tee-black-front/black-m`, or `--spec`. */
-  readonly source?: string
-}
+export type { NamedSpec }
 
 /** One thing Validation would refuse, in the words the bridge would use. */
 export interface PreflightProblem {
@@ -35,7 +29,17 @@ export interface PreflightProblem {
   readonly message: string
 }
 
-/** One file against one Spec. Nothing in either list is a file that would sell. */
+/**
+ * A fact with no verdict attached: `icc_profile`, an embedded profile nobody
+ * has identified yet (#116); `header_window`, the bridge's 64 KiB read seeing
+ * less than the whole file does.
+ */
+export interface PreflightNote {
+  readonly code: 'icc_profile' | 'header_window'
+  readonly message: string
+}
+
+/** One file against one Spec. Both lists empty is a file that would sell as written. */
 export interface PreflightResult {
   readonly path: string
   /** Size of the whole file; Preflight reads all of it, unlike the bridge. */
@@ -45,17 +49,16 @@ export interface PreflightResult {
   readonly header?: ImageHeader
   readonly invalid: readonly PreflightProblem[]
   readonly deviations: readonly Deviation[]
-  /** Facts that carry no verdict: an ICC profile nobody has identified, a 64 KiB view that differs. */
-  readonly notes: readonly string[]
+  readonly notes: readonly PreflightNote[]
 }
 
-/** A result and the Spec it was produced against, in report order. */
-export interface PreflightCheck {
+/** One line of the report: a result and the Spec it was produced against. */
+export interface PreflightEntry {
   readonly result: PreflightResult
-  readonly spec?: PreflightSpec
+  readonly spec?: NamedSpec
 }
 
-/** Validation's words for bytes that are no image; a file checked against no Spec still earns this verdict. */
+/** Validation's words for bytes that are no image; a file given no Spec still earns this verdict. */
 const UNREADABLE: PreflightProblem = {
   reason: 'header',
   message: 'not a readable PNG or JPEG header',
@@ -79,6 +82,9 @@ const iccNote = (header: ImageHeader): string | undefined => {
   return `the PNG embeds an ICC profile named "${name}" (${compressedBytes} bytes, compressed); which profile it is is not checked`
 }
 
+const note = (code: PreflightNote['code'], message: string | undefined) =>
+  message === undefined ? [] : [{ code, message }]
+
 /**
  * Preflight one file. The refusals are judged on the bytes Pressline would
  * read, because that is what Validation would refuse; the Deviations and the
@@ -87,13 +93,11 @@ const iccNote = (header: ImageHeader): string | undefined => {
  */
 export const preflight = (
   file: { readonly path: string; readonly bytes: Uint8Array },
-  spec?: PreflightSpec,
+  spec?: NamedSpec,
 ): PreflightResult => {
   const header = parseImageHeader(file.bytes)
-  const seen =
-    file.bytes.length <= HEADER_BYTES
-      ? header
-      : parseImageHeader(file.bytes.subarray(0, HEADER_BYTES))
+  const withinWindow = file.bytes.length <= HEADER_BYTES
+  const seen = withinWindow ? header : parseImageHeader(file.bytes.subarray(0, HEADER_BYTES))
   const refusal = spec ? checkPrintfile(seen, spec.spec) : undefined
   const invalid = spec
     ? refusal
@@ -102,9 +106,6 @@ export const preflight = (
     : header
       ? []
       : [UNREADABLE]
-  const notes = header
-    ? [iccNote(header), seen === header ? undefined : windowNote(header, seen)]
-    : []
   return {
     path: file.path,
     bytes: file.bytes.length,
@@ -112,19 +113,28 @@ export const preflight = (
     ...(header ? { header } : {}),
     invalid,
     deviations: header ? deviations(header, spec?.spec) : [],
-    notes: notes.filter((n) => n !== undefined),
+    notes: header
+      ? [
+          ...note('icc_profile', iccNote(header)),
+          ...(withinWindow ? [] : note('header_window', windowNote(header, seen))),
+        ]
+      : [],
   }
+}
+
+/** How the report's arithmetic is done, so the summary line and the exit code cannot disagree. */
+export const tally = (entries: readonly PreflightEntry[]) => {
+  const refused = entries.filter((e) => e.result.invalid.length > 0).length
+  const deviating = entries.filter(
+    (e) => e.result.invalid.length === 0 && e.result.deviations.length > 0,
+  ).length
+  return { total: entries.length, refused, deviating, clean: entries.length - refused - deviating }
 }
 
 // ---- the report -------------------------------------------------------------
 
-const describeSpec = (spec: PreflightSpec) => {
-  const s = spec.spec
-  return [
-    `Spec${spec.source ? ` ${spec.source}` : ''}: ${s.width}×${s.height}px @ ${s.dpi} dpi, ${s.formats.join('/')}, alpha ${s.alpha}`,
-    spec.specHash ? ` (hash ${spec.specHash.slice(0, 12)}…)` : '',
-  ].join('')
-}
+const describeSpec = (spec: NamedSpec) =>
+  `Spec${spec.source ? ` ${spec.source}` : ''}: ${specSummary(spec.spec, spec.specHash)}`
 
 const describeDensity = (header: ImageHeader) => {
   const d = header.density
@@ -138,45 +148,39 @@ const describeHeader = (header: ImageHeader) =>
     ? `png ${header.width}×${header.height}, ${header.bitDepth}-bit color type ${header.colorType}${header.interlaced ? ', interlaced' : ''}, alpha ${header.alpha}, ${describeDensity(header)}`
     : `jpeg ${header.width}×${header.height}, ${header.precision}-bit, ${header.components} channel(s), alpha ${header.alpha}, ${describeDensity(header)}`
 
-const block = ({ result }: PreflightCheck): string[] => [
-  `File ${result.path}: ${result.header ? describeHeader(result.header) : 'not a readable PNG or JPEG header'}, ${result.bytes} bytes`,
+const block = ({ result }: PreflightEntry): string[] => [
+  `File ${result.path}: ${result.header ? describeHeader(result.header) : UNREADABLE.message}, ${result.bytes} bytes`,
   ...(result.invalid.length === 0
     ? ['  ✓ nothing Validation would refuse']
     : result.invalid.map((p) => `  ✗ ${p.reason}: ${p.message}`)),
   ...result.deviations.map((d) => `  ⚠ ${d.code}: ${d.message}`),
-  ...result.notes.map((n) => `  · ${n}`),
+  ...result.notes.map((n) => `  · ${n.message}`),
 ]
 
-const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`
 
 /**
- * The human report: one block per file and Spec, then one line of arithmetic.
- * A file with no Spec says so once, before the first block.
+ * The human report: the Spec, one block per file, then one line of arithmetic
+ * over the file-and-Spec pairs, which is why it multiplies. A run with no Spec
+ * says so once, before the first block.
  */
-export const formatPreflight = (checks: readonly PreflightCheck[]): string[] => {
-  const files = new Set(checks.map((c) => c.result.path)).size
-  const specs = new Set(checks.map((c) => c.spec?.specHash ?? c.spec?.source)).size
-  const refused = checks.filter((c) => c.result.invalid.length > 0).length
-  const deviating = checks.filter(
-    (c) => c.result.invalid.length === 0 && c.result.deviations.length > 0,
-  ).length
-  const lines = checks.some((c) => c.spec) ? [] : ['no Spec: dimensions, alpha and DPI not checked']
-  // The Spec line heads its blocks and is not repeated: checking many files
-  // against one Spec should read as one report, not as the same line N times.
+export const formatPreflight = (entries: readonly PreflightEntry[]): string[] => {
+  const withSpec = entries.some((e) => e.spec)
+  const files = new Set(entries.map((e) => e.result.path)).size
+  const specs = new Set(entries.map((e) => e.spec?.specHash ?? e.spec?.source)).size
+  const lines = withSpec ? [] : ['no Spec: dimensions, alpha and DPI not checked']
+  // The Spec line heads its blocks and is not repeated: many files against one
+  // Spec should read as one report, not as the same line N times.
   let heading: string | undefined
-  for (const check of checks) {
-    const line = check.spec ? describeSpec(check.spec) : undefined
+  for (const entry of entries) {
+    const line = entry.spec ? describeSpec(entry.spec) : undefined
     if (line !== undefined && line !== heading) lines.push(line)
     heading = line
-    lines.push(...block(check))
+    lines.push(...block(entry))
   }
+  const { refused, deviating, clean } = tally(entries)
   lines.push(
-    `${count(files, 'file')} against ${checks.some((c) => c.spec) ? count(specs, 'Spec') : 'no Spec'}: ${refused} refused, ${deviating} with Deviations, ${checks.length - refused - deviating} clean.`,
+    `${count(files, 'file')} ${withSpec ? `× ${count(specs, 'Spec')}` : ', no Spec'}: ${refused} refused, ${deviating} with Deviations, ${clean} clean.`,
   )
   return lines
 }
-
-/** The same report as data: the Spec Hash checked against, the header, and the two tiers apart. */
-export const preflightJson = (checks: readonly PreflightCheck[]) => ({
-  checks: checks.map((c) => c.result),
-})

@@ -84,7 +84,7 @@ describe('pressline engine preflight', () => {
     expect(r.out).not.toContain('notes.txt')
     expect(r.out).not.toContain('deep.png')
     expect(r.lines.filter((l) => l.startsWith('Spec'))).toHaveLength(1)
-    expect(r.lines.at(-1)).toBe('3 files against 1 Spec: 1 refused, 1 with Deviations, 1 clean.')
+    expect(r.lines.at(-1)).toBe('3 files × 1 Spec: 1 refused, 1 with Deviations, 1 clean.')
     expect(r.error).toContain('1 of 3')
   })
 
@@ -149,7 +149,7 @@ describe('pressline engine preflight', () => {
       '--json',
     ])
     const json = JSON.parse(r.out) as {
-      checks: Array<{
+      results: Array<{
         path: string
         specHash: string
         header: { width: number }
@@ -157,11 +157,11 @@ describe('pressline engine preflight', () => {
         deviations: Array<{ code: string }>
       }>
     }
-    expect(json.checks).toHaveLength(1)
-    expect(json.checks[0]!.specHash).toBe(hash)
-    expect(json.checks[0]!.header.width).toBe(1200)
-    expect(json.checks[0]!.invalid.map((i) => i.reason)).toEqual(['dimensions'])
-    expect(json.checks[0]!.deviations).toEqual([])
+    expect(json.results).toHaveLength(1)
+    expect(json.results[0]!.specHash).toBe(hash)
+    expect(json.results[0]!.header.width).toBe(1200)
+    expect(json.results[0]!.invalid.map((i) => i.reason)).toEqual(['dimensions'])
+    expect(json.results[0]!.deviations).toEqual([])
   })
 
   it('reads a Spec from stdin, the way `pressline offers --json | jq` hands one over', async () => {

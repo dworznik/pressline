@@ -7,7 +7,7 @@ description: pressline — the command line for one instance, for the Operator a
 npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 ```
 
-`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. Every command is a client of the instance; the CLI never touches the database. The Operator's commands call the operator API and need the token. The Engine developer's commands, `offers` and `engine …`, read public endpoints or the Engine itself and need none.
+`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. The CLI never touches the database. The Operator's commands are clients of the operator API and need the token. `offers` reads a public endpoint of the instance and needs only the URL. `engine …` commands talk to the Engine at the base URL they are given and need neither.
 
 ## Operator
 

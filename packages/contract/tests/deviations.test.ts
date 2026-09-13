@@ -1,23 +1,26 @@
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 import type { ImageHeader, PrintfileSpec } from '../src/index'
-import { deviations, HEADER_BYTES, parseImageHeader } from '../src/index'
+import { deviations, HEADER_BYTES, inspectImageHeader, parseImageHeader } from '../src/index'
 import {
   app0,
-  app14,
   filler,
   gama,
+  gamaWith,
   iccp,
+  iccpWith,
   jpeg,
   phys,
   pixelsPerMeter,
   png,
   srgb,
+  text,
 } from './image-bytes'
 
 /**
- * One case per row of the Deviation table (#132), both containers. Every row is
- * a Deviation until #110 promotes it to a rejection, so nothing here asserts a
- * `PrintfileInvalid`.
+ * One case per Deviation row of the table in #87 §1, both containers. A
+ * Deviation never blocks a sale, so nothing here asserts a refusal; what is
+ * refused is `check-printfile.test.ts`.
  */
 const spec: PrintfileSpec = {
   width: 1800,
@@ -44,6 +47,13 @@ const codesWithoutSpec = (bytes: Uint8Array) => deviations(header(bytes)).map((d
 const messageFor = (bytes: Uint8Array, code: string) =>
   deviations(header(bytes), spec).find((d) => d.code === code)?.message ?? ''
 
+/** Deviations as Validation finds them: after the bounded iCCP inflate has run. */
+const inspectedCodes = async (bytes: Uint8Array) => {
+  const inspected = await Effect.runPromise(inspectImageHeader(bytes))
+  if (!inspected) throw new Error('the test built bytes the parser cannot read')
+  return deviations(inspected, spec).map((d) => d.code)
+}
+
 /** Everything the protocol asks for: 8-bit, not interlaced, sRGB, the Spec's dpi. */
 const conformingPng = (...extra: Uint8Array[]) =>
   png({}, srgb, gama, phys(pixelsPerMeter(300)), ...extra)
@@ -60,79 +70,105 @@ describe('deviations: a conforming file has none', () => {
   })
 })
 
-describe('deviations: bit depth is 8', () => {
-  it('flags a 16-bit PNG and says what to do', () => {
-    expect(codes(png({ bitDepth: 16 }, srgb, phys(pixelsPerMeter(300))))).toContain('bit_depth')
-    expect(messageFor(png({ bitDepth: 16 }, srgb, phys(pixelsPerMeter(300))), 'bit_depth')).toMatch(
-      /16/,
+describe('deviations: color type', () => {
+  it('reports a grayscale PNG, which prints as gray', () => {
+    expect(codes(png({ colorType: 0 }, srgb, phys(pixelsPerMeter(300))))).toEqual(['color_type'])
+    expect(messageFor(png({ colorType: 4 }, srgb, phys(pixelsPerMeter(300))), 'color_type')).toBe(
+      'the PNG is grayscale (color type 4); Printfiles are RGB, and a grayscale file prints as one',
     )
   })
 
-  it('flags a PNG below 8 bits', () => {
-    expect(codes(png({ bitDepth: 4, colorType: 3 }, srgb, phys(pixelsPerMeter(300))))).toContain(
-      'bit_depth',
+  it('reports a single-channel JPEG', () => {
+    expect(codes(jpeg({ components: 1 }, app0(300)))).toEqual(['color_type'])
+  })
+
+  it('says nothing about a four-channel JPEG, which is refused instead', () => {
+    expect(codes(jpeg({ components: 4 }, app0(300)))).toEqual([])
+  })
+
+  it('says nothing about a palette PNG, which is refused instead', () => {
+    expect(codes(png({ colorType: 3 }, srgb, phys(pixelsPerMeter(300))))).toEqual([])
+  })
+})
+
+describe('deviations: the color space is declared', () => {
+  it('reports a PNG with no sRGB, gAMA or iCCP chunk', () => {
+    expect(codes(png({}, phys(pixelsPerMeter(300))))).toEqual(['color_undeclared'])
+  })
+
+  it('takes any of the three chunks as a declaration', () => {
+    for (const chunk of [srgb, gama, iccp(400)]) {
+      expect(codes(png({}, chunk, phys(pixelsPerMeter(300))))).not.toContain('color_undeclared')
+    }
+  })
+
+  it('skips the row when the window ended before IDAT: absence proves nothing', () => {
+    const windowed = png({}, iccp(70_000)).subarray(0, HEADER_BYTES)
+    expect(codes(windowed)).not.toContain('color_undeclared')
+  })
+})
+
+describe('deviations: gamma', () => {
+  it('reports a gamma far from sRGB when it is the sole declaration', () => {
+    expect(codes(png({}, gamaWith(100_000), phys(pixelsPerMeter(300))))).toEqual(['gamma'])
+    expect(messageFor(png({}, gamaWith(100_000), phys(pixelsPerMeter(300))), 'gamma')).toBe(
+      'the PNG declares gamma 1/1 with no sRGB chunk or profile; write gAMA 45455 (sRGB), or declare the space',
     )
   })
 
-  it('flags a JPEG whose sample precision is not 8', () => {
-    expect(codes(jpeg({ precision: 12 }, app0(300)))).toContain('bit_depth')
+  it('says nothing when sRGB or a profile is present: they take precedence', () => {
+    expect(codes(png({}, srgb, gamaWith(100_000), phys(pixelsPerMeter(300))))).toEqual([])
+    expect(codes(png({}, iccp(400), gamaWith(100_000), phys(pixelsPerMeter(300))))).not.toContain(
+      'gamma',
+    )
+  })
+
+  it('accepts the sRGB gamma, however an encoder rounded it', () => {
+    for (const value of [45_455, 45_000, 45_456]) {
+      expect(codes(png({}, gamaWith(value), phys(pixelsPerMeter(300))))).toEqual([])
+    }
   })
 })
 
-describe('deviations: not interlaced', () => {
-  it('flags an interlaced PNG', () => {
-    expect(codes(png({ interlace: 1 }, srgb, phys(pixelsPerMeter(300))))).toEqual(['interlaced'])
-  })
-})
-
-describe('deviations: the color space is declared as sRGB', () => {
-  it('flags a PNG with neither an sRGB nor an iCCP chunk', () => {
-    expect(codes(png({}, phys(pixelsPerMeter(300))))).toEqual(['color_space'])
+describe('deviations: an ICC profile nobody could read', () => {
+  it('reports a profile the bounded inflate could not identify, and never more than that', async () => {
+    const bytes = png({}, iccp(400, 'Photoshop ICC'), phys(pixelsPerMeter(300)))
+    expect(await inspectedCodes(bytes)).toEqual(['icc_unseen'])
+    expect(messageFor(bytes, 'icc_unseen')).toBe(
+      'the PNG embeds an ICC profile named "Photoshop ICC" that Pressline could not read within its 64 KiB window; which color space it declares is unknown',
+    )
   })
 
-  it('accepts an iCCP whose identity it cannot read (#116 decides that row)', () => {
-    expect(codes(png({}, iccp(2048, 'Adobe RGB (1998)'), phys(pixelsPerMeter(300))))).toEqual([])
+  it('says nothing once the profile has been read, whatever it declares', async () => {
+    for (const space of ['RGB ', 'CMYK', 'GRAY']) {
+      const bytes = png({}, iccpWith(space), phys(pixelsPerMeter(300)))
+      expect(await inspectedCodes(bytes)).toEqual([])
+    }
   })
 
-  it('skips the row when the window ended before IDAT', () => {
-    const windowed = png({}, iccp(70_000), srgb).subarray(0, HEADER_BYTES)
-    expect(codes(windowed)).not.toContain('color_space')
-  })
-
-  it('flags a JPEG that is not three-channel', () => {
-    expect(codes(jpeg({ components: 1 }, app0(300)))).toEqual(['color_space'])
-  })
-})
-
-describe('deviations: not CMYK', () => {
-  it('flags a four-component JPEG, without repeating itself on the color space row', () => {
-    expect(codes(jpeg({ components: 4 }, app0(300)))).toEqual(['cmyk'])
-  })
-
-  it('flags an Adobe YCCK transform', () => {
-    expect(codes(jpeg({}, app0(300), app14(2)))).toEqual(['cmyk'])
-  })
-
-  it('leaves an Adobe YCbCr transform alone', () => {
-    expect(codes(jpeg({}, app0(300), app14(1)))).toEqual([])
+  it('reports a profile whose chunk straddles the window', async () => {
+    const bytes = png({}, text(HEADER_BYTES - 65), iccpWith('CMYK')).subarray(0, HEADER_BYTES)
+    expect(await inspectedCodes(bytes)).toContain('icc_unseen')
   })
 })
 
 describe('deviations: a DPI stamp is present and equals the Spec', () => {
-  it('flags a PNG with no pHYs chunk', () => {
+  it('reports a PNG with no pHYs chunk', () => {
     expect(codes(png({}, srgb))).toEqual(['dpi_missing'])
   })
 
-  it('flags a pHYs in no physical unit', () => {
+  it('reports a pHYs in no physical unit', () => {
     expect(codes(png({}, srgb, phys(3, 4, 0)))).toEqual(['dpi_missing'])
   })
 
-  it('flags a PNG stamped at the wrong dpi', () => {
-    expect(codes(png({}, srgb, phys(pixelsPerMeter(150))))).toEqual(['dpi_mismatch'])
-    expect(messageFor(png({}, srgb, phys(pixelsPerMeter(150))), 'dpi_mismatch')).toMatch(/150.*300/)
+  it('reports a PNG stamped at the wrong dpi, and names the upscale', () => {
+    expect(codes(png({}, srgb, phys(pixelsPerMeter(72))))).toEqual(['dpi_mismatch'])
+    expect(messageFor(png({}, srgb, phys(pixelsPerMeter(72))), 'dpi_mismatch')).toBe(
+      'the file is stamped 72×72 dpi; this placement prints at 300 dpi, and a provider reading that stamp may silently upscale the file',
+    )
   })
 
-  it('flags an axis that disagrees with the other', () => {
+  it('reports an axis that disagrees with the other', () => {
     expect(codes(png({}, srgb, phys(pixelsPerMeter(300), pixelsPerMeter(150))))).toEqual([
       'dpi_mismatch',
     ])
@@ -144,46 +180,46 @@ describe('deviations: a DPI stamp is present and equals the Spec', () => {
   })
 
   it('skips both rows when the window ended before IDAT', () => {
-    const windowed = png({}, iccp(70_000), srgb).subarray(0, HEADER_BYTES)
-    expect(codes(windowed)).toEqual([])
+    const windowed = png({}, srgb, iccp(70_000)).subarray(0, HEADER_BYTES)
+    expect(codes(windowed)).toEqual(['icc_unseen']) // the profile is the only thing left to say
   })
 
-  it('flags a JPEG with no JFIF density', () => {
+  it('reports a JPEG with no JFIF density', () => {
     expect(codes(jpeg())).toEqual(['dpi_missing'])
   })
 
-  it('flags a JFIF density in dots per centimeter, equivalent or not', () => {
+  it('reports a JFIF density in dots per centimeter, equivalent or not', () => {
     expect(codes(jpeg({}, app0(118, 118, 2)))).toEqual(['dpi_mismatch'])
     expect(codes(jpeg({}, app0(1, 1, 0)))).toEqual(['dpi_missing'])
   })
 
-  it('flags a JPEG stamped at the wrong dpi', () => {
+  it('reports a JPEG stamped at the wrong dpi', () => {
     expect(codes(jpeg({}, app0(72)))).toEqual(['dpi_mismatch'])
   })
 })
 
 describe('deviations: the chunk table ends inside the header window', () => {
-  it('flags a PNG whose IDAT starts past the window', () => {
+  it('reports a PNG whose IDAT starts past the window', () => {
     const far = png({}, srgb, phys(pixelsPerMeter(300)), iccp(70_000))
-    expect(codes(far)).toEqual(['header_window'])
+    expect(codes(far)).toEqual(['icc_unseen', 'header_window'])
     expect(messageFor(far, 'header_window')).toMatch(/64 KiB/)
   })
 
-  it('flags a JPEG whose frame header starts past the window', () => {
+  it('reports a JPEG whose frame header starts past the window', () => {
     expect(codes(jpeg({}, app0(300), filler(70_000)))).toEqual(['header_window'])
   })
 
-  it('flags an IDAT that starts inside the window but ends past it', () => {
+  it('reports an IDAT that starts inside the window but ends past it', () => {
     // signature 8 + IHDR 25 + sRGB 13 + pHYs 21 + the iCCP chunk's own 12 = 79 bytes of
     // table before the profile, so the filler decides where IDAT lands.
     const idatAt = (offset: number) => png({}, srgb, phys(pixelsPerMeter(300)), iccp(offset - 79))
     const straddling = idatAt(HEADER_BYTES - 4)
     expect(header(straddling).pixelDataOffset).toBe(HEADER_BYTES - 4)
     // A chunk header is 8 bytes; one that runs past the end leaves the read as blind.
-    expect(codes(straddling)).toEqual(['header_window'])
+    expect(codes(straddling)).toEqual(['icc_unseen', 'header_window'])
     const inside = idatAt(HEADER_BYTES - 8)
     expect(header(inside).pixelDataOffset).toBe(HEADER_BYTES - 8)
-    expect(codes(inside)).toEqual([])
+    expect(codes(inside)).toEqual(['icc_unseen'])
   })
 
   it('says nothing when the window itself cut the read short', () => {
@@ -191,6 +227,6 @@ describe('deviations: the chunk table ends inside the header window', () => {
       0,
       HEADER_BYTES,
     )
-    expect(codes(windowed)).toEqual([])
+    expect(codes(windowed)).toEqual(['icc_unseen'])
   })
 })

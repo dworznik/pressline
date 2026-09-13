@@ -1,4 +1,4 @@
-// Guards the three ADR bans that used to be ESLint rules. They moved here when
+// Guards the ADR bans that used to be ESLint rules. They moved here when
 // the repo swapped ESLint for oxlint (see .oxlintrc.json): oxlint has no
 // `no-restricted-syntax` and no Svelte parser, so a lint rule could no longer
 // cover .svelte at all. A script covers every source file uniformly, and is
@@ -8,10 +8,14 @@
 //   ADR-0008  D1 has no interactive transactions: no `withTransaction`.
 //   ADR-0002  the bridge never renders or decodes pixels: apps/pressline
 //             imports no render helper and no image codec.
+//   ADR-0002  exactly one inflate exists in the repo — the bounded `iCCP`
+//             prefix in `@pressline/contract` (#116, #138). A second one is
+//             how "header inspection" becomes decoding.
 //
 // Comments and their prose are stripped before matching, so an ADR quoted in a
 // doc comment is not a violation. A deliberate exception carries
-// `ban-check-ignore` on the same line.
+// `ban-check-ignore` on the same line — read from the raw line, so the marker
+// may sit in the trailing comment where it explains itself.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 
@@ -65,17 +69,26 @@ const BANS = [
     re: /from\s+['"](@pressline\/render|sharp|@jsquash\/[^'"]+|@resvg\/[^'"]+|jimp|pngjs)['"]/,
     where: (rel) => rel.startsWith(`apps${sep}pressline${sep}`),
   },
+  {
+    adr: 'ADR-0002',
+    what: 'a second inflate (the only sanctioned one is the bounded iCCP prefix in @pressline/contract)',
+    re: /\b(DecompressionStream|inflateSync|inflateRawSync|createInflate)\b/,
+    where: () => true,
+  },
 ]
 
 const errors = []
 for (const file of walk(root)) {
   const rel = relative(root, file)
   if (rel === join('scripts', 'check-bans.mjs')) continue
-  const lines = code(readFileSync(file, 'utf8')).split('\n')
+  const raw = readFileSync(file, 'utf8').split('\n')
+  const lines = code(raw.join('\n')).split('\n')
   for (const ban of BANS) {
     if (!ban.where(rel)) continue
     lines.forEach((line, i) => {
-      if (ban.re.test(line) && !line.includes('ban-check-ignore')) {
+      // The match is on code with the prose blanked out; the exemption is read
+      // from the raw line, so it can live in the comment that justifies it.
+      if (ban.re.test(line) && !raw[i].includes('ban-check-ignore')) {
         errors.push(`${rel}:${i + 1}: ${ban.adr}: ${ban.what}`)
       }
     })

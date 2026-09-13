@@ -1,5 +1,6 @@
+import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { HEADER_BYTES, parseImageHeader } from '../src/index'
+import { HEADER_BYTES, inspectImageHeader, parseImageHeader } from '../src/index'
 import {
   app0,
   app14,
@@ -7,7 +8,9 @@ import {
   filler,
   concat,
   gama,
+  gamaWith,
   iccp,
+  iccpWith,
   ihdr,
   jpeg,
   phys,
@@ -17,6 +20,7 @@ import {
   pngWithoutIdat,
   SIGNATURE,
   srgb,
+  text,
   trns,
 } from './image-bytes'
 
@@ -116,12 +120,24 @@ describe('parseImageHeader: what else the PNG header says (#132)', () => {
     expect(header?.density).toEqual({ x: 3, y: 4, unit: 'aspect' })
   })
 
-  it('reports the iCCP profile name and its compressed size, without inflating it', () => {
+  it('reports the iCCP profile name, size and offset, and leaves its space unseen', () => {
     const header = parseImageHeader(png({}, iccp(2048, 'Adobe RGB (1998)')))
     expect(header?.format === 'png' && header.iccProfile).toEqual({
       name: 'Adobe RGB (1998)',
       compressedBytes: 2048 - 'Adobe RGB (1998)'.length - 2,
+      offset: 8 + 25 + 8,
+      // A bare parse never inflates; what the profile declares is inspectImageHeader's business.
+      colorSpace: 'unseen',
     })
+  })
+
+  it('reads gAMA back as the value the chunk holds', () => {
+    expect(parseImageHeader(png({}, gama))?.format === 'png').toBe(true)
+    const header = parseImageHeader(png({}, gamaWith(100_000)))
+    expect(header?.format === 'png' && header.gamma).toBe(100_000)
+    expect(parseImageHeader(png())?.format === 'png' && parseImageHeader(png())).not.toHaveProperty(
+      'gamma',
+    )
   })
 
   it('reports the byte offset of the first IDAT, and omits it when unseen', () => {
@@ -216,5 +232,52 @@ describe('parseImageHeader: what else the JPEG header says (#132)', () => {
 
   it('reads a progressive frame header too', () => {
     expect(parseImageHeader(jpeg({ marker: 0xc2 }))).toMatchObject({ format: 'jpeg', width: 1800 })
+  })
+})
+
+describe('inspectImageHeader: the bounded iCCP inflate (#116, ADR-0002 as amended)', () => {
+  const inspect = (bytes: Uint8Array) => Effect.runPromise(inspectImageHeader(bytes))
+  const spaceOf = async (bytes: Uint8Array) => {
+    const header = await inspect(bytes)
+    return header?.format === 'png' ? header.iccProfile?.colorSpace : undefined
+  }
+
+  it('reads the data color space out of the profile header', async () => {
+    expect(await spaceOf(png({}, iccpWith('RGB ')))).toBe('rgb')
+    expect(await spaceOf(png({}, iccpWith('CMYK')))).toBe('cmyk')
+    expect(await spaceOf(png({}, iccpWith('GRAY')))).toBe('gray')
+    expect(await spaceOf(png({}, iccpWith('Lab ')))).toBe('other')
+  })
+
+  it('reads it out of a prefix, without the profile ever ending', async () => {
+    // A profile far larger than the 512 compressed bytes the inflater is fed:
+    // the header is at the front, so a prefix is all it takes.
+    const bytes = png({}, iccpWith('CMYK', { name: 'sRGB v4 preference' }), srgb)
+    expect(await spaceOf(bytes)).toBe('cmyk')
+  })
+
+  it('collapses every way of failing to one unseen, and never to a refusal', async () => {
+    // zeros where the deflate stream belongs
+    expect(await spaceOf(png({}, iccp(400)))).toBe('unseen')
+    // inflates, but the bytes are not an ICC profile
+    expect(await spaceOf(png({}, iccpWith('CMYK', { acsp: false })))).toBe('unseen')
+    // two bytes of zlib header produce no output at all
+    expect(await spaceOf(png({}, iccpWith('CMYK', { prefixBytes: 2 })))).toBe('unseen')
+    // the chunk starts inside the window and its profile lies past it
+    const straddling = png({}, text(HEADER_BYTES - 65), iccpWith('CMYK')).subarray(0, HEADER_BYTES)
+    expect(await spaceOf(straddling)).toBe('unseen')
+  })
+
+  it('leaves a compression method PNG does not define unread', async () => {
+    const bytes = png({}, iccpWith('CMYK'))
+    // The method byte follows the name and its NUL: signature 8 + IHDR 25 + chunk header 8 + name + NUL.
+    bytes[8 + 25 + 8 + 'ICC Profile'.length + 1] = 1
+    expect(await spaceOf(bytes)).toBe('unseen')
+  })
+
+  it('hands back exactly what the parser produced when there is no profile to read', async () => {
+    expect(await inspect(png({}, srgb))).toEqual(parseImageHeader(png({}, srgb)))
+    expect(await inspect(jpeg())).toEqual(parseImageHeader(jpeg()))
+    expect(await inspect(new Uint8Array(8))).toBeUndefined()
   })
 })

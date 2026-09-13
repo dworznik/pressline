@@ -1,5 +1,7 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
-import { HEADER_BYTES, parseImageHeader, type ImageHeader } from './image-header.js'
+import { deviations, Deviation } from './deviation.js'
+import { HEADER_BYTES, ImageHeader, inspectImageHeader } from './image-header.js'
+import { UNREADABLE_HEADER, type Inspection } from './inspection.js'
 import type { PrintfileReady } from './protocol.js'
 import type { PrintfileSpec } from './spec.js'
 import { Duration, Effect, Schema, Stream } from 'effect'
@@ -22,6 +24,11 @@ export const InvalidReason = Schema.Literal(
   'alpha',
   'spec_hash',
   'content_length',
+  'too_large',
+  'bit_depth',
+  'color_type',
+  'interlaced',
+  'color_space',
 )
 export type InvalidReason = typeof InvalidReason.Type
 
@@ -31,6 +38,17 @@ export class PrintfileInvalid extends Schema.TaggedError<PrintfileInvalid>()('Pr
 }) {}
 
 const fail = (reason: InvalidReason, message: string) => new PrintfileInvalid({ reason, message })
+
+/**
+ * The one hard refusal the fulfillment provider documents and a Printfile can
+ * reach. The bound is the decimal reading of Printful's "200 MB" because the
+ * expensive answer is the silent one: a 213 MB file submitted as a draft was
+ * accepted and its file never attached (`docs/audit/printfile-requirements.md`,
+ * probed 2026-09-13).
+ */
+export const MAX_PRINTFILE_BYTES = 200_000_000
+
+const megabytes = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`
 
 /** Why an `unseen` alpha is rejected, and what the Engine developer changes. */
 export const ALPHA_UNSEEN_ADVICE = `no IDAT chunk was found in the ${HEADER_BYTES / 1024} KiB Pressline reads, so whether the file has an alpha channel could not be seen; keep ancillary chunks (iCCP, eXIf, text) small enough that IDAT starts inside that window`
@@ -76,54 +94,134 @@ const claimedFormat = (facts: PrintfileFacts) =>
 export const checkDeclaration = (
   spec: PrintfileSpec,
   facts: PrintfileFacts = {},
-): PrintfileInvalid | undefined => {
+): readonly PrintfileInvalid[] => {
+  const problems: PrintfileInvalid[] = []
   if (
     facts.declaredSpecHash !== undefined &&
     facts.expectedSpecHash !== undefined &&
     facts.declaredSpecHash !== facts.expectedSpecHash
   ) {
-    return fail(
-      'spec_hash',
-      `Engine rendered for spec ${facts.declaredSpecHash.slice(0, 12)}…, expected ${facts.expectedSpecHash.slice(0, 12)}…`,
+    problems.push(
+      fail(
+        'spec_hash',
+        `Engine rendered for spec ${facts.declaredSpecHash.slice(0, 12)}…, expected ${facts.expectedSpecHash.slice(0, 12)}…`,
+      ),
     )
   }
   const claimed = claimedFormat(facts)
   if (claimed && !spec.formats.includes(claimed)) {
-    return fail(
-      'format',
-      `${facts.declaredContentType} is not accepted for this placement (${spec.formats.join(', ')})`,
+    problems.push(
+      fail(
+        'format',
+        `${facts.declaredContentType} is not accepted for this placement (${spec.formats.join(', ')})`,
+      ),
     )
   }
-  return undefined
+  return problems
+}
+
+/** The rejections a PNG's own IHDR and chunk table settle, in table order. */
+const pngRefusals = (header: Extract<ImageHeader, { format: 'png' }>) => {
+  const problems: PrintfileInvalid[] = []
+  if (header.bitDepth !== 8) {
+    problems.push(
+      fail(
+        'bit_depth',
+        `the PNG declares a ${header.bitDepth}-bit depth; Printfiles are 8 bits per channel`,
+      ),
+    )
+  }
+  if (header.colorType === 3) {
+    problems.push(
+      fail(
+        'color_type',
+        'the PNG is palette-indexed (color type 3), so it carries at most 256 colors; write it as truecolor RGB',
+      ),
+    )
+  }
+  if (header.interlaced) {
+    problems.push(
+      fail(
+        'interlaced',
+        'the PNG is interlaced (Adam7); write it non-interlaced, so the Printfile streams in one pass',
+      ),
+    )
+  }
+  // A PNG may not carry a CMYK profile at all (PNG §11.3.3.3), and Printful
+  // advises against CMYK in as many words. An `unseen` profile deviates instead:
+  // `unseen` refuses only where the Spec binds the property, and nothing binds
+  // the profile's identity.
+  const space = header.iccProfile?.colorSpace
+  if (space === 'cmyk' || space === 'gray') {
+    problems.push(
+      fail(
+        'color_space',
+        `the embedded profile "${header.iccProfile!.name}" declares a ${space === 'cmyk' ? 'CMYK' : 'grayscale'} color space; Printfiles are sRGB, and a PNG may not carry a ${space === 'cmyk' ? 'CMYK' : 'grayscale'} profile`,
+      ),
+    )
+  }
+  return problems
+}
+
+/** The rejections a JPEG's frame header and `APP14` settle, in table order. */
+const jpegRefusals = (header: Extract<ImageHeader, { format: 'jpeg' }>) => {
+  const problems: PrintfileInvalid[] = []
+  if (header.precision !== 8) {
+    problems.push(
+      fail(
+        'bit_depth',
+        `the JPEG declares ${header.precision}-bit samples; Printfiles are 8 bits per channel`,
+      ),
+    )
+  }
+  // The frame header already proves the channels, so the APP2 ICC profile is never read.
+  if (header.components === 4) {
+    problems.push(
+      fail('color_space', 'the JPEG has four channels, so it is CMYK or YCCK; Printfiles are sRGB'),
+    )
+  } else if (header.adobeTransform === 2) {
+    problems.push(
+      fail(
+        'color_space',
+        'the JPEG declares an Adobe YCCK transform, so it is CMYK; Printfiles are sRGB',
+      ),
+    )
+  }
+  return problems
 }
 
 /**
- * The verdict: everything Validation refuses, decided from the parsed header,
- * the Spec and the facts around them. Pure, so `validatePrintfile`, the
- * operator's `printfile check` and an Engine developer's Preflight cannot
- * disagree about the same file. `undefined` means the file is sellable; what it
- * departs from is `deviations`, not a refusal.
+ * The verdict: **everything** Validation refuses about this file, in table
+ * order, so an Engine developer fixes it all in one round. Pure, so
+ * `validatePrintfile`, the operator's `printfile check` and an Engine
+ * developer's Preflight cannot disagree about the same file. An empty list
+ * means the file is sellable; what it merely departs from is `deviations`.
+ *
+ * Two refusals end the list where nothing after them would be about this file:
+ * a response that is not the file (`status`), and bytes that are no image
+ * (`header`).
  */
 export const checkPrintfile = (
   header: ImageHeader | undefined,
   spec: PrintfileSpec,
   facts: PrintfileFacts = {},
-): PrintfileInvalid | undefined => {
+): readonly PrintfileInvalid[] => {
   const where = facts.url ?? 'the file'
   const claimed = claimedFormat(facts)
-  const declared = checkDeclaration(spec, facts)
-  if (declared) return declared
+  const problems: PrintfileInvalid[] = [...checkDeclaration(spec, facts)]
   if (facts.status !== undefined && facts.status !== 200 && facts.status !== 206) {
-    return fail('status', `${where} answered ${facts.status}`)
+    return [...problems, fail('status', `${where} answered ${facts.status}`)]
   }
   if (
     facts.declaredContentType !== undefined &&
     facts.servedContentType !== undefined &&
     facts.servedContentType !== facts.declaredContentType
   ) {
-    return fail(
-      'content_type',
-      `served as ${facts.servedContentType || 'unknown'}, declared ${facts.declaredContentType}`,
+    problems.push(
+      fail(
+        'content_type',
+        `served as ${facts.servedContentType || 'unknown'}, declared ${facts.declaredContentType}`,
+      ),
     )
   }
   if (
@@ -131,57 +229,81 @@ export const checkPrintfile = (
     facts.servedBytes !== undefined &&
     facts.servedBytes !== facts.declaredBytes
   ) {
-    return fail(
-      'content_length',
-      `file is ${facts.servedBytes} bytes, Engine declared ${facts.declaredBytes}`,
+    problems.push(
+      fail(
+        'content_length',
+        `file is ${facts.servedBytes} bytes, Engine declared ${facts.declaredBytes}`,
+      ),
+    )
+  }
+  // Its own code, not a reuse of `content_length`: "disagrees with what the
+  // Engine declared" is a different fact from "over the provider's ceiling".
+  const size = Math.max(facts.servedBytes ?? 0, facts.declaredBytes ?? 0)
+  if (size > MAX_PRINTFILE_BYTES) {
+    problems.push(
+      fail(
+        'too_large',
+        `the file is ${megabytes(size)}; the fulfillment provider refuses anything over ${megabytes(MAX_PRINTFILE_BYTES)}`,
+      ),
     )
   }
 
-  if (!header) return fail('header', 'not a readable PNG or JPEG header')
+  if (!header) return [...problems, fail('header', UNREADABLE_HEADER)]
   if (claimed === undefined) {
     if (!spec.formats.includes(header.format)) {
-      return fail(
-        'format',
-        `${header.format} is not accepted for this placement (${spec.formats.join(', ')})`,
+      problems.push(
+        fail(
+          'format',
+          `${header.format} is not accepted for this placement (${spec.formats.join(', ')})`,
+        ),
       )
     }
   } else if (header.format !== claimed) {
-    return fail('format', `file is ${header.format}, declared ${facts.declaredContentType}`)
+    problems.push(fail('format', `file is ${header.format}, declared ${facts.declaredContentType}`))
   }
   if (header.width !== spec.width || header.height !== spec.height) {
-    return fail(
-      'dimensions',
-      `file is ${header.width}×${header.height}, spec requires ${spec.width}×${spec.height}`,
+    problems.push(
+      fail(
+        'dimensions',
+        `file is ${header.width}×${header.height}, spec requires ${spec.width}×${spec.height}`,
+      ),
     )
-  }
-  if (
+  } else if (
     (facts.declaredWidth !== undefined && facts.declaredWidth !== header.width) ||
     (facts.declaredHeight !== undefined && facts.declaredHeight !== header.height)
   ) {
-    return fail(
-      'dimensions',
-      `Engine declared ${facts.declaredWidth}×${facts.declaredHeight} but the file is ${header.width}×${header.height}`,
+    problems.push(
+      fail(
+        'dimensions',
+        `Engine declared ${facts.declaredWidth}×${facts.declaredHeight} but the file is ${header.width}×${header.height}`,
+      ),
     )
   }
-  // `unseen` is rejected on both rules: the window proved nothing, and we pay for a wrong
-  // print. Whether it should widen the read or become a Deviation instead is #107's call.
+  problems.push(...(header.format === 'png' ? pngRefusals(header) : jpegRefusals(header)))
+  // `unseen` is rejected on both alpha rules: the window proved nothing, and we
+  // pay for a wrong print. That is the whole of the `unseen` rule — it refuses
+  // only where the Spec binds the property, and `spec.alpha` binds it.
   if (spec.alpha === 'required' && header.alpha !== 'present') {
-    return fail(
-      'alpha',
-      header.alpha === 'unseen'
-        ? `transparency is required for this placement but ${ALPHA_UNSEEN_ADVICE}`
-        : 'transparency is required for this placement but the file has no alpha channel',
+    problems.push(
+      fail(
+        'alpha',
+        header.alpha === 'unseen'
+          ? `transparency is required for this placement but ${ALPHA_UNSEEN_ADVICE}`
+          : 'transparency is required for this placement but the file has no alpha channel',
+      ),
     )
   }
   if (spec.alpha === 'forbidden' && header.alpha !== 'absent') {
-    return fail(
-      'alpha',
-      header.alpha === 'unseen'
-        ? `this placement does not accept transparency and ${ALPHA_UNSEEN_ADVICE}`
-        : 'this placement does not accept transparency but the file has an alpha channel',
+    problems.push(
+      fail(
+        'alpha',
+        header.alpha === 'unseen'
+          ? `this placement does not accept transparency and ${ALPHA_UNSEEN_ADVICE}`
+          : 'this placement does not accept transparency but the file has an alpha channel',
+      ),
     )
   }
-  return undefined
+  return problems
 }
 
 /** Read at most `limit` bytes of the response body, then stop (the rest is never transferred). */
@@ -200,20 +322,32 @@ const readPrefix = (stream: Stream.Stream<Uint8Array, unknown>, limit: number) =
     ),
   )
 
+/**
+ * The Inspection as the operator API publishes it: the response facts, then the
+ * Inspection itself — the **whole** header, every refusal and every Deviation.
+ * Additive only and no version field, so an older instance simply omits a field
+ * a newer client knows about; every new field is optional in the CLI's decoder.
+ */
 export const PrintfileInspection = Schema.Struct({
   status: Schema.Int,
   contentType: Schema.String,
   bytes: Schema.optional(Schema.Int),
-  header: Schema.optional(
-    Schema.Struct({
-      format: Schema.Literal('png', 'jpeg'),
-      width: Schema.Int,
-      height: Schema.Int,
-      alpha: Schema.Literal('present', 'absent', 'unseen'),
-    }),
-  ),
+  header: Schema.optional(ImageHeader),
+  invalid: Schema.Array(PrintfileInvalid),
+  deviations: Schema.Array(Deviation),
 })
 export type PrintfileInspection = typeof PrintfileInspection.Type
+
+/**
+ * The Inspection as it is stored and snapshotted: the evidence and the verdict
+ * at validation time, with no refusals — a stored Printfile has none. Rules may
+ * change under a record; the record does not.
+ */
+export const StoredInspection = Schema.Struct({
+  header: Schema.optional(ImageHeader),
+  deviations: Schema.Array(Deviation),
+})
+export type StoredInspection = typeof StoredInspection.Type
 
 /**
  * What one ranged GET saw: the response facts, and the header parsed out of the
@@ -227,7 +361,11 @@ export interface PrintfileHead {
   readonly header?: ImageHeader
 }
 
-/** Read the head of a Printfile: one ranged GET, at most `HEADER_BYTES`, no pixels decoded. */
+/**
+ * Read the head of a Printfile: one ranged GET, at most `HEADER_BYTES`, no
+ * pixels decoded. The header is inspected, not merely parsed, so an embedded
+ * profile's color space is read within the same window (ADR-0002 as amended).
+ */
 export const readPrintfileHead = (
   url: string,
 ): Effect.Effect<PrintfileHead, PrintfileInvalid, HttpClient.HttpClient> =>
@@ -250,7 +388,7 @@ export const readPrintfileHead = (
     const prefix = yield* readPrefix(response.stream, HEADER_BYTES).pipe(
       Effect.mapError((e) => fail('unreachable', `could not read ${url}: ${String(e)}`)),
     )
-    const header = parseImageHeader(prefix)
+    const header = yield* inspectImageHeader(prefix)
     return {
       status: response.status,
       contentType: (response.headers['content-type'] ?? '').split(';')[0]!.trim(),
@@ -267,46 +405,32 @@ export const factsOf = (file: PrintfileHead, url?: string): PrintfileFacts => ({
   ...(file.bytes === undefined ? {} : { servedBytes: file.bytes }),
 })
 
-/**
- * The four header fields the operator API publishes. What else the header holds
- * stays in-process until #112 decides how the API carries it.
- */
-export const toPrintfileInspection = (file: PrintfileHead): PrintfileInspection => ({
-  status: file.status,
-  contentType: file.contentType,
-  ...(file.bytes === undefined ? {} : { bytes: file.bytes }),
-  ...(file.header
-    ? {
-        header: {
-          format: file.header.format,
-          width: file.header.width,
-          height: file.header.height,
-          alpha: file.header.alpha,
-        },
-      }
-    : {}),
+/** Everything one look at a file concluded: the header, the refusals, the Deviations. */
+export const inspect = (
+  file: Pick<PrintfileHead, 'header'>,
+  spec: PrintfileSpec,
+  facts: PrintfileFacts,
+): Inspection => ({
+  ...(file.header ? { header: file.header } : {}),
+  invalid: checkPrintfile(file.header, spec, facts),
+  deviations: file.header ? deviations(file.header, spec) : [],
 })
 
 /**
- * The published inspection: the head of a file in the shape the operator API
- * carries. `readPrintfileHead` is the same read with the whole header, for
- * callers inside this process.
- */
-export const inspectPrintfile = (
-  url: string,
-): Effect.Effect<PrintfileInspection, PrintfileInvalid, HttpClient.HttpClient> =>
-  readPrintfileHead(url).pipe(Effect.map(toPrintfileInspection))
-
-/**
  * Validate the Engine's answer against the Spec. `expectedSpecHash` is what
- * Pressline computed; the Engine must echo it (ADR-0005). Fetches, parses and
- * hands the verdict to `checkPrintfile`, which decides everything.
+ * Pressline computed; the Engine must echo it (ADR-0005).
+ *
+ * **The Inspection is the return value, not the error.** A refused file comes
+ * back with `invalid` filled, so a caller that wants every refusal has them and
+ * a caller that wants to stop at the first one still can; the error channel is
+ * for a file nobody could look at — unreachable, timed out — which is not a
+ * verdict about the file.
  */
 export const validatePrintfile = (
   ready: PrintfileReady,
   spec: PrintfileSpec,
   expectedSpecHash: string,
-): Effect.Effect<void, PrintfileInvalid, HttpClient.HttpClient> =>
+): Effect.Effect<Inspection, PrintfileInvalid, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const declaration = {
       url: ready.url,
@@ -319,9 +443,8 @@ export const validatePrintfile = (
     } satisfies PrintfileFacts
     // The Spec Hash and the declared format are settled before a byte moves.
     const declared = checkDeclaration(spec, declaration)
-    if (declared) return yield* declared
+    if (declared.length > 0) return { invalid: declared, deviations: [] }
 
     const served = yield* readPrintfileHead(ready.url)
-    const invalid = checkPrintfile(served.header, spec, { ...declaration, ...factsOf(served) })
-    if (invalid) return yield* invalid
+    return inspect(served, spec, { ...declaration, ...factsOf(served) })
   }).pipe(Effect.scoped)

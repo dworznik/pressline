@@ -1,6 +1,6 @@
 {
   "name": "@pressline/cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Command line for a Pressline instance: the Operator's doctor, catalog, webhooks, orders, reconcile and printfile check, and the Engine developer's offers, engine conformance and engine preflight",
   "keywords": [
     "pressline",

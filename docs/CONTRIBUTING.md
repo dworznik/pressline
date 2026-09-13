@@ -36,14 +36,24 @@ never ships.
 
 To cut a release:
 
-1. Bump `version` in all four `packages/*/package.json` to the same value, on `main`.
-2. Run the `release` workflow by hand from the Actions tab. This publishes
-   nothing: it rehearses the publish and fails if any package would not
-   authenticate. Do this before drafting the release — see below for why.
-3. Draft a GitHub Release whose tag is `v<that version>` (`v0.2.0`, or `v0.2.0-rc.1`).
-4. Publish the release. `.github/workflows/release.yml` takes it from there: it
-   checks the tag against the four manifests, runs `pnpm verify`, and then
+1. Raise `version` in all four `packages/*/package.json` to the same value and
+   merge that on `main`. Merging publishes nothing.
+2. Draft a GitHub Release tagged `v<that version>` (`v0.2.0`, or `v0.2.0-rc.1`)
+   and publish it. `.github/workflows/release.yml` runs `pnpm verify` and then
    `pnpm --recursive publish`.
+
+`scripts/release-status.mjs` guards the step between those two, where the mistakes
+live. It refuses a release when one of the four packages has gone missing or
+private, when they disagree on a version, and when the tag names a version the
+manifests do not — the tag announces what shipped, but `package.json` decides. It
+also picks the dist-tag, so a prerelease like `v0.2.0-rc.1` publishes under `next`
+and never takes `latest`, and reports which versions the registry already holds,
+so a release that failed half way can simply be published again.
+
+To check a bump before releasing it, run the workflow by hand from the Actions tab:
+it rehearses everything a release does except authenticating and publishing — the
+manifests agree, the tarballs pack, `workspace:^` rewrites to a real range. See
+below for the one thing it cannot tell you.
 
 The workflow holds no npm token. It authenticates with [npm trusted
 publishing](https://docs.npmjs.com/trusted-publishers/): GitHub mints an OIDC
@@ -57,11 +67,32 @@ the very first publish of a _new_ package has to be done by hand.
 Whether a package is registered lives on npmjs.com, and nothing in this
 repository can read it. That matters because packages publish in dependency
 order: a missing registration takes the release down part-way, with `contract`
-on the registry and its dependents not. Hence step 2. pnpm builds its publish
-options — the token exchange included — before it honors `--dry-run`, so the
-rehearsal authenticates for real while publishing nothing, and fails loudly if
-a package would have been skipped. It also fails when every version is already
-published, because then it proved nothing: bump the versions first.
+on the registry and its dependents not.
+
+**CI deliberately cannot check this.** To prove the credential works you have to
+hold the credential, and `id-token: write` is a licence to publish: npm matches on
+the repository and the workflow filename, not on the event or the branch, so any
+job holding it can publish for real. Only the `publish` job has it, and only a
+`release` can reach that job. Nothing that arrives on a branch or a pull request
+ever runs beside it — which is also why the `rehearse` job, reachable by anyone
+who can dispatch a workflow, has no `id-token` and therefore cannot tell you
+whether trusted publishing is configured.
+
+Ask npm instead, from a terminal:
+
+```
+npm trust list @pressline/cli        # needs npm >= 11.10 and a fresh `npm login`
+```
+
+Each of the four should report `type: github`, `file: release.yml`,
+`repository: dworznik/pressline`, and publish permission. Nothing configured means
+a release fails on a token exchange that returns `404` — npm masks `403` as `404`,
+so a missing configuration and a wrong one look identical from CI. To (re)create
+one:
+
+```
+npm trust github @pressline/cli --file release.yml --repo dworznik/pressline --allow-publish
+```
 
 Two things not to change without knowing why:
 

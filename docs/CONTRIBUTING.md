@@ -43,15 +43,16 @@ To cut a release:
    `pnpm --recursive publish`.
 
 `scripts/release-status.mjs` guards the step between those two, where the mistakes
-live. It refuses a bump where the four packages disagree on a version, and a
-release whose tag names a version the manifests do not — the tag announces what
-shipped, but `package.json` decides, and nobody wants those to differ. It also
-reports which versions the registry is already holding, so a release that failed
-half way can simply be published again.
+live. It refuses a release when one of the four packages has gone missing or
+private, when they disagree on a version, and when the tag names a version the
+manifests do not — the tag announces what shipped, but `package.json` decides. It
+also picks the dist-tag, so a prerelease like `v0.2.0-rc.1` publishes under `next`
+and never takes `latest`, and reports which versions the registry already holds,
+so a release that failed half way can simply be published again.
 
-The same workflow runs on every pull request into `main`, where it rehearses the
-publish rather than performing it. A bump that could not publish therefore fails
-its own PR, days before the release. See below for what that proves.
+To check a bump before releasing it, run the workflow by hand from the Actions tab
+against its branch: it rehearses the publish and publishes nothing. See below for
+what that proves, and why it is a manual trigger rather than a check on the PR.
 
 The workflow holds no npm token. It authenticates with [npm trusted
 publishing](https://docs.npmjs.com/trusted-publishers/): GitHub mints an OIDC
@@ -67,14 +68,16 @@ repository can read it. That matters because packages publish in dependency
 order: a missing registration takes the release down part-way, with `contract`
 on the registry and its dependents not.
 
-That is what the rehearsal on the pull request is for, and why it is worth a job
-rather than a note in a checklist. pnpm builds its publish options — the token
-exchange included — before it honors `--dry-run`, so the rehearsal authenticates
-against npm for real while publishing nothing, and fails if any package would have
-fallen back to a credential the workflow does not have. A missing registration is
-therefore a red pull request rather than a half-finished release.
+That is what the rehearsal is for. pnpm builds its publish options — the token
+exchange included — before it honors `--dry-run`, so it authenticates against npm
+for real while publishing nothing, and fails if any package would have fallen back
+to a credential the workflow does not have.
 
-It is skipped on pull requests from forks, which are never given an OIDC token.
+**It is deliberately not a check on the pull request.** To prove the credential
+works you have to hold the credential, and a job holding `id-token: write` must
+never run code that arrived by pull request: that code could mint the token and
+publish with it. `workflow_dispatch` is the only other way in, and triggering it
+already requires write access to the repository.
 
 Two things not to change without knowing why:
 

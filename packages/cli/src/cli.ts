@@ -1,21 +1,25 @@
 import { createRequire } from 'node:module'
 import { Args, Command, Options } from '@effect/cli'
+import { CatalogResponse } from '@pressline/contract'
 import { Config, Effect, Option, Schema } from 'effect'
 import { api, CliError, Instance } from './client.js'
+import { engine } from './engine.js'
 import { print } from './output.js'
 
 /**
- * `pressline` — the Operator's command line for one instance. Every command
- * is a thin client of the operator API; nothing here reaches the database or
- * the providers directly (ADR-0014).
+ * `pressline` — the command line for one instance. The Operator's commands
+ * are thin clients of the operator API; nothing here reaches the database or
+ * the providers directly (ADR-0014). The Engine developer's commands
+ * (`offers`, `engine …`) read public endpoints or the Engine itself and need
+ * no token.
  */
 const url = Options.text('url').pipe(
   Options.withDescription('Base URL of the Pressline instance'),
   Options.withFallbackConfig(Config.string('PRESSLINE_URL')),
 )
 const token = Options.redacted('token').pipe(
-  Options.withDescription('Operator token'),
-  Options.withFallbackConfig(Config.redacted('PRESSLINE_TOKEN')),
+  Options.withDescription('Operator token; only the Operator commands need it'),
+  Options.optional,
 )
 
 const mark = (ok: boolean) => (ok ? '✓' : '✗')
@@ -635,11 +639,75 @@ const printfile = Command.make('printfile').pipe(
   Command.withSubcommands([printfileCheck]),
 )
 
+// ---- offers (public, for Engine developers) ---------------------------------
+
+const asJson = Options.boolean('json').pipe(
+  Options.withDescription('Print the grouped structure as JSON'),
+)
+
+const aspectNote = (a: { min: number; max: number } | null) =>
+  a === null ? '' : a.min === a.max ? `, aspect ${a.min}` : `, aspect ${a.min}–${a.max}`
+
+const offers = Command.make('offers', { json: asJson }, ({ json }) =>
+  Effect.gen(function* () {
+    const c = yield* api('GET', '/api/offers', CatalogResponse, undefined, { public: true })
+    // Every size of a tee shares one print area, so one Spec: group by Spec Hash.
+    const grouped = c.offers.map((o) => {
+      const specs: Array<{
+        specHash: string
+        spec: (typeof o.variants)[number]['spec']
+        variants: Array<Omit<(typeof o.variants)[number], 'spec' | 'specHash'>>
+      }> = []
+      for (const { spec, specHash, ...variant } of o.variants) {
+        const group = specs.find((g) => g.specHash === specHash)
+        if (group) group.variants.push(variant)
+        else specs.push({ specHash, spec, variants: [variant] })
+      }
+      const { variants: _variants, ...offer } = o
+      return { ...offer, specs }
+    })
+    if (json) {
+      return yield* print(
+        JSON.stringify(
+          { protocolVersion: c.protocolVersion, currency: c.currency, offers: grouped },
+          null,
+          2,
+        ),
+      )
+    }
+    for (const o of grouped) {
+      yield* print(
+        `${o.slug}  ${o.name} — ${o.placement} / ${o.technique}${aspectNote(o.aspect)}, ${money(o.retailPrice.amount, o.retailPrice.currency)}`,
+      )
+      for (const g of o.specs) {
+        yield* print(
+          `  ${g.spec.width}×${g.spec.height}px @ ${g.spec.dpi} dpi, ${g.spec.formats.join('/')}, alpha ${g.spec.alpha} (hash ${g.specHash.slice(0, 12)}…)  ${g.variants.map((v) => v.key).join(', ')}`,
+        )
+      }
+    }
+  }),
+).pipe(
+  Command.withDescription(
+    'The Offers this instance sells, with one line per distinct Printfile Spec (public, no token)',
+  ),
+)
+
 // ---- root -----------------------------------------------------------------
 
 const root = Command.make('pressline', { url, token }).pipe(
-  Command.withDescription('Operate a Pressline instance through its operator API'),
-  Command.withSubcommands([doctor, catalog, webhooks, orders, reconcile, printfile]),
+  Command.withDescription(
+    'Operate a Pressline instance through its operator API, and check an Engine against it',
+  ),
+  Command.withSubcommands([
+    doctor,
+    catalog,
+    webhooks,
+    orders,
+    reconcile,
+    printfile,
+    offers,
+    engine,
+  ]),
 )
 
 /** Read from the manifest rather than restated here, so a release cannot leave
@@ -652,6 +720,18 @@ export const VERSION = (createRequire(import.meta.url)('../package.json') as { v
  * strips). Needs `HttpClient`, `Output` and the CLI environment.
  */
 export const cli = Command.run(
-  root.pipe(Command.provideEffect(Instance, ({ url, token }) => Effect.succeed({ url, token }))),
+  root.pipe(
+    Command.provideEffect(Instance, ({ url, token }) =>
+      Effect.map(
+        // `--token` wins; otherwise PRESSLINE_TOKEN; otherwise none, and only the Operator commands mind.
+        Option.isSome(token)
+          ? Effect.succeed(token)
+          : Config.option(Config.redacted('PRESSLINE_TOKEN')).pipe(
+              Effect.orElseSucceed(Option.none),
+            ),
+        (token) => ({ url, token }),
+      ),
+    ),
+  ),
   { name: 'pressline', version: VERSION },
 )

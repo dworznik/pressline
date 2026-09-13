@@ -55,7 +55,7 @@ export default defineConfig({
             { label: 'The protocol', slug: 'engine/protocol' },
             { label: 'Pre-rendering and hosting', slug: 'engine/hosting' },
             { label: 'Rendering with @pressline/render', slug: 'engine/render' },
-            { label: 'Conformance suite', slug: 'engine/conformance' },
+            { label: 'Checking your Engine', slug: 'engine/conformance' },
             { label: 'AI-assisted Engines', slug: 'engine/ai' },
           ],
         },

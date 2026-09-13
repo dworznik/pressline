@@ -46,8 +46,8 @@ const boot = () =>
     },
   })
 
-/** Run `pressline <args>` against the app; returns the lines printed and the failure, if any. */
-const run = async (app: TestApp, args: string[], token = OPERATOR_TOKEN) => {
+/** Run `pressline <args>` against the app; returns the lines printed and the failure, if any. `token: null` omits `--token`. */
+const run = async (app: TestApp, args: string[], token: string | null = OPERATOR_TOKEN) => {
   const lines: string[] = []
   const fetch: typeof globalThis.fetch = (input, init) => {
     const req = new Request(input, init)
@@ -60,9 +60,14 @@ const run = async (app: TestApp, args: string[], token = OPERATOR_TOKEN) => {
     Layer.succeed(Output, { line: (text) => Effect.sync(() => void lines.push(text)) }),
   )
   const exit = await Effect.runPromiseExit(
-    cli(['node', 'pressline', '--url', 'http://pressline.test', '--token', token, ...args]).pipe(
-      Effect.provide(layer),
-    ),
+    cli([
+      'node',
+      'pressline',
+      '--url',
+      'http://pressline.test',
+      ...(token === null ? [] : ['--token', token]),
+      ...args,
+    ]).pipe(Effect.provide(layer)),
   )
   const error = exit._tag === 'Failure' ? String(exit.cause) : undefined
   return { lines, out: lines.join('\n'), error }
@@ -289,5 +294,62 @@ describe('pressline CLI', () => {
     ])
     expect(gone.out).toContain('File: HTTP 404')
     expect(gone.out).toContain('✗ https://engine.test/nope.png answered 404')
+  })
+
+  it('offers lists every Offer with its distinct Specs, without a token', async () => {
+    app = await boot()
+    const r = await run(app, ['offers'], null)
+    expect(r.error).toBeUndefined()
+    expect(r.lines[0]).toBe('tee-black-front  Black tee, front print — front / dtg, €25.00')
+    expect(r.lines[1]).toMatch(
+      /^ {2}1800×2400px @ 150 dpi, png, alpha allowed \(hash [0-9a-f]{12}…\) {2}black-m$/,
+    )
+    expect(r.lines[2]).toBe(
+      'poster-18x24  Matte poster 18×24 — default / digital, aspect 0.7–0.8, €19.00',
+    )
+    expect(r.lines[3]).toMatch(/^ {2}2700×3600px @ 150 dpi, png\/jpeg, alpha forbidden \(hash /)
+    expect(r.lines[3]).toMatch(/ {2}18x24$/)
+  })
+
+  it('offers --json groups variants by Spec Hash so a group can be piped into preflight', async () => {
+    app = await boot()
+    const r = await run(app, ['offers', '--json'], null)
+    expect(r.error).toBeUndefined()
+    const json = JSON.parse(r.out) as {
+      currency: string
+      offers: Array<{
+        slug: string
+        specs: Array<{
+          specHash: string
+          spec: { width: number }
+          variants: Array<{ key: string }>
+        }>
+      }>
+    }
+    expect(json.currency).toBe('EUR')
+    expect(json.offers.map((o) => o.slug)).toEqual(['tee-black-front', 'poster-18x24'])
+    const tee = json.offers[0]!.specs
+    expect(tee).toHaveLength(1)
+    expect(tee[0]!.specHash).toMatch(/^[0-9a-f]{64}$/)
+    expect(tee[0]!.spec.width).toBe(1800)
+    expect(tee[0]!.variants.map((v) => v.key)).toEqual(['black-m'])
+  })
+
+  it('a command that needs the operator API says so when no token is given', async () => {
+    app = await boot()
+    const r = await run(app, ['doctor'], null)
+    expect(r.error).toContain('operator token')
+  })
+
+  it('engine conformance runs the suite against an Engine base URL and fails when it is not conformant', async () => {
+    app = await boot()
+    // The test fetch routes every host to the bridge, which is no Engine: the health check fails.
+    const r = await run(
+      app,
+      ['engine', 'conformance', 'https://engine.test', '--secret', 's', '--design', 'd'],
+      null,
+    )
+    expect(r.out).toContain('✗ health')
+    expect(r.error).toContain('not conformant')
   })
 })

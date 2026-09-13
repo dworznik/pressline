@@ -26,8 +26,9 @@ them.
 - **[The Printfile format in detail](/print/printfile/)** — if you render with
   your own tools instead: every chunk and marker the file must carry, and what
   Pressline checks before payment.
-- **[Conformance suite](/engine/conformance/)** — run our tests against your
-  Engine, in process, before you wire it to anything.
+- **[Checking your Engine](/engine/conformance/)** — run the conformance suite
+  against your Engine before you wire it to anything, and list the Offers and
+  Specs an instance will ask you for.
 - **[AI-assisted Engines](/engine/ai/)** — what changes when a render takes
   thirty seconds instead of thirty milliseconds.
 

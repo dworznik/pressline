@@ -1,5 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@pressline/contract": ["../contract/src/index.ts"],
+      "@pressline/conformance": ["../conformance/src/index.ts"]
+    }
+  },
   "include": ["src"]
 }

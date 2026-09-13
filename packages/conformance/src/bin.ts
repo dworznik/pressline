@@ -53,6 +53,8 @@ const command = Command.make(
     ),
 ).pipe(Command.withDescription('Check an Engine against the Pressline DesignSource protocol'))
 
+// The suite now also lives in the Operator's CLI as `pressline engine conformance`; this
+// binary stays as an alias for existing scripts.
 Command.run(command, { name: 'pressline-conformance', version })(process.argv).pipe(
   Effect.provide(NodeContext.layer),
   NodeRuntime.runMain({ disableErrorReporting: true }),

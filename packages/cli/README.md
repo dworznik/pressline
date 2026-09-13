@@ -1,9 +1,11 @@
 # @pressline/cli
 
-The Operator's command line for one Pressline instance. Every command is a client of the operator API; the CLI never touches the database or the providers directly.
+The command line for one Pressline instance. The Operator's commands are clients of the operator API; the Engine developer's commands (`offers`, `engine …`) read public endpoints or the Engine itself and need no token. The CLI never touches the database or the providers directly.
 
 ```sh
 npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN doctor
+npx @pressline/cli --url https://shop.example offers
+npx @pressline/cli engine conformance https://engine.example --secret $ENGINE_SECRET --design <id>
 ```
 
 `--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`.
@@ -23,3 +25,5 @@ npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN doctor
 | `orders purge --older-than <days>`                                                                              | Strip Recipient and consent from terminal Orders untouched that long; country and totals stay                                             |
 | `reconcile [--dry-run]`                                                                                         | Run Reconciliation now; dry run reports without repairing                                                                                 |
 | `printfile check <url> --offer --variant`                                                                       | Compare any image URL with the Spec of an Offer variant                                                                                   |
+| `offers [--json]`                                                                                               | The Offers the instance sells, one line per distinct Printfile Spec with the variant keys sharing it; no token needed                     |
+| `engine conformance <baseUrl> --secret --design [--dpi] [--timeout] [--any-shape]`                              | The DesignSource conformance suite against an Engine; exit 1 when not conformant                                                          |

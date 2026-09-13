@@ -22,14 +22,14 @@ npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 | `orders resubmit <id>` · `orders fix-address <id> …` · `orders cancel <id>` | Recovery without provider dashboards                                                                  |
 | `orders purge --older-than <days>`                                          | Strip personal data from finished orders                                                              |
 | `reconcile [--dry-run]`                                                     | Run Reconciliation now                                                                                |
-| `printfile check <url> --offer --variant`                                   | Any image URL against an Offer variant's Spec                                                         |
+| `printfile check <url> --offer --variant [--strict]`                        | Any image URL against an Offer variant's Spec, with its Inspection                                    |
 
 ## Engine developer
 
-| Command                                                                            | What it does                                                                                                       |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `offers [--json]`                                                                  | The Offers this instance sells, one line per distinct Printfile Spec with the variant keys that share it; no token |
-| `engine conformance <baseUrl> --secret --design [--dpi] [--timeout] [--any-shape]` | Run the [conformance suite](/engine/conformance/) against an Engine                                                |
-| `engine preflight <paths…> [--offer --variant \| --spec] [--strict] [--json]`      | [Preflight](/engine/conformance/#preflight) local Printfiles against a Spec, before they are hosted                |
+| Command                                                                                                                     | What it does                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `offers [--json]`                                                                                                           | The Offers this instance sells, one line per distinct Printfile Spec with the variant keys that share it; no token |
+| `engine conformance <baseUrl> --secret --design [--dpi] [--timeout] [--any-shape] [--strict] [--format png\|jpeg] [--json]` | Run the [conformance suite](/engine/conformance/) against an Engine                                                |
+| `engine preflight <paths…> [--offer --variant \| --spec] [--strict] [--json]`                                               | [Preflight](/engine/conformance/#preflight) local Printfiles against a Spec, before they are hosted                |
 
 `offers` needs `--url`; `engine conformance` needs neither `--url` nor `--token`, and `engine preflight` needs `--url` only when it takes the Spec from an instance with `--offer`. `pressline-conformance` from `@pressline/conformance` remains as an alias of `engine conformance`.

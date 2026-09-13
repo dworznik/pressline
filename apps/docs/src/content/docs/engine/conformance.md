@@ -19,12 +19,17 @@ npx @pressline/cli engine conformance https://engine.example --secret $ENGINE_SE
 ✓ preview     https://engine.example/p/heron.png answers 206
 ✓ render      answered 202 (retry after 500 ms), then 200 ready
 ✓ idempotent  a repeat request returns the same URL and Spec Hash
-✓ printfile   https://engine.example/files/…: 1200×1600 image/png, 812345 bytes
+✓ printfile   https://engine.example/files/…: png 1200×1600, 8-bit color type 6, alpha present, no DPI stamped, 812345 bytes
+  ⚠ dpi_missing: the file carries no pHYs chunk, so it states no print resolution; stamp 150 dpi into it
 ✓ rejects     422 aspect_mismatch: this design is 3:4
-Conformant.
+Conformant, with 1 Deviation.
 ```
 
-The `printfile` check is Pressline's own validator from `@pressline/contract`, so what passes here passes in production. `--dpi` sets the Spec's DPI (default 150); `--timeout` raises the wait for slow renderers; `--any-shape` skips the 422 check for Engines that pad any Spec. Exit code 1 when the Engine is not conformant.
+The `printfile` check is Pressline's own validator from `@pressline/contract`, so what passes here passes in production. It reports the whole **Inspection** of the file your Engine really produced: one `✗` line for anything Validation would refuse, one `⚠` line per [Deviation](/print/printfile/#what-pressline-checks-and-what-it-does-not). A deviating Engine is conformant — the last line says how far it deviates — until you ask for strictness.
+
+`--dpi` sets the Spec's DPI (default 150); `--format png|jpeg` (default `png`) picks the one container the Spec asks for, and `jpeg` also forbids transparency, as Pressline's own derivation does; `--timeout` raises the wait for slow renderers; `--any-shape` skips the 422 check for Engines that pad any Spec; `--json` prints the report object, Inspection included.
+
+**Exit code**: 1 when anything Validation would refuse is found, 0 with Deviations listed. `--strict` fails on Deviations too, which is what you want in CI — the same rule `engine preflight` and `printfile check` follow.
 
 As a test helper, `conformance({ baseUrl, secret, designId, fetch })` from `@pressline/conformance` returns the same report for an in-process handler; the sample Engine's test suite is exactly that. The package's own binary, `npx @pressline/conformance …`, remains as an alias.
 
@@ -83,8 +88,8 @@ Preflight reads the whole file, where the bridge reads only the first 64 KiB.
 When those two views disagree the report says so, because the bridge's is the
 one that decides: _"Pressline reads only the first 65536 bytes, which stop
 before the pixel data: its read sees alpha as unseen where the whole file says
-absent."_ An embedded ICC profile is reported by name and size and left at that;
-which profile it is is not checked yet.
+absent."_ An embedded ICC profile whose color space is RGB is reported by name
+and size and left at that: which RGB it is is not checked.
 
 The same check runs as a function for an Engine's own test suite, over bytes it
 has just rendered and never writes to disk:

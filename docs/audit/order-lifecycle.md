@@ -162,7 +162,13 @@ before anything is built on them.
 1. Printful's legal transition graph. Only per-status prose exists.
 2. Whether `inreview` is cancellable. The v2 spec says both things in one file.
 3. Whether placement validation (`status`, `status_explanation`) is populated in
-   the create response or only later.
+   the create response or only later. **Empirically (#114, 2026-09-13): not in
+   the create response**, which carries `order_items` without `placements` and
+   `costs.calculation_status: "calculating"`. Six seconds later the v2
+   order-items read had the placement, with `status` and `status_explanation`
+   both **empty strings** on a processed file; v1 `GET /orders/{id}` had
+   `files[].status: "ok"` at the same moment. On success the v2 fields say
+   nothing; what they say on a failure is still unobserved.
 4. Whether cancelled orders are listed by `GET /v2/orders`. (The other half of
    this question — whether a hard-deleted order 404s — is answered above: there
    is no hard delete.)
@@ -172,7 +178,10 @@ before anything is built on them.
    and which size limit binds the order path. Three numbers are documented and
    none is tied to an order: 200 MB and 20 000 × 20 000 px for the File
    library, and 50 MB for the mockup generator. Sourced in the Printfile
-   requirements audit (#108), which lands with #87.
+   requirements audit (#108). **Partly answered there (#114, 2026-09-13)**: a
+   61 MB PNG processed to `ok` in seconds, so 50 MB does not bind; a 213 MB PNG
+   was never attached to its item in ten minutes and raised no error anywhere.
+   Redirects and timeout remain open.
 7. Whether Stripe's `charge.disputed` stays true after a win. This decides
    whether #95 is noisy or merely thin.
 8. Whether a Stripe test clock affects Checkout Session expiry. The feature is

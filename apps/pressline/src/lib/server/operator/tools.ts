@@ -1,4 +1,4 @@
-import { inspectPrintfile, PrintfileInspection, PrintfileSpec } from '@pressline/contract'
+import { inspectPrintfile, PrintfileInspection, PrintfileSpec, UNSEEN } from '@pressline/contract'
 import { Effect, Schema } from 'effect'
 import { deriveSpec, resolveCatalog } from '../catalog/catalog'
 import { Config, type OfferConfig } from '../config/schema'
@@ -216,8 +216,14 @@ export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
           `file is ${file.header.width}×${file.header.height}, spec requires ${spec.width}×${spec.height}`,
         )
       }
-      if (spec.alpha === 'forbidden' && file.header.hasAlpha) {
+      if (spec.alpha === 'forbidden' && file.header.alpha === 'present') {
         problems.push('file has an alpha channel, this placement forbids transparency')
+      }
+      if (spec.alpha === 'required' && file.header.alpha === 'absent') {
+        problems.push('file has no alpha channel, this placement requires transparency')
+      }
+      if (spec.alpha !== 'allowed' && file.header.alpha === 'unseen') {
+        problems.push(`this placement has an alpha rule and ${UNSEEN}`)
       }
     }
     return {

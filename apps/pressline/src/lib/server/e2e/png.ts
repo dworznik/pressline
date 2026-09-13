@@ -31,6 +31,8 @@ export interface PngOptions {
   trns?: boolean
   /** Pad with junk so the file has this total size. */
   totalBytes?: number
+  /** An iCCP chunk of this many bytes ahead of tRNS and IDAT, to push them past the header window. */
+  iccpBytes?: number
 }
 
 export const concat = (parts: Uint8Array[]) => {
@@ -43,8 +45,15 @@ export const concat = (parts: Uint8Array[]) => {
   return out
 }
 
-/** A structurally valid PNG prefix: signature, IHDR, optional tRNS, then padding "IDAT". */
-export const png = ({ width, height, colorType = 6, trns = false, totalBytes }: PngOptions) => {
+/** A structurally valid PNG prefix: signature, IHDR, optional iCCP and tRNS, then padding "IDAT". */
+export const png = ({
+  width,
+  height,
+  colorType = 6,
+  trns = false,
+  totalBytes,
+  iccpBytes,
+}: PngOptions) => {
   const ihdr = new Uint8Array(13)
   const v = new DataView(ihdr.buffer)
   v.setUint32(0, width)
@@ -54,6 +63,7 @@ export const png = ({ width, height, colorType = 6, trns = false, totalBytes }: 
   const parts = [
     new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
+    ...(iccpBytes ? [chunk('iCCP', new Uint8Array(iccpBytes))] : []),
     ...(trns ? [chunk('tRNS', new Uint8Array([0, 0]))] : []),
   ]
   const head = concat(parts)

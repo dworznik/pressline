@@ -594,7 +594,7 @@ const PrintfileResult = Schema.Struct({
         format: Schema.String,
         width: Schema.Number,
         height: Schema.Number,
-        hasAlpha: Schema.Boolean,
+        alpha: Schema.Literal('present', 'absent', 'unseen'),
       }),
     ),
   }),
@@ -602,6 +602,7 @@ const PrintfileResult = Schema.Struct({
   problems: Schema.Array(Schema.String),
 })
 
+const alphaNote = { present: ' with alpha', absent: '', unseen: ', alpha unseen in the header' }
 const fileUrl = Args.text({ name: 'url' })
 const offer = Options.text('offer')
 const variant = Options.text('variant')
@@ -619,7 +620,7 @@ const printfileCheck = Command.make(
       const h = r.file.header
       yield* print(
         `Spec ${offer}/${variant}: ${r.spec.width}×${r.spec.height}px @ ${r.spec.dpi} dpi, ${r.spec.formats.join('/')}, alpha ${r.spec.alpha} (hash ${r.specHash.slice(0, 12)}…)`,
-        `File: HTTP ${r.file.status}, ${r.file.contentType || 'no content type'}${r.file.bytes ? `, ${r.file.bytes} bytes` : ''}${h ? `, ${h.format} ${h.width}×${h.height}${h.hasAlpha ? ' with alpha' : ''}` : ''}`,
+        `File: HTTP ${r.file.status}, ${r.file.contentType || 'no content type'}${r.file.bytes ? `, ${r.file.bytes} bytes` : ''}${h ? `, ${h.format} ${h.width}×${h.height}${alphaNote[h.alpha]}` : ''}`,
       )
       if (r.ok) return yield* print('✓ The file satisfies the Spec.')
       yield* print(...r.problems.map((p) => `✗ ${p}`))

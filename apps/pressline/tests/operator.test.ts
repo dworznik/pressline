@@ -1,5 +1,7 @@
 import type { DesignResponse } from '@pressline/contract'
+import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
+import { Db } from '$lib/server/db/db'
 import type { InstanceHealth, OrderDetail, OrderList } from '$lib/server/operator/read'
 import type { Quote } from '$lib/server/quote/quote'
 import { catalog, offers } from './fixtures/catalog'
@@ -167,6 +169,28 @@ describe('Operator read API', () => {
     expect(body.links.stripePayment).toBe('https://dashboard.stripe.com/payments/pi_3Test123')
     expect(body.links.printfulOrder).toMatch(/order_id=\d+$/)
     expect((await app.fetch('/api/operator/orders/nope', { headers: bearer })).status).toBe(404)
+  })
+
+  it('carries the Printfile Inspection snapshotted at sale, and nothing else about it (#87)', async () => {
+    app = await boot()
+    const id = await placeAndPay(app)
+    const { body } = await app.json<Detail>(`/api/operator/orders/${id}`, { headers: bearer })
+    // The fixture declares no color space and stamps no DPI: sellable, and recorded.
+    expect(body.order.printfile.inspection?.header).toMatchObject({ format: 'png', width: 1800 })
+    expect(body.order.printfile.inspection?.deviations.map((d) => d.code)).toEqual([
+      'color_undeclared',
+      'dpi_missing',
+    ])
+    // A Deviation is recorded and shown; it is never an Alarm and never a list marker.
+    const { body: list } = await app.json<List>('/api/operator/orders', { headers: bearer })
+    expect(list.orders.map((o) => o.printfile.inspection !== undefined)).toEqual([true])
+
+    // An Order placed before migration 14 has no snapshot, and says so rather than guessing.
+    await app.run(
+      Effect.flatMap(Db, (db) => db.run('UPDATE orders SET printfile_inspection = NULL')),
+    )
+    const { body: old } = await app.json<Detail>(`/api/operator/orders/${id}`, { headers: bearer })
+    expect(old.order.printfile.inspection).toBeUndefined()
   })
 
   it('reports instance health: engines, webhook registration, config summary, schema, counts', async () => {

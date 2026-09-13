@@ -1,7 +1,7 @@
 import { specHash, type DesignResponse, type PrintfileSpec } from '@pressline/contract'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { PrintfileState } from '$lib/server/printfile/ensure'
+import { findStored, type PrintfileState } from '$lib/server/printfile/ensure'
 import type { MemoryPrintfileAnswer } from '$lib/server/services/memory'
 import { catalog, offers } from './fixtures/catalog'
 import { jpeg, png } from './fixtures/images'
@@ -249,6 +249,39 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
       expect(status).toBe(200)
     })
 
+    /** One case per rejection the header alone settles (#87 §1). */
+    const headerRules: Array<[string, ReturnType<typeof png>]> = [
+      ['bit_depth', png({ width: 1800, height: 2400, bitDepth: 16, totalBytes: 5000 })],
+      ['color_type', png({ width: 1800, height: 2400, colorType: 3, totalBytes: 5000 })],
+      ['interlaced', png({ width: 1800, height: 2400, interlace: 1, totalBytes: 5000 })],
+    ]
+    for (const [reason, bytes] of headerRules) {
+      it(`rejects: ${reason}`, async () => {
+        app = await boot(ready({ bytes: 5000 }), { [URL_OK]: teeFile(bytes) })
+        const { status, body } = await ensure(app)
+        expect(status).toBe(422)
+        expect(body).toMatchObject({ reason: 'invalid' })
+        expect(body.message).toMatch(new RegExp(reason))
+      })
+    }
+
+    it('raises the first refusal on the checkout path, however many the file earns', async () => {
+      const bad = png({
+        width: 1800,
+        height: 2400,
+        bitDepth: 16,
+        colorType: 3,
+        interlace: 1,
+        totalBytes: 5000,
+      })
+      app = await boot(ready({ bytes: 5000 }), { [URL_OK]: teeFile(bad) })
+      const { status, body } = await ensure(app)
+      expect(status).toBe(422)
+      // Table order: bit_depth comes first, and the Customer path stops there.
+      expect(body.message).toMatch(/bit_depth/)
+      expect(body.message).not.toMatch(/interlaced/)
+    })
+
     it('never downloads the whole file: a server ignoring Range still only costs the header prefix', async () => {
       const big = png({ width: 1800, height: 2400, totalBytes: 2 * 1024 * 1024 })
       app = await boot(ready({ bytes: big.length }), {
@@ -256,6 +289,38 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
       })
       const { status } = await ensure(app)
       expect(status).toBe(200)
+    })
+  })
+
+  describe('the Inspection record (#87 §5)', () => {
+    const stored = async (app: TestApp) =>
+      app.run(findStored('sample', design.id, await Effect.runPromise(specHash(teeSpec))))
+
+    it('sells a deviating Printfile and records what Validation saw', async () => {
+      // No sRGB chunk and no pHYs: two Deviations, and a file that still sells.
+      app = await boot(ready({ bytes: 5000 }), { [URL_OK]: teeFile() })
+      expect((await ensure(app)).status).toBe(200)
+      const row = await stored(app)
+      expect(row._tag).toBe('Success')
+      const printfile = row._tag === 'Success' ? row.value : undefined
+      expect(printfile?.inspection?.header).toMatchObject({
+        format: 'png',
+        width: 1800,
+        height: 2400,
+        bitDepth: 8,
+      })
+      expect(printfile?.inspection?.deviations.map((d) => d.code)).toEqual([
+        'color_undeclared',
+        'dpi_missing',
+      ])
+    })
+
+    it('records an empty Deviation list for a file that departs from nothing', async () => {
+      const clean = png({ width: 1800, height: 2400, colorType: 6, totalBytes: 5000, srgbAt: 150 })
+      app = await boot(ready({ bytes: 5000 }), { [URL_OK]: teeFile(clean) })
+      expect((await ensure(app)).status).toBe(200)
+      const row = await stored(app)
+      expect(row._tag === 'Success' && row.value?.inspection?.deviations).toEqual([])
     })
   })
 })

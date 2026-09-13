@@ -1,6 +1,8 @@
 import {
   PrintfileInvalid,
+  StoredInspection,
   validatePrintfile,
+  type Inspection,
   type OfferVariant,
   type PrintfileReady,
 } from '@pressline/contract'
@@ -27,8 +29,19 @@ export const StoredPrintfile = Schema.Struct({
   bytes: Schema.Int,
   contentType: Schema.Literal('image/png', 'image/jpeg'),
   specHash: Schema.String,
+  /** What Validation saw when it accepted this file; absent on a row older than migration 14. */
+  inspection: Schema.optional(StoredInspection),
 })
 export type StoredPrintfile = typeof StoredPrintfile.Type
+
+/** The Inspection as one JSON column: the header is the evidence, the codes the verdict. */
+export const InspectionJson = Schema.parseJson(StoredInspection)
+
+/** What is kept of an Inspection once the file is accepted; the refusals are empty by then. */
+export const toStored = (inspection: Inspection): StoredInspection => ({
+  ...(inspection.header ? { header: inspection.header } : {}),
+  deviations: inspection.deviations,
+})
 
 export type PrintfileState =
   | { readonly status: 'ready'; readonly printfile: StoredPrintfile }
@@ -56,6 +69,7 @@ type Row = {
   bytes: number
   content_type: 'image/png' | 'image/jpeg'
   spec_hash: string
+  inspection: string | null
 }
 
 /** The validated Printfile stored for (Engine, Design, Spec Hash), if any. */
@@ -63,31 +77,35 @@ export const findStored = (engine: string, designId: string, specHash: string) =
   Effect.gen(function* () {
     const db = yield* Db
     const rows = yield* db.all<Row>(
-      'SELECT url, sha256, width, height, bytes, content_type, spec_hash FROM printfiles WHERE engine = ? AND design_id = ? AND spec_hash = ?',
+      'SELECT url, sha256, width, height, bytes, content_type, spec_hash, inspection FROM printfiles WHERE engine = ? AND design_id = ? AND spec_hash = ?',
       [engine, designId, specHash],
     )
     const r = rows[0]
-    return r
-      ? ({
-          url: r.url,
-          sha256: r.sha256,
-          width: r.width,
-          height: r.height,
-          bytes: r.bytes,
-          contentType: r.content_type,
-          specHash: r.spec_hash,
-        } satisfies StoredPrintfile)
+    if (!r) return undefined
+    const inspection = r.inspection
+      ? yield* Schema.decode(InspectionJson)(r.inspection).pipe(Effect.orDie)
       : undefined
+    return {
+      url: r.url,
+      sha256: r.sha256,
+      width: r.width,
+      height: r.height,
+      bytes: r.bytes,
+      contentType: r.content_type,
+      specHash: r.spec_hash,
+      ...(inspection ? { inspection } : {}),
+    } satisfies StoredPrintfile
   }).pipe(Effect.orDie)
 
-const store = (req: EnsureRequest, ready: PrintfileReady) =>
+const store = (req: EnsureRequest, ready: PrintfileReady, inspection: Inspection) =>
   Effect.gen(function* () {
     const db = yield* Db
     const now = yield* Clock.currentTimeMillis
+    const record = yield* Schema.encode(InspectionJson)(toStored(inspection)).pipe(Effect.orDie)
     yield* db.run(
       `INSERT OR REPLACE INTO printfiles
-         (engine, design_id, spec_hash, url, sha256, width, height, bytes, content_type, validated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (engine, design_id, spec_hash, url, sha256, width, height, bytes, content_type, validated_at, inspection)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.engine,
         req.designId,
@@ -99,6 +117,7 @@ const store = (req: EnsureRequest, ready: PrintfileReady) =>
         ready.bytes,
         ready.contentType,
         now,
+        record,
       ],
     )
   }).pipe(Effect.orDie)
@@ -151,8 +170,11 @@ export const ensurePrintfile = (req: EnsureRequest) =>
       while (true) {
         const answer = yield* source.ensurePrintfile(req.engine, req.designId, variant.spec)
         if (answer.status === 'ready') {
-          yield* validatePrintfile(answer, variant.spec, variant.specHash)
-          yield* store(req, answer)
+          const inspection = yield* validatePrintfile(answer, variant.spec, variant.specHash)
+          // The checkout path short-circuits on the first refusal, as it always
+          // has; the whole list is for the Engine developer, who asked for it.
+          if (inspection.invalid[0]) return yield* inspection.invalid[0]
+          yield* store(req, answer, inspection)
           return { status: 'ready', printfile: answer } satisfies PrintfileState
         }
         const retryAfterMs = Math.max(MIN_RETRY_AFTER_MS, answer.retryAfterMs)

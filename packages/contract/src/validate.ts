@@ -151,12 +151,13 @@ const pngRefusals = (header: Extract<ImageHeader, { format: 'png' }>) => {
   // advises against CMYK in as many words. An `unseen` profile deviates instead:
   // `unseen` refuses only where the Spec binds the property, and nothing binds
   // the profile's identity.
-  const space = header.iccProfile?.colorSpace
-  if (space === 'cmyk' || space === 'gray') {
+  const icc = header.iccProfile
+  if (icc && (icc.colorSpace === 'cmyk' || icc.colorSpace === 'gray')) {
+    const space = icc.colorSpace === 'cmyk' ? 'CMYK' : 'grayscale'
     problems.push(
       fail(
         'color_space',
-        `the embedded profile "${header.iccProfile!.name}" declares a ${space === 'cmyk' ? 'CMYK' : 'grayscale'} color space; Printfiles are sRGB, and a PNG may not carry a ${space === 'cmyk' ? 'CMYK' : 'grayscale'} profile`,
+        `the embedded profile "${icc.name}" declares a ${space} color space; Printfiles are sRGB, and a PNG may not carry a ${space} profile`,
       ),
     )
   }
@@ -406,7 +407,7 @@ export const factsOf = (file: PrintfileHead, url?: string): PrintfileFacts => ({
 })
 
 /** Everything one look at a file concluded: the header, the refusals, the Deviations. */
-export const inspect = (
+export const inspectionOf = (
   file: Pick<PrintfileHead, 'header'>,
   spec: PrintfileSpec,
   facts: PrintfileFacts,
@@ -446,5 +447,5 @@ export const validatePrintfile = (
     if (declared.length > 0) return { invalid: declared, deviations: [] }
 
     const served = yield* readPrintfileHead(ready.url)
-    return inspect(served, spec, { ...declaration, ...factsOf(served) })
+    return inspectionOf(served, spec, { ...declaration, ...factsOf(served) })
   }).pipe(Effect.scoped)

@@ -179,9 +179,10 @@ describe('deviations: a DPI stamp is present and equals the Spec', () => {
     expect(codesWithoutSpec(png({}, srgb))).toEqual(['dpi_missing'])
   })
 
-  it('skips both rows when the window ended before IDAT', () => {
+  it('skips both rows when the window ended before IDAT: absence proves nothing', () => {
     const windowed = png({}, srgb, iccp(70_000)).subarray(0, HEADER_BYTES)
-    expect(codes(windowed)).toEqual(['icc_unseen']) // the profile is the only thing left to say
+    expect(codes(windowed)).not.toContain('dpi_missing')
+    expect(codes(windowed)).not.toContain('dpi_mismatch')
   })
 
   it('reports a JPEG with no JFIF density', () => {
@@ -222,11 +223,17 @@ describe('deviations: the chunk table ends inside the header window', () => {
     expect(codes(inside)).toEqual(['icc_unseen'])
   })
 
-  it('says nothing when the window itself cut the read short', () => {
+  it('reports the window itself cutting the read short, which is the bridge’s own case', () => {
+    // This is what `readPrintfileHead` hands the rules: the parser never reached
+    // IDAT, so there is no offset to name — and if the row needed one, the one
+    // read that decides a sale could never report this row at all.
     const windowed = png({}, srgb, phys(pixelsPerMeter(300)), iccp(70_000)).subarray(
       0,
       HEADER_BYTES,
     )
-    expect(codes(windowed)).toEqual(['icc_unseen'])
+    expect(codes(windowed)).toEqual(['icc_unseen', 'header_window'])
+    expect(messageFor(windowed, 'header_window')).toBe(
+      'the image data was not reached in the bytes read, so the chunk table runs past them; Pressline reads only the first 64 KiB of a Printfile; keep the chunk table before it smaller, or what is past the window stays unseen',
+    )
   })
 })

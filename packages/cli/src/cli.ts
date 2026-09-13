@@ -3,15 +3,14 @@ import { Args, Command, Options } from '@effect/cli'
 import {
   CatalogResponse,
   describeHeader,
-  Deviation,
   formatInspection,
   ImageHeader,
   inspectionFails,
-  PrintfileInvalid,
 } from '@pressline/contract'
 import { Config, Effect, Option, Schema } from 'effect'
 import { api, failWith, Instance, publicGet } from './client.js'
 import { engine } from './engine.js'
+import { strict } from './options.js'
 import { print } from './output.js'
 import { groupBySpec, specSummary } from './spec-source.js'
 
@@ -595,9 +594,12 @@ const reconcile = Command.make('reconcile', { dryRun }, ({ dryRun }) =>
 // ---- printfile ------------------------------------------------------------
 
 /**
- * The instance's answer. Every field the instance may not have is optional, so
- * a newer CLI reads an older instance rather than refusing it — and `deviations`
- * missing is itself a fact worth printing, distinct from "no Deviations found".
+ * The instance's answer, decoded leniently in both directions. A field the
+ * instance may not have is optional, so a newer CLI reads an older instance —
+ * and `deviations` missing is itself a fact worth printing, distinct from "no
+ * Deviations found". A `reason` or `code` is read as text rather than as the
+ * vocabulary this CLI shipped with, so an older CLI prints a refusal added
+ * after it was built instead of refusing the whole answer.
  */
 const PrintfileResult = Schema.Struct({
   spec: Spec,
@@ -607,17 +609,30 @@ const PrintfileResult = Schema.Struct({
     contentType: Schema.String,
     bytes: Schema.optional(Schema.Number),
     header: Schema.optional(ImageHeader),
-    invalid: Schema.optionalWith(Schema.Array(PrintfileInvalid), { default: () => [] }),
-    deviations: Schema.optional(Schema.Array(Deviation)),
+    invalid: Schema.optionalWith(
+      Schema.Array(Schema.Struct({ reason: Schema.String, message: Schema.String })),
+      { default: () => [] },
+    ),
+    deviations: Schema.optional(
+      Schema.Array(Schema.Struct({ code: Schema.String, message: Schema.String })),
+    ),
   }),
 })
+
+/**
+ * The size of a file the Operator is looking at, not an exact count: this
+ * command answers "is that the file I meant?", where `4.2 MB` reads and
+ * `4404019 bytes` does not. Preflight prints the exact count, because a
+ * developer chasing the 64 KiB window needs it.
+ */
+const humanBytes = (bytes: number) =>
+  bytes < 1_000_000
+    ? `${Math.round(bytes / 100) / 10} KB`
+    : `${Math.round(bytes / 100_000) / 10} MB`
 
 const fileUrl = Args.text({ name: 'url' })
 const offer = Options.text('offer')
 const variant = Options.text('variant')
-const strict = Options.boolean('strict').pipe(
-  Options.withDescription('Fail on Deviations too, not only on what Validation would refuse'),
-)
 
 const printfileCheck = Command.make(
   'check',
@@ -630,7 +645,7 @@ const printfileCheck = Command.make(
         variant,
       })
       const file = r.file
-      const size = file.bytes === undefined ? '' : `, ${file.bytes} bytes`
+      const size = file.bytes === undefined ? '' : `, ${humanBytes(file.bytes)}`
       // One file's Inspection, in Preflight's own block: an envelope line for
       // what the host answered, the header, then the refusals and Deviations.
       const inspection = { invalid: file.invalid, deviations: file.deviations ?? [] }

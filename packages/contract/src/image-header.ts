@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Duration, Effect, Schema } from 'effect'
 
 /**
  * The header read: everything Pressline knows about a Printfile without
@@ -336,50 +336,56 @@ export const parseImageHeader = (bytes: Uint8Array): ImageHeader | undefined => 
  * small enough that a hostile file cannot make this expensive.
  */
 export const ICC_INFLATE_INPUT_BYTES = 512
-/** Bytes of profile needed to read the data color space at offset 16. */
-const ICC_COLOR_SPACE_END = 20
-/** Bytes of profile needed to check the `acsp` signature at offset 36. */
-const ICC_SIGNATURE_END = 40
+/**
+ * Bytes of profile the read needs: the data color space ends at 20, and the
+ * `acsp` signature at 40. Both, always — reading the space out of 20 bytes
+ * that were never proved to be an ICC profile is how a refusal gets made on
+ * bytes nobody identified.
+ */
+const ICC_HEADER_BYTES = 40
 /**
  * A decompressor that produces nothing must not hang the read: a prefix can be
  * just the two-byte zlib header, which will never yield an output chunk. Half a
- * kilobyte inflates in microseconds, so a second is pure headroom.
+ * kilobyte inflates in microseconds, so a second is pure headroom. It is an
+ * `Effect` timeout, so the wait is on the `Clock` a test can advance.
  */
-const ICC_INFLATE_TIMEOUT_MS = 1000
+const ICC_INFLATE_TIMEOUT = Duration.seconds(1)
+
+/** A decompressor and the two ends of it, released together whichever way the read ends. */
+const openInflater = Effect.acquireRelease(
+  Effect.sync(() => {
+    const stream = new DecompressionStream('deflate') // ban-check-ignore: the one sanctioned inflate (ADR-0002)
+    return { writer: stream.writable.getWriter(), reader: stream.readable.getReader() }
+  }),
+  ({ reader, writer }) =>
+    Effect.sync(() => {
+      reader.cancel().catch(() => undefined)
+      writer.abort().catch(() => undefined)
+    }),
+)
 
 /**
  * The first chunk the platform's inflater produces from a *prefix* of a deflate
  * stream. The stream is never closed, because it never ends: the caller hands
  * over the first few hundred bytes of a profile and wants the first output back.
- * Anything else — a corrupt stream, a prefix too short to produce output — is
- * `undefined`, which the caller reads as "unseen". A decompression failure
- * never becomes a refusal.
+ * Anything else — a corrupt stream, a prefix too short to produce output, a read
+ * that never resolves — is `undefined`, which the caller reads as "unseen". A
+ * decompression failure never becomes a refusal.
  */
-const inflatePrefix = async (compressed: Uint8Array): Promise<Uint8Array | undefined> => {
-  const stream = new DecompressionStream('deflate') // ban-check-ignore: the one sanctioned inflate (ADR-0002)
-  const writer = stream.writable.getWriter()
-  const reader = stream.readable.getReader()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  // A prefix ends mid-stream, so the writable side always errors; that is expected, not a fault.
-  writer.closed.catch(() => undefined)
-  // Copied into its own buffer: at most `ICC_INFLATE_INPUT_BYTES`, and a view
-  // onto a shared buffer is not a `BufferSource`.
-  writer.write(new Uint8Array(compressed)).catch(() => undefined)
-  try {
-    return await Promise.race([
-      reader.read().then((r) => r.value),
-      new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), ICC_INFLATE_TIMEOUT_MS)
-      }),
-    ])
-  } catch {
-    return undefined
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-    reader.cancel().catch(() => undefined)
-    writer.abort().catch(() => undefined)
-  }
-}
+const inflatePrefix = (compressed: Uint8Array): Effect.Effect<Uint8Array | undefined> =>
+  Effect.gen(function* () {
+    const { reader, writer } = yield* openInflater
+    // A prefix ends mid-stream, so the writable side always errors; that is expected, not a fault.
+    writer.closed.catch(() => undefined)
+    // Copied into its own buffer: at most `ICC_INFLATE_INPUT_BYTES`, and a view
+    // onto a shared buffer is not a `BufferSource`.
+    writer.write(new Uint8Array(compressed)).catch(() => undefined)
+    return yield* Effect.tryPromise(() => reader.read().then((r) => r.value))
+  }).pipe(
+    Effect.scoped,
+    Effect.timeout(ICC_INFLATE_TIMEOUT),
+    Effect.orElseSucceed(() => undefined),
+  )
 
 /** ICC.1:2010 §7.2: the profile header names its data color space at byte 16 and itself at byte 36. */
 const SPACES: Record<string, IccProfile['colorSpace']> = {
@@ -391,8 +397,9 @@ const SPACES: Record<string, IccProfile['colorSpace']> = {
 /**
  * What the embedded profile says its data color space is. Every way of not
  * finding out — the chunk straddles the window, a compression method PNG does
- * not define, a stream that will not inflate, too little profile to read —
- * collapses to `unseen`, because they are the same fact to every caller.
+ * not define, a stream that will not inflate, too little profile to read, bytes
+ * that carry no `acsp` signature and so are no ICC profile — collapses to
+ * `unseen`, because they are the same fact to every caller.
  */
 const readProfileColorSpace = (
   bytes: Uint8Array,
@@ -408,12 +415,10 @@ const readProfileColorSpace = (
       bytes.length,
     )
     if (end <= profileAt) return 'unseen'
-    const out = yield* Effect.promise(() => inflatePrefix(bytes.subarray(profileAt, end)))
-    if (!out || out.length < ICC_COLOR_SPACE_END) return 'unseen'
-    if (out.length >= ICC_SIGNATURE_END && ascii(out, 36, ICC_SIGNATURE_END) !== 'acsp') {
-      return 'unseen'
-    }
-    return SPACES[ascii(out, 16, ICC_COLOR_SPACE_END)] ?? 'other'
+    const out = yield* inflatePrefix(bytes.subarray(profileAt, end))
+    if (!out || out.length < ICC_HEADER_BYTES) return 'unseen'
+    if (ascii(out, 36, ICC_HEADER_BYTES) !== 'acsp') return 'unseen'
+    return SPACES[ascii(out, 16, 20)] ?? 'other'
   })
 
 /**

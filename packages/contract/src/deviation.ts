@@ -144,14 +144,19 @@ const RULES: readonly DeviationRule[] = [
   {
     code: 'header_window',
     check: (header) => {
+      const before = header.format === 'png' ? 'chunk table' : 'segments'
+      const advice = `Pressline reads only the first ${HEADER_BYTES / 1024} KiB of a Printfile; keep the ${before} before it smaller, or what is past the window stays unseen`
       const offset = header.pixelDataOffset
+      // The bytes ran out before the pixel data. On the bridge's own windowed
+      // read that is exactly the row's case, and the only way it can be seen:
+      // an offset it never reached is an offset it cannot name.
+      if (offset === undefined) {
+        return `the image data was not reached in the bytes read, so the ${before} runs past them; ${advice}`
+      }
       // The marker has to fit inside the window, not merely start there: one that
       // straddles the end leaves Pressline's read exactly as blind.
-      if (offset === undefined || offset + PIXEL_DATA_MARKER_BYTES[header.format] <= HEADER_BYTES) {
-        return undefined
-      }
-      const before = header.format === 'png' ? 'chunk table' : 'segments'
-      return `the image data starts ${offset} bytes in, and Pressline reads only the first ${HEADER_BYTES / 1024} KiB of a Printfile; keep the ${before} before it smaller, or what is past the window stays unseen`
+      if (offset + PIXEL_DATA_MARKER_BYTES[header.format] <= HEADER_BYTES) return undefined
+      return `the image data starts ${offset} bytes in, and ${advice}`
     },
   },
 ]

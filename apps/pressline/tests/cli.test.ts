@@ -276,7 +276,7 @@ describe('pressline CLI', () => {
     expect(good.out).toContain(
       'Spec tee-black-front/black-m: 1800×2400px @ 150 dpi, png, alpha allowed',
     )
-    expect(good.out).toContain('File: HTTP 206, image/png, 5000 bytes')
+    expect(good.out).toContain('File: HTTP 206, image/png, 5 KB')
     expect(good.out).toContain('  png 1800×2400, 8-bit color type 6, alpha present')
     expect(good.out).toContain('✓ nothing Validation would refuse')
     // The fixture declares no color space and stamps no DPI: sellable, and said so.

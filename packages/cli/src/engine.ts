@@ -9,6 +9,7 @@ import {
 } from '@pressline/conformance'
 import { Effect, Option } from 'effect'
 import { CliError, failWith } from './client.js'
+import { strict } from './options.js'
 import { print } from './output.js'
 import { formatPreflight, runPreflight, tally, type PreflightEntry } from './preflight.js'
 import { resolveSpecs } from './spec-source.js'
@@ -85,9 +86,6 @@ const specSource = Options.text('spec').pipe(
     'A Printfile Spec, or a group as `pressline offers --json` prints it, from a file or `-` for stdin',
   ),
   Options.optional,
-)
-const strict = Options.boolean('strict').pipe(
-  Options.withDescription('Fail on Deviations too, not only on what Validation would refuse'),
 )
 const asJson = Options.boolean('json').pipe(
   Options.withDescription('Print the report as JSON: the header and the two tiers, per file'),

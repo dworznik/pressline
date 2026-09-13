@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { describeHeader } from '@pressline/contract'
+  import { describeHeader, formatInspection } from '@pressline/contract'
   import { formatMoney } from '$lib/money'
   import type { PageData } from './$types'
   let { data }: { data: PageData } = $props()
@@ -29,14 +29,16 @@
           0,
           12,
         )}…
-        <!-- What Validation concluded at sale (#87). Deviations are recorded and
-             shown, never an Alarm: the file was sellable, and it sold. -->
+        <!-- What Validation concluded at sale (#87), through the same renderer
+             the three commands print. Deviations are recorded and shown, never
+             an Alarm: the file was sellable, and it sold. A sold Printfile has
+             no refusals, so the block is the ⚠ lines and nothing else. -->
         {#if !inspection}
           <div class="quiet">no Inspection recorded</div>
         {:else}
           {#if inspection.header}<div class="quiet">{describeHeader(inspection.header)}</div>{/if}
-          {#each inspection.deviations as d (d.code)}
-            <div class="deviation">⚠ {d.code}: {d.message}</div>
+          {#each formatInspection({ invalid: [], deviations: inspection.deviations }, { affirmClean: false }) as line (line)}
+            <div class="deviation">{line.trim()}</div>
           {/each}
         {/if}
       </dd>

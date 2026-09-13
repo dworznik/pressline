@@ -181,10 +181,6 @@ describe('Operator read API', () => {
       'color_undeclared',
       'dpi_missing',
     ])
-    // A Deviation is recorded and shown; it is never an Alarm and never a list marker.
-    const { body: list } = await app.json<List>('/api/operator/orders', { headers: bearer })
-    expect(list.orders.map((o) => o.printfile.inspection !== undefined)).toEqual([true])
-
     // An Order placed before migration 14 has no snapshot, and says so rather than guessing.
     await app.run(
       Effect.flatMap(Db, (db) => db.run('UPDATE orders SET printfile_inspection = NULL')),

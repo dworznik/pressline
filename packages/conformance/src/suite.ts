@@ -130,16 +130,15 @@ export const runConformance = (options: ConformanceOptions) =>
     const format = options.format ?? 'png'
     const strict = options.strict ?? false
     const checks: Check[] = []
+    /** What looking at the Printfile concluded; there is at most one, and often none. */
+    let inspection: Inspection | undefined
     /** The verdict, by the same rule all three commands exit on. */
-    const report = (): ConformanceReport => {
-      const inspection = checks.find((c) => c.inspection)?.inspection
-      return {
-        ok: checks.every((c) => c.ok),
-        checks,
-        deviations: inspection?.deviations.length ?? 0,
-        strict,
-      }
-    }
+    const report = (): ConformanceReport => ({
+      ok: checks.every((c) => c.ok),
+      checks,
+      deviations: inspection?.deviations.length ?? 0,
+      strict,
+    })
     const client = yield* makeEngineClient({ baseUrl: options.baseUrl, secret: options.secret })
     const http = yield* HttpClient.HttpClient
 
@@ -270,7 +269,7 @@ export const runConformance = (options: ConformanceOptions) =>
         // Not a verdict about the file: nobody could read it.
         checks.push(failed('printfile', `${ready.url}: ${looked.left.message}`))
       } else {
-        const inspection = looked.right
+        inspection = looked.right
         checks.push({
           name: 'printfile',
           ok: !inspectionFails(inspection, strict),

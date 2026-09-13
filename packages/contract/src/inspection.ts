@@ -38,26 +38,37 @@ export const describeHeader = (header: ImageHeader): string =>
     : `jpeg ${header.width}×${header.height}, ${header.precision}-bit, ${header.components} channel(s), alpha ${header.alpha}, ${describeDensity(header)}`
 
 /**
+ * All a printer needs of an Inspection, and all the exit rule needs: what was
+ * seen, and what to say about it. Weaker than `Inspection` on purpose — a CLI
+ * reading an instance newer than itself must print a code it has never heard
+ * of rather than refuse the whole answer.
+ */
+export interface InspectionLines {
+  readonly invalid: readonly { readonly reason: string; readonly message: string }[]
+  readonly deviations: readonly { readonly code: string; readonly message: string }[]
+}
+
+/**
  * The Inspection as an Engine developer reads it: one `✗` line per refusal,
- * one `⚠` line per Deviation. The one renderer `pressline engine preflight`,
- * `pressline printfile check` and `pressline engine conformance` all print,
- * which is why it lives here and not in the CLI: the conformance suite cannot
- * depend on the CLI.
+ * one `⚠` line per Deviation, each indented under whatever named the file. The
+ * one renderer `pressline engine preflight`, `pressline printfile check` and
+ * `pressline engine conformance` all print, which is why it lives here and not
+ * in the CLI: the conformance suite cannot depend on the CLI.
  *
  * `affirmClean` adds the line that says a file has nothing against it, which a
  * report of many files needs and a check that already printed its own `✓` does
  * not.
  */
 export const formatInspection = (
-  inspection: Inspection,
-  { indent = '  ', affirmClean = true } = {},
+  inspection: InspectionLines,
+  { affirmClean = true } = {},
 ): string[] => [
   ...(inspection.invalid.length === 0
     ? affirmClean
-      ? [`${indent}✓ nothing Validation would refuse`]
+      ? ['  ✓ nothing Validation would refuse']
       : []
-    : inspection.invalid.map((p) => `${indent}✗ ${p.reason}: ${p.message}`)),
-  ...inspection.deviations.map((d) => `${indent}⚠ ${d.code}: ${d.message}`),
+    : inspection.invalid.map((p) => `  ✗ ${p.reason}: ${p.message}`)),
+  ...inspection.deviations.map((d) => `  ⚠ ${d.code}: ${d.message}`),
 ]
 
 /**
@@ -65,5 +76,5 @@ export const formatInspection = (
  * 0 with Deviations listed, and under `--strict` a Deviation fails too. One
  * rule, so the three commands cannot disagree about the same file.
  */
-export const inspectionFails = (inspection: Inspection, strict = false): boolean =>
+export const inspectionFails = (inspection: InspectionLines, strict = false): boolean =>
   inspection.invalid.length > 0 || (strict && inspection.deviations.length > 0)

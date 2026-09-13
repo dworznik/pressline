@@ -1,6 +1,6 @@
 import {
   factsOf,
-  inspect,
+  inspectionOf,
   PrintfileInspection,
   PrintfileSpec,
   readPrintfileHead,
@@ -210,7 +210,7 @@ export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
     const spec = variant.spec
     // The same Inspection Validation produces, so the operator's check and the
     // bridge cannot disagree about the same file (#132).
-    const inspection = inspect(file, spec, factsOf(file, req.url))
+    const inspection = inspectionOf(file, spec, factsOf(file, req.url))
     return {
       spec,
       specHash: variant.specHash,

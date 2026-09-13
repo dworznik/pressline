@@ -8,7 +8,7 @@ import { Context, Effect, Option, Redacted, Schema } from 'effect'
  * no token, so it is optional here and demanded per call.
  */
 export interface InstanceValue {
-  readonly url: string
+  readonly url: Option.Option<string>
   readonly token: Option.Option<Redacted.Redacted>
 }
 export class Instance extends Context.Tag('@pressline/cli/Instance')<Instance, InstanceValue>() {}
@@ -19,32 +19,48 @@ export class CliError extends Schema.TaggedError<CliError>()('CliError', {
 
 const ApiError = Schema.Struct({ message: Schema.optional(Schema.String) })
 
-/**
- * Call the instance and decode the answer; every failure becomes one readable
- * `CliError`. Operator endpoints send the token and refuse to run without one;
- * `{ public: true }` reads an endpoint anyone may read and sends nothing.
- */
+/** Call the operator API and decode the answer; every failure becomes one readable `CliError`. */
 export const api = <A, I>(
   method: 'GET' | 'POST',
   path: string,
   schema: Schema.Schema<A, I>,
   body?: unknown,
-  options: { readonly public?: boolean } = {},
 ): Effect.Effect<A, CliError, Instance | HttpClient.HttpClient> =>
   Effect.gen(function* () {
-    const { url, token } = yield* Instance
+    const { token } = yield* Instance
+    if (Option.isNone(token)) {
+      return yield* new CliError({
+        message: 'this command needs the operator token: pass --token or set PRESSLINE_TOKEN',
+      })
+    }
+    return yield* call(method, path, schema, body, Redacted.value(token.value))
+  })
+
+/** Read an endpoint anyone may read (`/api/offers`); no token is sent or needed. */
+export const publicGet = <A, I>(
+  path: string,
+  schema: Schema.Schema<A, I>,
+): Effect.Effect<A, CliError, Instance | HttpClient.HttpClient> => call('GET', path, schema)
+
+const call = <A, I>(
+  method: 'GET' | 'POST',
+  path: string,
+  schema: Schema.Schema<A, I>,
+  body?: unknown,
+  bearer?: string,
+): Effect.Effect<A, CliError, Instance | HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const { url } = yield* Instance
+    if (Option.isNone(url)) {
+      return yield* new CliError({
+        message: 'this command needs the instance URL: pass --url or set PRESSLINE_URL',
+      })
+    }
     const client = yield* HttpClient.HttpClient
-    let request = HttpClientRequest.make(method)(`${url.replace(/\/$/, '')}${path}`).pipe(
+    const request = HttpClientRequest.make(method)(`${url.value.replace(/\/$/, '')}${path}`).pipe(
+      bearer === undefined ? (r) => r : HttpClientRequest.bearerToken(bearer),
       body === undefined ? (r) => r : HttpClientRequest.bodyUnsafeJson(body),
     )
-    if (!options.public) {
-      if (Option.isNone(token)) {
-        return yield* new CliError({
-          message: 'this command needs the operator token: pass --token or set PRESSLINE_TOKEN',
-        })
-      }
-      request = request.pipe(HttpClientRequest.bearerToken(Redacted.value(token.value)))
-    }
     const response = yield* client
       .execute(request)
       .pipe(Effect.mapError((e) => new CliError({ message: `${path}: ${e.message}` })))

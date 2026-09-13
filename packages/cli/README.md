@@ -8,7 +8,7 @@ npx @pressline/cli --url https://shop.example offers
 npx @pressline/cli engine conformance https://engine.example --secret $ENGINE_SECRET --design <id>
 ```
 
-`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`.
+`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`; `engine …` commands need neither.
 
 | Command                                                                                                         | What it does                                                                                                                              |
 | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |

@@ -31,4 +31,4 @@ npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 | `offers [--json]`                                                                  | The Offers this instance sells, one line per distinct Printfile Spec with the variant keys that share it; no token |
 | `engine conformance <baseUrl> --secret --design [--dpi] [--timeout] [--any-shape]` | Run the [conformance suite](/engine/conformance/) against an Engine                                                |
 
-`pressline-conformance` from `@pressline/conformance` remains as an alias of `engine conformance`.
+`offers` needs `--url`; `engine …` needs neither `--url` nor `--token`. `pressline-conformance` from `@pressline/conformance` remains as an alias of `engine conformance`.

@@ -43,4 +43,4 @@ poster-18x24  Matte poster 18×24 — default / digital, aspect 0.7–0.8, €19
   2700×3600px @ 150 dpi, png/jpeg, alpha forbidden (hash 8ab04c2d91f7…)  18x24
 ```
 
-Every size of a tee shares one print area and therefore one Printfile Spec, so variants are grouped by Spec Hash: one line per distinct Spec, then the variant keys that share it. `--json` prints the same grouping as data, each group carrying its `spec` and `specHash`, so a group can be handed to a renderer or a test as the exact requirement.
+Every size of a tee has the same Placement and therefore one Printfile Spec, so variants are grouped by Spec Hash: one line per distinct Spec, then the variant keys that share it. `--json` prints the same grouping as data, each group carrying its `spec` and `specHash`, so a group can be handed to a renderer or a test as the Spec to render.

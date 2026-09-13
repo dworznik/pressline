@@ -12,6 +12,7 @@ export default {
       '@pressline/contract': '../../packages/contract/src/index.ts',
       // Tests drive the CLI against the in-process harness (ticket #16); the app itself never imports it.
       '@pressline/cli': '../../packages/cli/src/index.ts',
+      '@pressline/conformance': '../../packages/conformance/src/index.ts',
     },
   },
 }

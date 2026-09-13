@@ -8,3 +8,9 @@ export {
   type ConformanceOptions,
   type ConformanceReport,
 } from './suite.js'
+export {
+  CONFORMANCE_DESCRIPTION,
+  conformanceFlags,
+  conformanceOptions,
+  type ConformanceFlagValues,
+} from './flags.js'

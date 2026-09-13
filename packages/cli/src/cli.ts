@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module'
 import { Args, Command, Options } from '@effect/cli'
-import { CatalogResponse } from '@pressline/contract'
+import { CatalogResponse, type OfferVariant, type PrintfileSpec } from '@pressline/contract'
 import { Config, Effect, Option, Schema } from 'effect'
-import { api, CliError, Instance } from './client.js'
+import { api, CliError, Instance, publicGet } from './client.js'
 import { engine } from './engine.js'
 import { print } from './output.js'
 
@@ -14,11 +14,13 @@ import { print } from './output.js'
  * no token.
  */
 const url = Options.text('url').pipe(
-  Options.withDescription('Base URL of the Pressline instance'),
+  Options.withDescription('Base URL of the Pressline instance; `engine …` commands do not need it'),
   Options.withFallbackConfig(Config.string('PRESSLINE_URL')),
+  Options.optional,
 )
 const token = Options.redacted('token').pipe(
   Options.withDescription('Operator token; only the Operator commands need it'),
+  Options.withFallbackConfig(Config.redacted('PRESSLINE_TOKEN')),
   Options.optional,
 )
 
@@ -648,24 +650,31 @@ const asJson = Options.boolean('json').pipe(
 const aspectNote = (a: { min: number; max: number } | null) =>
   a === null ? '' : a.min === a.max ? `, aspect ${a.min}` : `, aspect ${a.min}–${a.max}`
 
+/** The variants of one Offer that share a Printfile Spec: one Placement, one print size, one Spec Hash. */
+interface SpecGroup {
+  readonly specHash: string
+  readonly spec: PrintfileSpec
+  readonly variants: Array<Omit<OfferVariant, 'spec' | 'specHash'>>
+}
+
+const groupBySpec = (variants: ReadonlyArray<OfferVariant>): SpecGroup[] => {
+  const groups: SpecGroup[] = []
+  for (const { spec, specHash, ...variant } of variants) {
+    const group = groups.find((g) => g.specHash === specHash)
+    if (group) group.variants.push(variant)
+    else groups.push({ specHash, spec, variants: [variant] })
+  }
+  return groups
+}
+
 const offers = Command.make('offers', { json: asJson }, ({ json }) =>
   Effect.gen(function* () {
-    const c = yield* api('GET', '/api/offers', CatalogResponse, undefined, { public: true })
-    // Every size of a tee shares one print area, so one Spec: group by Spec Hash.
-    const grouped = c.offers.map((o) => {
-      const specs: Array<{
-        specHash: string
-        spec: (typeof o.variants)[number]['spec']
-        variants: Array<Omit<(typeof o.variants)[number], 'spec' | 'specHash'>>
-      }> = []
-      for (const { spec, specHash, ...variant } of o.variants) {
-        const group = specs.find((g) => g.specHash === specHash)
-        if (group) group.variants.push(variant)
-        else specs.push({ specHash, spec, variants: [variant] })
-      }
-      const { variants: _variants, ...offer } = o
-      return { ...offer, specs }
-    })
+    const c = yield* publicGet('/api/offers', CatalogResponse)
+    // Every size of a tee has the same Placement, so one Spec: group by Spec Hash.
+    const grouped = c.offers.map(({ variants, ...offer }) => ({
+      ...offer,
+      specs: groupBySpec(variants),
+    }))
     if (json) {
       return yield* print(
         JSON.stringify(
@@ -720,18 +729,6 @@ export const VERSION = (createRequire(import.meta.url)('../package.json') as { v
  * strips). Needs `HttpClient`, `Output` and the CLI environment.
  */
 export const cli = Command.run(
-  root.pipe(
-    Command.provideEffect(Instance, ({ url, token }) =>
-      Effect.map(
-        // `--token` wins; otherwise PRESSLINE_TOKEN; otherwise none, and only the Operator commands mind.
-        Option.isSome(token)
-          ? Effect.succeed(token)
-          : Config.option(Config.redacted('PRESSLINE_TOKEN')).pipe(
-              Effect.orElseSucceed(Option.none),
-            ),
-        (token) => ({ url, token }),
-      ),
-    ),
-  ),
+  root.pipe(Command.provideEffect(Instance, ({ url, token }) => Effect.succeed({ url, token }))),
   { name: 'pressline', version: VERSION },
 )

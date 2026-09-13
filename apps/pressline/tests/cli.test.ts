@@ -47,7 +47,12 @@ const boot = () =>
   })
 
 /** Run `pressline <args>` against the app; returns the lines printed and the failure, if any. `token: null` omits `--token`. */
-const run = async (app: TestApp, args: string[], token: string | null = OPERATOR_TOKEN) => {
+const run = async (
+  app: TestApp,
+  args: string[],
+  token: string | null = OPERATOR_TOKEN,
+  withUrl = true,
+) => {
   const lines: string[] = []
   const fetch: typeof globalThis.fetch = (input, init) => {
     const req = new Request(input, init)
@@ -63,8 +68,7 @@ const run = async (app: TestApp, args: string[], token: string | null = OPERATOR
     cli([
       'node',
       'pressline',
-      '--url',
-      'http://pressline.test',
+      ...(withUrl ? ['--url', 'http://pressline.test'] : []),
       ...(token === null ? [] : ['--token', token]),
       ...args,
     ]).pipe(Effect.provide(layer)),
@@ -335,6 +339,67 @@ describe('pressline CLI', () => {
     expect(tee[0]!.variants.map((v) => v.key)).toEqual(['black-m'])
   })
 
+  it('offers groups the variants of one Offer that share a Spec, and separates those that do not', async () => {
+    // A second tee size with the same print area shares the Spec; a back print does not.
+    app = await makeTestApp({
+      config: {
+        catalog: {
+          offers: [
+            {
+              ...offers[0]!,
+              variants: {
+                'black-m': { catalogVariantId: 4017, label: 'Black / M' },
+                'black-l': { catalogVariantId: 4018, label: 'Black / L' },
+              },
+            },
+            {
+              ...offers[0]!,
+              slug: 'tee-black-back',
+              name: 'Black tee, back print',
+              placement: 'back',
+            },
+          ],
+        },
+      },
+      catalog: {
+        ...catalog,
+        variants: [
+          ...catalog.variants,
+          { ...catalog.variants[0]!, id: 4018, name: 'Bella + Canvas 3001 (Black / L)', size: 'L' },
+        ],
+        prices: { ...catalog.prices, 4018: catalog.prices![4017]! },
+        printAreas: {
+          ...catalog.printAreas,
+          71: [
+            ...catalog.printAreas[71]!,
+            {
+              placement: 'back',
+              technique: 'dtg',
+              printAreaWidthIn: 12,
+              printAreaHeightIn: 14,
+              dpi: 150,
+            },
+          ],
+        },
+      },
+    })
+    const r = await run(app, ['offers', '--json'], null)
+    expect(r.error).toBeUndefined()
+    const json = JSON.parse(r.out) as {
+      offers: Array<{
+        slug: string
+        specs: Array<{ specHash: string; variants: Array<{ key: string }> }>
+      }>
+    }
+    const [front, back] = json.offers
+    expect(front!.specs).toHaveLength(1)
+    expect(front!.specs[0]!.variants.map((v) => v.key)).toEqual(['black-m', 'black-l'])
+    expect(back!.specs[0]!.specHash).not.toBe(front!.specs[0]!.specHash)
+
+    const text = await run(app, ['offers'], null)
+    expect(text.lines[1]).toMatch(/ {2}black-m, black-l$/)
+  })
+
   it('a command that needs the operator API says so when no token is given', async () => {
     app = await boot()
     const r = await run(app, ['doctor'], null)
@@ -351,5 +416,18 @@ describe('pressline CLI', () => {
     )
     expect(r.out).toContain('✗ health')
     expect(r.error).toContain('not conformant')
+  })
+
+  it('engine conformance needs no --url, and offers says so when it is missing', async () => {
+    app = await boot()
+    const r = await run(
+      app,
+      ['engine', 'conformance', 'https://engine.test', '--secret', 's', '--design', 'd'],
+      null,
+      false,
+    )
+    expect(r.out).toContain('✗ health')
+    const missing = await run(app, ['offers'], null, false)
+    expect(missing.error).toContain('instance URL')
   })
 })

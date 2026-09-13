@@ -64,6 +64,7 @@ export default defineConfig({
           items: [
             { label: 'Overview', slug: 'print' },
             { label: 'Files, DPI, color, transparency', slug: 'print/files' },
+            { label: 'The Printfile format in detail', slug: 'print/printfile' },
             { label: 'Print areas and product limits', slug: 'print/products' },
           ],
         },

@@ -23,6 +23,9 @@ them.
 - **[Rendering with @pressline/render](/engine/render/)** — an optional helper
   that produces a file satisfying a Spec: exact dimensions, DPI stamped, sRGB
   declared, alpha per the rule. Works on Node and on Workers.
+- **[The Printfile format in detail](/print/printfile/)** — if you render with
+  your own tools instead: every chunk and marker the file must carry, and what
+  Pressline checks before payment.
 - **[Conformance suite](/engine/conformance/)** — run our tests against your
   Engine, in process, before you wire it to anything.
 - **[AI-assisted Engines](/engine/ai/)** — what changes when a render takes

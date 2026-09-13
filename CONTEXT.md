@@ -68,6 +68,10 @@ _Avoid_: Warning, advisory, lint, finding (that is Reconciliation's)
 What looking at one Printfile concluded: what its header said, what Validation would refuse, and which Deviations it carries. An Inspection is the same whoever looked and however the bytes arrived, so Validation and Preflight can never describe the same file differently.
 _Avoid_: Check, result, report
 
+**Conformance**:
+An Engine developer's check of a live Engine against the DesignSource protocol, run before wiring it to an instance. Exercises every rule the way Pressline does and reports the Inspection of the Printfile the Engine really produced, Deviations included; a deviating Engine is conformant unless the developer asks for strictness.
+_Avoid_: Compliance, certification, validation (that is Pressline's act on one file)
+
 **Preflight**:
 An Engine developer's local check of a Printfile against a Printfile Spec and the protocol's file requirements, before the file is hosted. Reports what Validation would refuse and any Deviations; guarantees nothing to anyone but the developer.
 _Avoid_: Validate (that is Validation, Pressline's act), lint, check

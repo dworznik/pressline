@@ -3,7 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
-      "@pressline/contract": ["../contract/src/index.ts"]
+      "@pressline/contract": ["../contract/src/index.ts"],
+      "@pressline/cli/preflight": ["../cli/src/preflight.ts"]
     }
   },
   "include": ["src", "tests", "vitest.config.ts"]

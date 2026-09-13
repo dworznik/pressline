@@ -7,7 +7,7 @@ description: pressline — the command line for one instance, for the Operator a
 npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 ```
 
-`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. The CLI never touches the database. The Operator's commands are clients of the operator API and need the token. `offers` reads a public endpoint of the instance and needs only the URL. `engine …` commands talk to the Engine at the base URL they are given and need neither.
+`--url` and `--token` belong to the CLI rather than to a subcommand, so they come before the command name, and can instead come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. The CLI never touches the database. The Operator's commands are clients of the operator API and need the token. `offers` reads a public endpoint of the instance and needs only the URL. `engine …` commands talk to the Engine, to files on disk, or to that same public endpoint, and need no token.
 
 ## Operator
 
@@ -30,5 +30,6 @@ npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN <command>
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `offers [--json]`                                                                  | The Offers this instance sells, one line per distinct Printfile Spec with the variant keys that share it; no token |
 | `engine conformance <baseUrl> --secret --design [--dpi] [--timeout] [--any-shape]` | Run the [conformance suite](/engine/conformance/) against an Engine                                                |
+| `engine preflight <paths…> [--offer --variant \| --spec] [--strict] [--json]`      | [Preflight](/engine/conformance/#preflight) local Printfiles against a Spec, before they are hosted                |
 
-`offers` needs `--url`; `engine …` needs neither `--url` nor `--token`. `pressline-conformance` from `@pressline/conformance` remains as an alias of `engine conformance`.
+`offers` needs `--url`; `engine conformance` needs neither `--url` nor `--token`, and `engine preflight` needs `--url` only when it takes the Spec from an instance with `--offer`. `pressline-conformance` from `@pressline/conformance` remains as an alias of `engine conformance`.

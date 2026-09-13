@@ -7,5 +7,5 @@
       "@pressline/conformance": ["../conformance/src/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "tests", "vitest.config.ts"]
 }

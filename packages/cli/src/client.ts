@@ -19,6 +19,9 @@ export class CliError extends Schema.TaggedError<CliError>()('CliError', {
 
 const ApiError = Schema.Struct({ message: Schema.optional(Schema.String) })
 
+/** Fail the command (exit code 1) with one line. */
+export const failWith = (message: string) => Effect.fail(new CliError({ message }))
+
 /** Call the operator API and decode the answer; every failure becomes one readable `CliError`. */
 export const api = <A, I>(
   method: 'GET' | 'POST',

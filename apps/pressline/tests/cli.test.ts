@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { FetchHttpClient } from '@effect/platform'
 import { NodeContext } from '@effect/platform-node'
 import { cli, Output } from '@pressline/cli'
@@ -416,6 +419,73 @@ describe('pressline CLI', () => {
     )
     expect(r.out).toContain('✗ health')
     expect(r.error).toContain('not conformant')
+  })
+
+  it('engine preflight takes the Spec of one Offer variant from the instance', async () => {
+    app = await boot()
+    const dir = await mkdtemp(join(tmpdir(), 'pressline-preflight-'))
+    const file = join(dir, 'front.png')
+    await writeFile(file, png({ width: 1800, height: 2400 }))
+    const r = await run(
+      app,
+      ['engine', 'preflight', file, '--offer', 'tee-black-front', '--variant', 'black-m'],
+      null,
+    )
+    expect(r.lines[0]).toMatch(
+      /^Spec tee-black-front\/black-m: 1800×2400px @ 150 dpi, png, alpha allowed \(hash [0-9a-f]{12}…\)$/,
+    )
+    // The header is all the file has: no sRGB chunk and no pHYs, which are Deviations, not refusals.
+    expect(r.out).toContain('✓ nothing Validation would refuse')
+    expect(r.out).toContain('⚠ dpi_missing:')
+    expect(r.error).toBeUndefined()
+
+    const wrong = await run(app, ['engine', 'preflight', file, '--offer', 'no-such-offer'], null)
+    expect(wrong.error).toContain('sells no Offer "no-such-offer"')
+  })
+
+  it('engine preflight without --variant checks every distinct Spec of the Offer', async () => {
+    // A larger size with a larger print area: one Offer, two Printfile Specs.
+    app = await makeTestApp({
+      config: {
+        catalog: {
+          offers: [
+            {
+              ...offers[0]!,
+              variants: {
+                'black-m': { catalogVariantId: 4017, label: 'Black / M' },
+                'black-l': { catalogVariantId: 4018, label: 'Black / L' },
+              },
+            },
+          ],
+        },
+      },
+      catalog: {
+        ...catalog,
+        variants: [
+          ...catalog.variants,
+          {
+            ...catalog.variants[0]!,
+            id: 4018,
+            name: 'Bella + Canvas 3001 (Black / L)',
+            size: 'L',
+            placementDimensions: [
+              { placement: 'front', widthIn: 13, heightIn: 17, orientation: 'any' },
+            ],
+          },
+        ],
+        prices: { ...catalog.prices, 4018: catalog.prices![4017]! },
+      },
+    })
+    const dir = await mkdtemp(join(tmpdir(), 'pressline-preflight-'))
+    const file = join(dir, 'front.png')
+    await writeFile(file, png({ width: 1800, height: 2400 }))
+    const r = await run(app, ['engine', 'preflight', file, '--offer', 'tee-black-front'], null)
+    expect(r.lines.filter((l) => l.startsWith('Spec'))).toHaveLength(2)
+    expect(r.out).toContain('Spec tee-black-front/black-m: 1800×2400px')
+    expect(r.out).toContain('Spec tee-black-front/black-l: 1950×2550px')
+    expect(r.out).toContain('✗ dimensions: file is 1800×2400, spec requires 1950×2550')
+    expect(r.lines.at(-1)).toBe('1 file × 2 Specs: 1 refused, 1 with Deviations, 0 clean.')
+    expect(r.error).toContain('1 of 2 would be refused before payment')
   })
 
   it('engine conformance needs no --url, and offers says so when it is missing', async () => {

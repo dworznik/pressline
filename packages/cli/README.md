@@ -6,9 +6,12 @@ The command line for one Pressline instance. The Operator's commands are clients
 npx @pressline/cli --url https://shop.example --token $OPERATOR_TOKEN doctor
 npx @pressline/cli --url https://shop.example offers
 npx @pressline/cli engine conformance https://engine.example --secret $ENGINE_SECRET --design <id>
+npx @pressline/cli --url https://shop.example engine preflight ./out --offer tee-black-front
 ```
 
-`--url` and `--token` can come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`; `engine …` commands need neither.
+`--url` and `--token` belong to the CLI rather than to a subcommand, so they come first, and can instead come from `PRESSLINE_URL` and `PRESSLINE_TOKEN`. `engine conformance` needs neither; `engine preflight` needs `--url` only when it takes the Spec from an instance.
+
+Preflight is also a function, for an Engine's own test suite: `import { preflight } from '@pressline/cli/preflight'` checks bytes against a Spec without touching the filesystem or the network.
 
 | Command                                                                                                         | What it does                                                                                                                              |
 | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,3 +30,4 @@ npx @pressline/cli engine conformance https://engine.example --secret $ENGINE_SE
 | `printfile check <url> --offer --variant`                                                                       | Compare any image URL with the Spec of an Offer variant                                                                                   |
 | `offers [--json]`                                                                                               | The Offers the instance sells, one line per distinct Printfile Spec with the variant keys sharing it; no token needed                     |
 | `engine conformance <baseUrl> --secret --design [--dpi] [--timeout] [--any-shape]`                              | The DesignSource conformance suite against an Engine; exit 1 when not conformant                                                          |
+| `engine preflight <paths…> [--offer --variant \| --spec] [--strict] [--json]`                                   | Preflight local Printfiles against a Spec: what Validation would refuse, and every Deviation; exit 1 on a refusal                         |

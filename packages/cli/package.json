@@ -1,7 +1,7 @@
 {
   "name": "@pressline/cli",
   "version": "0.1.1",
-  "description": "Command line for a Pressline instance: the Operator's doctor, catalog, webhooks, orders, reconcile and printfile check, and the Engine developer's offers and engine conformance",
+  "description": "Command line for a Pressline instance: the Operator's doctor, catalog, webhooks, orders, reconcile and printfile check, and the Engine developer's offers, engine conformance and engine preflight",
   "keywords": [
     "pressline",
     "cli",
@@ -33,6 +33,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./preflight": {
+      "types": "./dist/preflight.d.ts",
+      "import": "./dist/preflight.js"
     }
   },
   "files": [
@@ -46,6 +50,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
@@ -57,6 +62,7 @@
     "effect": "^3.22.2"
   },
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }

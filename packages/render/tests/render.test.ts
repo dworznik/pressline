@@ -1,3 +1,4 @@
+import { preflight } from '@pressline/cli/preflight'
 import type { PrintfileSpec } from '@pressline/contract'
 import { describe, expect, it } from 'vitest'
 import { fitsBudget, rawBytesFor, render, RenderRefused } from '../src/index.js'
@@ -37,6 +38,23 @@ describe.each(backends)('render on the %s backend', (_name, make) => {
     expect(await pixel(png, 30, 80)).toEqual([255, 0, 0, 255]) // left half: red
     expect(await pixel(png, 90, 80)).toEqual([0, 0, 0, 0]) // right half: transparent
     expect(await pixel(png, 60, 10)).toEqual([0, 0, 0, 0]) // letterbox: transparent
+  })
+
+  it('writes a file an Engine developer’s Preflight finds nothing to say about', async () => {
+    // The same check `pressline engine preflight` runs, over the helper's own
+    // output: a Deviation the helper starts writing fails our tests, not theirs.
+    const backend = await make()
+    for (const rule of ['allowed', 'forbidden'] as const) {
+      const png = await render(
+        backend,
+        { kind: 'raster', bytes: await redLeft() },
+        spec({ alpha: rule, formats: rule === 'forbidden' ? ['png', 'jpeg'] : ['png'] }),
+      )
+      const report = preflight({ path: `${rule}.png`, bytes: png }, { spec: spec({ alpha: rule }) })
+      expect(report.invalid).toEqual([])
+      expect(report.deviations).toEqual([])
+      expect(report.notes).toEqual([])
+    }
   })
 
   it('flattens onto a background and writes RGB when the Spec forbids alpha', async () => {

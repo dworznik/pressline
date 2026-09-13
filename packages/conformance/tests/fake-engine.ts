@@ -35,21 +35,79 @@ export interface FakeEngineOptions {
   readonly wrongId?: boolean
   /** Ignore Range and serve whole files with 200. */
   readonly ignoresRange?: boolean
+  /**
+   * Serve a PNG with nothing but its IHDR: no color space declared, no DPI
+   * stamped. Legal, sellable, and two Deviations — which is what a report with
+   * a `⚠` block is made of.
+   */
+  readonly bareHeader?: boolean
 }
 
-const pngHeader = (width: number, height: number) => {
-  const out = new Uint8Array(64)
-  out.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-  const v = new DataView(out.buffer)
-  v.setUint32(8, 13)
-  out.set([0x49, 0x48, 0x44, 0x52], 12)
-  v.setUint32(16, width)
-  v.setUint32(20, height)
-  out[24] = 8
-  out[25] = 6
-  v.setUint32(33, 0)
-  out.set([0x49, 0x44, 0x41, 0x54], 37)
+const concat = (parts: Uint8Array[]) => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let at = 0
+  for (const p of parts) {
+    out.set(p, at)
+    at += p.length
+  }
   return out
+}
+
+/** A PNG chunk with no CRC: nothing that reads these files checks one. */
+const chunk = (type: string, data: Uint8Array) => {
+  const out = new Uint8Array(12 + data.length)
+  new DataView(out.buffer).setUint32(0, data.length)
+  out.set(new TextEncoder().encode(type), 4)
+  out.set(data, 8)
+  return out
+}
+
+const be32 = (...values: number[]) => {
+  const out = new Uint8Array(values.length * 4)
+  const v = new DataView(out.buffer)
+  values.forEach((n, i) => v.setUint32(i * 4, n))
+  return out
+}
+
+/** Everything the protocol asks for: 8-bit RGBA, sRGB declared, the Spec's DPI stamped. */
+const pngHeader = (width: number, height: number, dpi: number, bare = false) => {
+  const ihdr = new Uint8Array(13)
+  ihdr.set(be32(width, height))
+  ihdr[8] = 8
+  ihdr[9] = 6
+  const perMeter = Math.round(dpi / 0.0254)
+  const phys = new Uint8Array(9)
+  phys.set(be32(perMeter, perMeter))
+  phys[8] = 1
+  return concat([
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    ...(bare ? [] : [chunk('sRGB', new Uint8Array([0])), chunk('pHYs', phys)]),
+    chunk('IDAT', new Uint8Array(16)),
+  ])
+}
+
+/** SOI, a JFIF APP0 stamping the Spec's DPI, then a three-component baseline frame header. */
+const jpegHeader = (width: number, height: number, dpi: number) => {
+  const app0 = new Uint8Array(18)
+  const a = new DataView(app0.buffer)
+  app0.set([0xff, 0xe0])
+  a.setUint16(2, 16)
+  app0.set(new TextEncoder().encode('JFIF'), 4)
+  app0[9] = 1 // version 1.1
+  app0[11] = 1 // density in dots per inch
+  a.setUint16(12, dpi)
+  a.setUint16(14, dpi)
+  const sof = new Uint8Array(2 + 17)
+  const s = new DataView(sof.buffer)
+  sof.set([0xff, 0xc0])
+  s.setUint16(2, 17)
+  sof[4] = 8
+  s.setUint16(5, height)
+  s.setUint16(7, width)
+  sof[9] = 3
+  for (let i = 0; i < 3; i++) sof.set([i + 1, 0x11, i === 0 ? 0 : 1], 10 + i * 3)
+  return concat([new Uint8Array([0xff, 0xd8]), app0, sof])
 }
 
 export const fakeEngine = (o: FakeEngineOptions) => {
@@ -83,17 +141,22 @@ export const fakeEngine = (o: FakeEngineOptions) => {
           }
           const hash = yield* specHash(spec).pipe(Effect.orDie)
           calls += 1
-          const url = `https://engine.test/files/${o.design.id}/${o.freshUrls ? calls : hash.slice(0, 8)}.png`
+          // The Engine renders the container the Spec asks for, as a real one would.
+          const jpeg = spec.formats.includes('jpeg') && !spec.formats.includes('png')
+          const url = `https://engine.test/files/${o.design.id}/${o.freshUrls ? calls : hash.slice(0, 8)}.${jpeg ? 'jpg' : 'png'}`
           const size = o.fileSize ?? { width: spec.width, height: spec.height }
-          files.set(url, pngHeader(size.width, size.height))
+          const bytes = jpeg
+            ? jpegHeader(size.width, size.height, spec.dpi)
+            : pngHeader(size.width, size.height, spec.dpi, o.bareHeader)
+          files.set(url, bytes)
           const ready: PrintfileReady = {
             status: 'ready',
             url,
             sha256: 'a'.repeat(64),
             width: size.width,
             height: size.height,
-            bytes: 64,
-            contentType: 'image/png',
+            bytes: bytes.length,
+            contentType: jpeg ? 'image/jpeg' : 'image/png',
             specHash: o.wrongHash ? 'b'.repeat(64) : hash,
           }
           return ready
@@ -118,15 +181,16 @@ export const fakeEngine = (o: FakeEngineOptions) => {
     if (url.hostname === 'engine.test' && url.pathname.startsWith('/files/')) {
       const file = files.get(req.url)
       if (!file) return new Response('not found', { status: 404 })
+      const contentType = url.pathname.endsWith('.jpg') ? 'image/jpeg' : 'image/png'
       return o.ignoresRange
         ? new Response(new Blob([file as BlobPart]), {
             status: 200,
-            headers: { 'content-type': 'image/png', 'content-length': String(file.length) },
+            headers: { 'content-type': contentType, 'content-length': String(file.length) },
           })
         : new Response(new Blob([file as BlobPart]), {
             status: 206,
             headers: {
-              'content-type': 'image/png',
+              'content-type': contentType,
               'content-range': `bytes 0-${file.length - 1}/${file.length}`,
             },
           })

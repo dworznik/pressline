@@ -1,10 +1,14 @@
 import { FetchHttpClient, HttpClient, HttpClientRequest } from '@effect/platform'
 import {
+  describeHeader,
+  formatInspection,
+  inspectionFails,
   makeEngineClient,
   PROTOCOL_VERSION,
   specHash,
   validatePrintfile,
   type DesignResponse,
+  type Inspection,
   type PrintfileReady,
   type PrintfileSpec,
 } from '@pressline/contract'
@@ -22,6 +26,8 @@ export interface ConformanceOptions {
   readonly designId: string
   /** DPI for the Spec the suite asks for; the size follows the Design's aspect. Default 150. */
   readonly dpi?: number
+  /** The one container the Spec the suite asks for lists. Default `png`. */
+  readonly format?: 'png' | 'jpeg'
   /** Longest wait for a rendering Engine. Default 60 s. */
   readonly renderTimeout?: Duration.DurationInput
   /**
@@ -30,6 +36,8 @@ export interface ConformanceOptions {
    * anything to any shape may pass `false` to skip the check.
    */
   readonly impossibleSpec?: PrintfileSpec | false
+  /** Fail on Deviations too, which is what a developer wants in CI. */
+  readonly strict?: boolean
   /** A fetch to use instead of the global one (tests, custom agents). */
   readonly fetch?: typeof globalThis.fetch
 }
@@ -37,12 +45,21 @@ export interface ConformanceOptions {
 export interface Check {
   readonly name: string
   readonly ok: boolean
+  /** What was seen: the URL and the header line, or the URL alone when nothing was fetched. */
   readonly detail: string
+  /**
+   * What looking at the Printfile concluded. Only the `printfile` check carries
+   * one; its refusals and Deviations print beneath `detail` as the shared block.
+   */
+  readonly inspection?: Inspection
 }
 
 export interface ConformanceReport {
   readonly ok: boolean
   readonly checks: ReadonlyArray<Check>
+  /** Deviations the Printfile carries. They are not failures unless `strict` was asked for. */
+  readonly deviations: number
+  readonly strict: boolean
 }
 
 const pass = (name: string, detail: string): Check => ({ name, ok: true, detail })
@@ -57,8 +74,22 @@ const skipped = (name: string, detail: string): Check => ({
 /** Engines may ask for any polling interval; the suite waits at least a quarter second and at most ten. */
 const clampRetry = (ms: number) => Math.min(10_000, Math.max(250, ms))
 
-/** A Spec that fits the Design: 1200 px on the short side at the requested DPI, PNG with alpha allowed. */
-export const specFor = (design: DesignResponse, dpi: number): PrintfileSpec => {
+/**
+ * What the container the suite asks for implies. JPEG carries no alpha, so a
+ * Spec that lists it forbids transparency — exactly as Pressline's own
+ * derivation does.
+ */
+const shapeOf = (format: 'png' | 'jpeg') =>
+  format === 'jpeg'
+    ? ({ formats: ['jpeg'], alpha: 'forbidden' } as const)
+    : ({ formats: ['png'], alpha: 'allowed' } as const)
+
+/** A Spec that fits the Design: 1200 px on the short side at the requested DPI. */
+export const specFor = (
+  design: DesignResponse,
+  dpi: number,
+  format: 'png' | 'jpeg' = 'png',
+): PrintfileSpec => {
   const ratio = design.aspect.w / design.aspect.h
   const width = ratio >= 1 ? Math.round(1200 * ratio) : 1200
   const height = ratio >= 1 ? 1200 : Math.round(1200 / ratio)
@@ -66,22 +97,24 @@ export const specFor = (design: DesignResponse, dpi: number): PrintfileSpec => {
     width,
     height,
     dpi,
-    formats: ['png'],
+    ...shapeOf(format),
     colorSpace: 'srgb',
-    alpha: 'allowed',
     placement: 'front',
     technique: 'dtg',
   }
 }
 
-/** A Spec no Design can honor: an aspect of 100:1. */
-export const impossibleSpec = (dpi: number): PrintfileSpec => ({
+/**
+ * A Spec no Design can honor: an aspect of 100:1. It follows the same container
+ * and alpha rule as the Spec above, so the Engine's 422 is about the aspect and
+ * nothing else.
+ */
+export const impossibleSpec = (dpi: number, format: 'png' | 'jpeg' = 'png'): PrintfileSpec => ({
   width: 4000,
   height: 40,
   dpi,
-  formats: ['png'],
+  ...shapeOf(format),
   colorSpace: 'srgb',
-  alpha: 'allowed',
   placement: 'front',
   technique: 'dtg',
 })
@@ -94,7 +127,19 @@ const describe = (e: unknown) =>
 export const runConformance = (options: ConformanceOptions) =>
   Effect.gen(function* () {
     const dpi = options.dpi ?? 150
+    const format = options.format ?? 'png'
+    const strict = options.strict ?? false
     const checks: Check[] = []
+    /** The verdict, by the same rule all three commands exit on. */
+    const report = (): ConformanceReport => {
+      const inspection = checks.find((c) => c.inspection)?.inspection
+      return {
+        ok: checks.every((c) => c.ok),
+        checks,
+        deviations: inspection?.deviations.length ?? 0,
+        strict,
+      }
+    }
     const client = yield* makeEngineClient({ baseUrl: options.baseUrl, secret: options.secret })
     const http = yield* HttpClient.HttpClient
 
@@ -102,7 +147,7 @@ export const runConformance = (options: ConformanceOptions) =>
     const health = yield* client.health.health().pipe(Effect.either)
     if (health._tag === 'Left') {
       checks.push(failed('health', `GET /health failed: ${describe(health.left)}`))
-      return { ok: false, checks }
+      return report()
     }
     checks.push(
       health.right.protocolVersion === PROTOCOL_VERSION
@@ -121,14 +166,14 @@ export const runConformance = (options: ConformanceOptions) =>
       checks.push(
         failed('design', `GET /designs/${options.designId} failed: ${describe(design.left)}`),
       )
-      return { ok: false, checks }
+      return report()
     }
     const d = design.right
     if (d.id !== options.designId) {
       checks.push(
         failed('design', `answered with Design "${d.id}" for /designs/${options.designId}`),
       )
-      return { ok: false, checks }
+      return report()
     }
     checks.push(
       pass(
@@ -158,7 +203,7 @@ export const runConformance = (options: ConformanceOptions) =>
     )
 
     // 4. Render: immediate 200, or 202 then 200 within the timeout
-    const spec = specFor(d, dpi)
+    const spec = specFor(d, dpi, format)
     const hash = yield* specHash(spec)
     const ensure = () => client.designs.ensurePrintfile({ path: { designId: d.id }, payload: spec })
     const first = yield* ensure().pipe(Effect.either)
@@ -219,24 +264,28 @@ export const runConformance = (options: ConformanceOptions) =>
             ),
       )
 
-      // 6. The file itself, checked exactly as Pressline checks it
-      const valid = yield* validatePrintfile(ready, spec, hash).pipe(Effect.either)
-      checks.push(
-        valid._tag === 'Right'
-          ? pass(
-              'printfile',
-              `${ready.url}: ${spec.width}×${spec.height} ${ready.contentType}, ${ready.bytes} bytes`,
-            )
-          : failed('printfile', `${valid.left.reason}: ${valid.left.message}`),
-      )
+      // 6. The file itself, inspected exactly as Pressline inspects it
+      const looked = yield* validatePrintfile(ready, spec, hash).pipe(Effect.either)
+      if (looked._tag === 'Left') {
+        // Not a verdict about the file: nobody could read it.
+        checks.push(failed('printfile', `${ready.url}: ${looked.left.message}`))
+      } else {
+        const inspection = looked.right
+        checks.push({
+          name: 'printfile',
+          ok: !inspectionFails(inspection, strict),
+          detail: `${ready.url}: ${inspection.header ? describeHeader(inspection.header) : ready.contentType}, ${ready.bytes} bytes`,
+          inspection,
+        })
+      }
     }
 
     // 7. An impossible Spec is refused with 422
     const impossible =
-      options.impossibleSpec === undefined ? impossibleSpec(dpi) : options.impossibleSpec
+      options.impossibleSpec === undefined ? impossibleSpec(dpi, format) : options.impossibleSpec
     if (impossible === false) {
       checks.push(skipped('rejects', 'this Engine renders any shape'))
-      return { ok: checks.every((c) => c.ok), checks } satisfies ConformanceReport
+      return report()
     }
     const rejected = yield* client.designs
       .ensurePrintfile({ path: { designId: d.id }, payload: impossible })
@@ -252,7 +301,7 @@ export const runConformance = (options: ConformanceOptions) =>
           ),
     )
 
-    return { ok: checks.every((c) => c.ok), checks } satisfies ConformanceReport
+    return report()
   }).pipe(
     Effect.provide(
       options.fetch
@@ -267,8 +316,22 @@ export const runConformance = (options: ConformanceOptions) =>
 export const conformance = (options: ConformanceOptions): Promise<ConformanceReport> =>
   Effect.runPromise(runConformance(options))
 
+/**
+ * The report an Engine developer reads: one line per check, the shared
+ * Inspection block beneath the one that has an Inspection, and a last line that
+ * is the verdict. A deviating Engine is conformant — the last line says how far
+ * it deviates — unless strictness was asked for, and then a Deviation fails.
+ */
 export const formatReport = (report: ConformanceReport): string =>
   [
-    ...report.checks.map((c) => `${c.ok ? '✓' : '✗'} ${c.name.padEnd(11)} ${c.detail}`),
-    report.ok ? 'Conformant.' : `${report.checks.filter((c) => !c.ok).length} check(s) failed.`,
+    ...report.checks.flatMap((c) => [
+      `${c.ok ? '✓' : '✗'} ${c.name.padEnd(11)} ${c.detail}`,
+      // The check line's own ✓ already says the file is clean; the block adds what it found.
+      ...(c.inspection ? formatInspection(c.inspection, { affirmClean: false }) : []),
+    ]),
+    report.ok
+      ? report.deviations === 0
+        ? 'Conformant.'
+        : `Conformant, with ${report.deviations} Deviation${report.deviations === 1 ? '' : 's'}.`
+      : `${report.checks.filter((c) => !c.ok).length} check(s) failed.`,
   ].join('\n')

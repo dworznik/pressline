@@ -1,6 +1,7 @@
 import type { DesignResponse } from '@pressline/contract'
+import { Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
-import { conformance, formatReport } from '../src/index.js'
+import { conformance, conformanceOptions, formatReport } from '../src/index.js'
 import { fakeEngine } from './fake-engine.js'
 
 /**
@@ -34,9 +35,10 @@ describe('conformance suite', () => {
     })
     expect(formatReport(report)).toMatch(/✓ render {6}answered 200 ready at once/)
     expect(formatReport(report)).toMatch(
-      /✓ printfile {3}https:\/\/engine\.test\/files\/heron-0001\/[0-9a-f]{8}\.png: 1200×1600 image\/png/,
+      /✓ printfile {3}https:\/\/engine\.test\/files\/heron-0001\/[0-9a-f]{8}\.png: png 1200×1600, 8-bit color type 6, alpha present, 150×150 dpi, \d+ bytes/,
     )
     expect(formatReport(report)).toMatch(/Conformant\.$/)
+    expect(report.deviations).toBe(0)
   })
 
   it('passes an Engine that answers 202 and then 200', async () => {
@@ -50,14 +52,17 @@ describe('conformance suite', () => {
   it('names each broken rule: hash echo, file size, idempotency, impossible Spec, preview, version', async () => {
     const wrongHash = await run(fakeEngine({ design, wrongHash: true }).fetch)
     expect(wrongHash.ok).toBe(false)
-    expect(wrongHash.checks.find((c) => c.name === 'printfile')).toMatchObject({
-      ok: false,
-      detail: expect.stringMatching(/^spec_hash: /),
-    })
+    const hashCheck = wrongHash.checks.find((c) => c.name === 'printfile')
+    expect(hashCheck?.ok).toBe(false)
+    expect(hashCheck?.inspection?.invalid[0]?.reason).toBe('spec_hash')
 
     const wrongSize = await run(fakeEngine({ design, fileSize: { width: 600, height: 800 } }).fetch)
-    expect(wrongSize.checks.find((c) => c.name === 'printfile')?.detail).toMatch(
-      /^dimensions: file is 600×800, spec requires 1200×1600/,
+    const sizeCheck = wrongSize.checks.find((c) => c.name === 'printfile')
+    expect(sizeCheck?.inspection?.invalid[0]?.message).toBe(
+      'file is 600×800, spec requires 1200×1600',
+    )
+    expect(formatReport(wrongSize)).toContain(
+      '  ✗ dimensions: file is 600×800, spec requires 1200×1600',
     )
 
     const fresh = await run(fakeEngine({ design, freshUrls: true }).fetch)
@@ -136,9 +141,82 @@ describe('conformance suite', () => {
     expect(report.checks[0]?.name).toBe('health')
   })
 
+  it('calls a deviating Engine conformant, and says how far it deviates', async () => {
+    const report = await run(fakeEngine({ design, bareHeader: true }).fetch)
+    expect(report.ok).toBe(true)
+    expect(report.deviations).toBe(2)
+    const printed = formatReport(report)
+    expect(printed).toContain('  ⚠ color_undeclared: the PNG declares no color space')
+    expect(printed).toContain('  ⚠ dpi_missing: the file carries no pHYs chunk')
+    expect(printed).toMatch(/Conformant, with 2 Deviations\.$/)
+  })
+
+  it('fails the same Engine under strict, on the Deviations alone', async () => {
+    const report = await conformance({
+      baseUrl: 'https://engine.test',
+      secret: 's3cret',
+      designId: design.id,
+      fetch: fakeEngine({ design, bareHeader: true }).fetch,
+      strict: true,
+    })
+    expect(report.ok).toBe(false)
+    expect(names(report)).toMatchObject({ printfile: false })
+    // Nothing Validation would refuse: the check fails on the Deviations alone.
+    expect(report.checks.find((c) => c.name === 'printfile')?.inspection?.invalid).toEqual([])
+    expect(formatReport(report)).toMatch(/1 check\(s\) failed\.$/)
+  })
+
+  it('asks for a JPEG-only, alpha-forbidden Spec when told to, and refuses the same shape', async () => {
+    const engine = fakeEngine({ design })
+    const report = await conformance({
+      baseUrl: 'https://engine.test',
+      secret: 's3cret',
+      designId: design.id,
+      fetch: engine.fetch,
+      format: 'jpeg',
+    })
+    expect(report.ok, formatReport(report)).toBe(true)
+    expect(report.checks.find((c) => c.name === 'printfile')?.detail).toMatch(
+      /\.jpg: jpeg 1200×1600, 8-bit, 3 channel\(s\), alpha absent, 150×150 dpi/,
+    )
+    // The impossible Spec follows the same shape, so its 422 is about the aspect.
+    expect(report.checks.find((c) => c.name === 'rejects')?.detail).toMatch(/422 aspect_mismatch/)
+  })
+
   it('refuses an insecure base URL before touching the network', async () => {
     await expect(
       conformance({ baseUrl: 'http://engine.example', secret: 's', designId: 'x' }),
     ).rejects.toSatisfy((e: unknown) => String(e).includes('InsecureEngineBaseUrl'))
+  })
+})
+
+describe('the command-line surface', () => {
+  /** `pressline engine conformance` and the alias binary share these; they must not drift. */
+  const flags = {
+    baseUrl: 'https://engine.example',
+    secret: Redacted.make('s3cret'),
+    design: 'heron-0001',
+    dpi: 300,
+    timeout: 90,
+    anyShape: false,
+    format: 'jpeg' as const,
+    strict: true,
+    json: true,
+  }
+
+  it('hands every flag to the suite, and keeps --json for the printer', () => {
+    const options = conformanceOptions(flags)
+    expect(options).toMatchObject({
+      baseUrl: 'https://engine.example',
+      secret: 's3cret',
+      designId: 'heron-0001',
+      dpi: 300,
+      format: 'jpeg',
+      strict: true,
+    })
+    // --json decides how the report is printed, not how it is produced.
+    expect(options).not.toHaveProperty('json')
+    expect(options).not.toHaveProperty('impossibleSpec')
+    expect(conformanceOptions({ ...flags, anyShape: true }).impossibleSpec).toBe(false)
   })
 })

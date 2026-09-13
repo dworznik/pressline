@@ -25,6 +25,16 @@ export const conformanceFlags = {
   anyShape: Options.boolean('any-shape').pipe(
     Options.withDescription('Skip the 422 check: this Engine renders any Spec shape'),
   ),
+  format: Options.choice('format', ['png', 'jpeg']).pipe(
+    Options.withDescription('The one container the Spec asks for; jpeg also forbids transparency'),
+    Options.withDefault('png' as const),
+  ),
+  strict: Options.boolean('strict').pipe(
+    Options.withDescription('Fail on Deviations too, not only on what Validation would refuse'),
+  ),
+  json: Options.boolean('json').pipe(
+    Options.withDescription('Print the report as JSON: every check, with the Printfile Inspection'),
+  ),
 }
 
 export interface ConformanceFlagValues {
@@ -34,9 +44,12 @@ export interface ConformanceFlagValues {
   readonly dpi: number
   readonly timeout: number
   readonly anyShape: boolean
+  readonly format: 'png' | 'jpeg'
+  readonly strict: boolean
+  readonly json: boolean
 }
 
-/** The parsed flags as `runConformance` wants them. */
+/** The parsed flags as `runConformance` wants them. `--json` is the printer's, not the suite's. */
 export const conformanceOptions = (
   a: ConformanceFlagValues,
   fetch?: typeof globalThis.fetch,
@@ -45,6 +58,8 @@ export const conformanceOptions = (
   secret: Redacted.value(a.secret),
   designId: a.design,
   dpi: a.dpi,
+  format: a.format,
+  strict: a.strict,
   renderTimeout: Duration.seconds(a.timeout),
   ...(a.anyShape ? { impossibleSpec: false as const } : {}),
   ...(fetch ? { fetch } : {}),

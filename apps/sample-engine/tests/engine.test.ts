@@ -110,7 +110,7 @@ describe('sample Engine', () => {
     ).toHaveLength(file.bytes)
   })
 
-  it('passes the conformance suite', async () => {
+  it('passes the conformance suite, strictly: not one Deviation', async () => {
     const { engine } = boot()
     const design = await finalize(engine, { template: { text: 'Conformant' } })
     const report = await conformance({
@@ -118,6 +118,9 @@ describe('sample Engine', () => {
       secret: SECRET,
       designId: design.id,
       fetch: engineFetch,
+      // The sample Engine is the reference: a Deviation the render helper starts
+      // writing fails our suite here, before it reaches anyone else's.
+      strict: true,
     })
     expect(report.checks.map((c) => `${c.ok ? '✓' : '✗'} ${c.name}`)).toEqual([
       '✓ health',
@@ -129,6 +132,7 @@ describe('sample Engine', () => {
       '✓ rejects',
     ])
     expect(report.ok).toBe(true)
+    expect(report.deviations).toBe(0)
   })
 
   it('refuses requests without the shared secret and unknown designs', async () => {

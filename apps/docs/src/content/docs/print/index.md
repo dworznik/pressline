@@ -10,12 +10,16 @@ is rejected after payment, which is the worst moment to find out.
 
 Pressline derives a **Printfile Spec** per product and placement from the
 provider's own catalog, hands it to your Engine, and validates what comes back
-before any payment is taken. These two pages explain what that Spec contains and
+before any payment is taken. These pages explain what that Spec contains and
 where its numbers come from.
 
 - **[Files, DPI, color, transparency](/print/files/)** — format per technique,
   the exact pixel size and where it comes from, sRGB and why not to embed other
   profiles, what each transparency rule means, and bleed.
+- **[The Printfile format in detail](/print/printfile/)** — for Engine
+  developers writing their own renderer: the PNG chunks and JPEG markers byte by
+  byte, the 64 KiB window Pressline reads, what is rejected before payment and
+  what Printful merely expects.
 - **[Print areas and product limits](/print/products/)** — how a product's
   placements become Specs, and which combinations are too large to render inside
   a Worker's memory budget.

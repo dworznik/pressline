@@ -1,9 +1,13 @@
-// What, if anything, a push to main should publish.
+// What, if anything, a release should publish.
 //
-// Two questions, because they fail differently. Do the packages agree on one
-// version? A disagreement is a mistake in the bump and stops the build. And is
-// that version already on the registry? Almost always yes, which is the boring
-// path: nothing to do.
+// Usage: node scripts/release-status.mjs [tag]
+//
+// Three questions, because they fail differently. Do the packages agree on one
+// version? A disagreement is a mistake in the bump. Does the release tag name
+// that same version? The tag announces what shipped, but package.json decides,
+// and the two disagreeing would publish something other than what the release
+// says. And is the version already on the registry? Then there is nothing to do,
+// which makes a re-run harmless.
 //
 // Writes `version=` and `pending=` as GitHub Actions outputs (stdout is meant to
 // be redirected into $GITHUB_OUTPUT); prints a human summary on stderr.
@@ -29,6 +33,23 @@ if (versions.length > 1) {
 }
 
 const version = versions[0]
+
+// Only a release passes a tag. A rehearsal has none, and judges the manifests alone.
+const tag = process.argv[2]
+if (tag) {
+  const match = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(tag)
+  if (!match) {
+    console.error(`Tag ${tag} is not of the form v<semver>, e.g. v0.2.0 or v0.2.0-rc.1.`)
+    process.exit(1)
+  }
+  if (match[1] !== version) {
+    console.error(
+      `Release ${tag} announces ${match[1]}, but the packages are at ${version}. ` +
+        `Bump them on main and re-tag, or retag the release.`,
+    )
+    process.exit(1)
+  }
+}
 
 /** Is this exact version already on the registry? The per-version endpoint
  * answers without pulling the whole packument. */

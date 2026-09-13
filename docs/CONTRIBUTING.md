@@ -34,22 +34,24 @@ The four packages under `packages/` publish to npm as `@pressline/*` and release
 lockstep at one version. Everything else in the workspace is `private: true` and
 never ships.
 
-**A release is a merged version bump.** Raise `version` in all four
-`packages/*/package.json` to the same value, open the PR as usual, and merging it
-to `main` publishes. Nothing else to click.
+To cut a release:
 
-`.github/workflows/release.yml` runs on every push to `main` and starts by asking
-`scripts/release-status.mjs` what is missing from the registry. Almost always the
-answer is nothing and the job stops there in a few seconds. When a bump lands it
-runs `pnpm verify`, publishes with `pnpm --recursive publish`, and tags the commit
-`v<version>` afterwards — the tag records what shipped rather than deciding it.
+1. Raise `version` in all four `packages/*/package.json` to the same value and
+   merge that on `main`. Merging publishes nothing.
+2. Draft a GitHub Release tagged `v<that version>` (`v0.2.0`, or `v0.2.0-rc.1`)
+   and publish it. `.github/workflows/release.yml` runs `pnpm verify` and then
+   `pnpm --recursive publish`.
 
-The same workflow runs on the pull request, where it rehearses that publish
-instead of performing it. So a bump that cannot publish fails its own PR, and one
-that goes green will publish when merged. See below for what the rehearsal proves.
+`scripts/release-status.mjs` guards the step between those two, where the mistakes
+live. It refuses a bump where the four packages disagree on a version, and a
+release whose tag names a version the manifests do not — the tag announces what
+shipped, but `package.json` decides, and nobody wants those to differ. It also
+reports which versions the registry is already holding, so a release that failed
+half way can simply be published again.
 
-`release-status.mjs` also refuses a bump where the four packages disagree on the
-version, which would otherwise publish some of them and leave the rest behind.
+The same workflow runs on every pull request into `main`, where it rehearses the
+publish rather than performing it. A bump that could not publish therefore fails
+its own PR, days before the release. See below for what that proves.
 
 The workflow holds no npm token. It authenticates with [npm trusted
 publishing](https://docs.npmjs.com/trusted-publishers/): GitHub mints an OIDC
@@ -70,7 +72,7 @@ rather than a note in a checklist. pnpm builds its publish options — the token
 exchange included — before it honors `--dry-run`, so the rehearsal authenticates
 against npm for real while publishing nothing, and fails if any package would have
 fallen back to a credential the workflow does not have. A missing registration is
-therefore a red pull request, not a half-finished release.
+therefore a red pull request rather than a half-finished release.
 
 It is skipped on pull requests from forks, which are never given an OIDC token.
 

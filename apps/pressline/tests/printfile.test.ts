@@ -1,9 +1,4 @@
-import {
-  parseImageHeader,
-  specHash,
-  type DesignResponse,
-  type PrintfileSpec,
-} from '@pressline/contract'
+import { specHash, type DesignResponse, type PrintfileSpec } from '@pressline/contract'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PrintfileState } from '$lib/server/printfile/ensure'
@@ -190,51 +185,68 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
       })
     }
 
-    it('rejects alpha where the placement forbids it, and accepts an opaque JPEG there', async () => {
-      const posterUrl = 'https://engine.test/files/heron/poster.png'
-      const posterDesign: DesignResponse = {
-        ...design,
-        id: 'design-poster-001',
-        aspect: { w: 3, h: 4 },
-      }
-      const rgba = png({ width: 2700, height: 3600, colorType: 6, totalBytes: 7000 })
-      app = await makeTestApp({
+    const posterDesign: DesignResponse = {
+      ...design,
+      id: 'design-poster-001',
+      aspect: { w: 3, h: 4 },
+    }
+    /** The poster (alpha forbidden) with the given file hosted as its Printfile. */
+    const bootPoster = (bytes: Uint8Array, contentType: 'image/png' | 'image/jpeg') => {
+      const url = `https://engine.test/files/heron/poster.${contentType === 'image/png' ? 'png' : 'jpg'}`
+      return makeTestApp({
         config: { catalog: { offers: [{ ...offers[1]!, aspect: { min: 0.7, max: 0.8 } }] } },
         catalog,
         engines: {
           engines: {
             sample: {
               designs: { [posterDesign.id]: posterDesign },
-              printfiles: { [posterDesign.id]: ready({ url: posterUrl, bytes: 7000 }) },
+              printfiles: { [posterDesign.id]: ready({ url, bytes: bytes.length, contentType }) },
             },
           },
         },
-        files: { [posterUrl]: { bytes: rgba, contentType: 'image/png' } },
+        files: { [url]: { bytes, contentType } },
       })
-      const { status, body } = await ensure(app, 'poster-18x24', '18x24', posterDesign.id)
+    }
+    const poster = (app: TestApp) => ensure(app, 'poster-18x24', '18x24', posterDesign.id)
+
+    it('rejects alpha where the placement forbids it, and accepts an opaque JPEG there', async () => {
+      app = await bootPoster(
+        png({ width: 2700, height: 3600, colorType: 6, totalBytes: 7000 }),
+        'image/png',
+      )
+      const { status, body } = await poster(app)
       expect(status).toBe(422)
       expect(body.message).toMatch(/alpha/)
       await app.dispose()
 
-      const jpg = jpeg({ width: 2700, height: 3600, totalBytes: 7000 })
-      const jpgUrl = 'https://engine.test/files/heron/poster.jpg'
-      app = await makeTestApp({
-        config: { catalog: { offers: [offers[1]!] } },
-        catalog,
-        engines: {
-          engines: {
-            sample: {
-              designs: { [posterDesign.id]: posterDesign },
-              printfiles: {
-                [posterDesign.id]: ready({ url: jpgUrl, bytes: 7000, contentType: 'image/jpeg' }),
-              },
-            },
-          },
-        },
-        files: { [jpgUrl]: { bytes: jpg, contentType: 'image/jpeg' } },
-      })
-      const ok = await ensure(app, 'poster-18x24', '18x24', posterDesign.id)
+      app = await bootPoster(jpeg({ width: 2700, height: 3600, totalBytes: 7000 }), 'image/jpeg')
+      const ok = await poster(app)
       expect(ok.status).toBe(200)
+    })
+
+    it('rejects a forbidden placement when transparency sits past the header window (#117)', async () => {
+      // A 70 000-byte iCCP pushes tRNS and IDAT beyond the 64 KB read: the file has alpha, unseen.
+      const hidden = png({ width: 2700, height: 3600, colorType: 2, iccpBytes: 70_000, trns: true })
+      app = await bootPoster(hidden, 'image/png')
+      const { status, body } = await poster(app)
+      expect(status).toBe(422)
+      expect(body).toMatchObject({ reason: 'invalid' })
+      expect(body.message).toMatch(/alpha/)
+      await app.dispose()
+
+      // Without tRNS the window is just as inconclusive, so the precautionary answer is the same.
+      const opaque = png({ width: 2700, height: 3600, colorType: 2, iccpBytes: 70_000 })
+      app = await bootPoster(opaque, 'image/png')
+      const again = await poster(app)
+      expect(again.status).toBe(422)
+      expect(again.body.message).toMatch(/alpha/)
+    })
+
+    it('accepts an unseen alpha where the placement allows it', async () => {
+      const file = png({ width: 1800, height: 2400, colorType: 2, iccpBytes: 70_000 })
+      app = await boot(ready({ bytes: file.length }), { [URL_OK]: teeFile(file) })
+      const { status } = await ensure(app)
+      expect(status).toBe(200)
     })
 
     it('never downloads the whole file: a server ignoring Range still only costs the header prefix', async () => {
@@ -245,31 +257,5 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
       const { status } = await ensure(app)
       expect(status).toBe(200)
     })
-  })
-})
-
-describe('parseImageHeader', () => {
-  it('reads PNG dimensions and alpha (color type or tRNS)', () => {
-    expect(parseImageHeader(png({ width: 10, height: 20, colorType: 2 }))).toEqual({
-      format: 'png',
-      width: 10,
-      height: 20,
-      hasAlpha: false,
-    })
-    expect(parseImageHeader(png({ width: 10, height: 20, colorType: 6 }))?.hasAlpha).toBe(true)
-    expect(
-      parseImageHeader(png({ width: 10, height: 20, colorType: 3, trns: true }))?.hasAlpha,
-    ).toBe(true)
-  })
-  it('reads JPEG dimensions from SOF0 and reports no alpha', () => {
-    expect(parseImageHeader(jpeg({ width: 640, height: 480 }))).toEqual({
-      format: 'jpeg',
-      width: 640,
-      height: 480,
-      hasAlpha: false,
-    })
-  })
-  it('returns undefined for anything else', () => {
-    expect(parseImageHeader(new Uint8Array([1, 2, 3]))).toBeUndefined()
   })
 })

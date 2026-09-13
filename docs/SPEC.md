@@ -128,7 +128,7 @@ Rules:
 
 - Pressline pulls; the Engine hosts Printfile and Preview bytes at immutable, publicly fetchable URLs. Pressline stores URLs and metadata only, never bytes.
 - The ensure-Printfile call is made before the Stripe session is created. Pressline polls with a bounded wait; if still `202`, the Storefront returns a "preparing" state and the page polls Pressline.
-- Validation fetches only the header bytes of the Printfile URL (range request, falling back to a bounded read) and checks format, dimensions, color type and alpha against the Spec, and that `specHash` echoes the one sent. Content length is checked against `bytes`. Full-file hashing is not performed. Failures are typed and surfaced on the Storefront as "this design cannot be ordered on this product".
+- Validation fetches only the header bytes of the Printfile URL (range request, falling back to a bounded read) and checks format, dimensions, color type and alpha against the Spec, and that `specHash` echoes the one sent. Because the read is bounded, a check can come back unseen rather than yes or no; an unseen alpha fails a placement whose Spec forbids or requires transparency. Content length is checked against `bytes`. Full-file hashing is not performed. Failures are typed and surfaced on the Storefront as "this design cannot be ordered on this product".
 - Storefront entry is a plain public URL containing Engine slug and Design ID. No signing.
 - Protocol is versioned by a single constant carried in `@pressline/contract` and `/health`.
 

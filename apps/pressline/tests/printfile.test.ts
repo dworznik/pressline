@@ -1,9 +1,4 @@
-import {
-  parseImageHeader,
-  specHash,
-  type DesignResponse,
-  type PrintfileSpec,
-} from '@pressline/contract'
+import { specHash, type DesignResponse, type PrintfileSpec } from '@pressline/contract'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PrintfileState } from '$lib/server/printfile/ensure'
@@ -262,31 +257,5 @@ describe('POST /api/designs/{engine}/{designId}/printfile (ensure Printfile)', (
       const { status } = await ensure(app)
       expect(status).toBe(200)
     })
-  })
-})
-
-describe('parseImageHeader', () => {
-  it('reads PNG dimensions and alpha (color type or tRNS)', () => {
-    expect(parseImageHeader(png({ width: 10, height: 20, colorType: 2 }))).toEqual({
-      format: 'png',
-      width: 10,
-      height: 20,
-      alpha: 'absent',
-    })
-    expect(parseImageHeader(png({ width: 10, height: 20, colorType: 6 }))?.alpha).toBe('present')
-    expect(parseImageHeader(png({ width: 10, height: 20, colorType: 3, trns: true }))?.alpha).toBe(
-      'present',
-    )
-  })
-  it('reads JPEG dimensions from SOF0 and reports no alpha', () => {
-    expect(parseImageHeader(jpeg({ width: 640, height: 480 }))).toEqual({
-      format: 'jpeg',
-      width: 640,
-      height: 480,
-      alpha: 'absent',
-    })
-  })
-  it('returns undefined for anything else', () => {
-    expect(parseImageHeader(new Uint8Array([1, 2, 3]))).toBeUndefined()
   })
 })

@@ -45,10 +45,11 @@ export interface ImageHeader {
 }
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
-/** A chunk type is four ASCII letters (PNG §5.4); a length never exceeds 2^31 - 1 (§5.3). */
+/** A chunk's length never exceeds 2^31 - 1 (PNG §5.3). */
+const MAX_CHUNK_LENGTH = 0x7fffffff
+/** A chunk type is four ASCII letters (PNG §5.4). */
 const isChunkType = (bytes: Uint8Array, at: number) =>
   bytes.subarray(at, at + 4).every((b) => (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a))
-const MAX_CHUNK_LENGTH = 0x7fffffff
 
 const parsePng = (bytes: Uint8Array, view: DataView): ImageHeader | undefined => {
   // IHDR is always first and always 13 bytes: length(4) 'IHDR'(4) width(4) height(4) depth(1) color type(1)
@@ -128,8 +129,8 @@ export const parseImageHeader = (bytes: Uint8Array): ImageHeader | undefined => 
 
 const fail = (reason: InvalidReason, message: string) => new PrintfileInvalid({ reason, message })
 
-/** The actionable half of an `unseen` alpha message: what the Engine developer changes. */
-export const UNSEEN = `the file's chunk table runs past the first ${HEADER_BYTES / 1024} KB before IDAT, so whether it has one could not be seen; keep ancillary chunks (iCCP, eXIf, text) small enough that IDAT starts inside that window`
+/** Why an `unseen` alpha is rejected, and what the Engine developer changes. */
+export const ALPHA_UNSEEN_ADVICE = `no IDAT chunk was found in the ${HEADER_BYTES / 1024} KiB Pressline reads, so whether the file has an alpha channel could not be seen; keep ancillary chunks (iCCP, eXIf, text) small enough that IDAT starts inside that window`
 
 /** Read at most `limit` bytes of the response body, then stop (the rest is never transferred). */
 const readPrefix = (stream: Stream.Stream<Uint8Array, unknown>, limit: number) =>
@@ -274,7 +275,7 @@ export const validatePrintfile = (
       return yield* fail(
         'alpha',
         header.alpha === 'unseen'
-          ? `transparency is required for this placement but ${UNSEEN}`
+          ? `transparency is required for this placement but ${ALPHA_UNSEEN_ADVICE}`
           : 'transparency is required for this placement but the file has no alpha channel',
       )
     }
@@ -282,7 +283,7 @@ export const validatePrintfile = (
       return yield* fail(
         'alpha',
         header.alpha === 'unseen'
-          ? `this placement does not accept transparency and ${UNSEEN}`
+          ? `this placement does not accept transparency and ${ALPHA_UNSEEN_ADVICE}`
           : 'this placement does not accept transparency but the file has an alpha channel',
       )
     }

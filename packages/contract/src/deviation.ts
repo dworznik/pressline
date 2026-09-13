@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { HEADER_BYTES, type ImageHeader } from './image-header.js'
+import { HEADER_BYTES, PIXEL_DATA_MARKER_BYTES, type ImageHeader } from './image-header.js'
 import type { PrintfileSpec } from './spec.js'
 
 /**
@@ -68,7 +68,7 @@ const RULES: readonly DeviationRule[] = [
     code: 'interlaced',
     check: (header) =>
       header.format === 'png' && header.interlaced
-        ? 'the PNG is interlaced (Adam7); write it non-interlaced, so the print file streams in one pass'
+        ? 'the PNG is interlaced (Adam7); write it non-interlaced, so the Printfile streams in one pass'
         : undefined,
   },
   {
@@ -129,7 +129,11 @@ const RULES: readonly DeviationRule[] = [
     code: 'header_window',
     check: (header) => {
       const offset = header.pixelDataOffset
-      if (offset === undefined || offset <= HEADER_BYTES) return undefined
+      // The marker has to fit inside the window, not merely start there: one that
+      // straddles the end leaves Pressline's read exactly as blind.
+      if (offset === undefined || offset + PIXEL_DATA_MARKER_BYTES[header.format] <= HEADER_BYTES) {
+        return undefined
+      }
       const before = header.format === 'png' ? 'chunk table' : 'segments'
       return `the image data starts ${offset} bytes in, and Pressline reads only the first ${HEADER_BYTES / 1024} KiB of a Printfile; keep the ${before} before it smaller, or what is past the window stays unseen`
     },

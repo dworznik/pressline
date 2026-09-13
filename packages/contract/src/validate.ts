@@ -219,7 +219,7 @@ export type PrintfileInspection = typeof PrintfileInspection.Type
  * What one ranged GET saw: the response facts, and the header parsed out of the
  * window. `checkPrintfile` turns it into a verdict, `deviations` into a list.
  */
-export interface InspectedPrintfile {
+export interface PrintfileHead {
   readonly status: number
   /** Content type the host served, parameters stripped. */
   readonly contentType: string
@@ -228,9 +228,9 @@ export interface InspectedPrintfile {
 }
 
 /** Read the head of a Printfile: one ranged GET, at most `HEADER_BYTES`, no pixels decoded. */
-export const inspectPrintfile = (
+export const readPrintfileHead = (
   url: string,
-): Effect.Effect<InspectedPrintfile, PrintfileInvalid, HttpClient.HttpClient> =>
+): Effect.Effect<PrintfileHead, PrintfileInvalid, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
     const response = yield* client
@@ -260,7 +260,7 @@ export const inspectPrintfile = (
   }).pipe(Effect.scoped)
 
 /** What a caller has to say about the file it read, in the facts `checkPrintfile` reads. */
-export const factsOf = (file: InspectedPrintfile, url?: string): PrintfileFacts => ({
+export const factsOf = (file: PrintfileHead, url?: string): PrintfileFacts => ({
   ...(url === undefined ? {} : { url }),
   status: file.status,
   servedContentType: file.contentType,
@@ -271,7 +271,7 @@ export const factsOf = (file: InspectedPrintfile, url?: string): PrintfileFacts 
  * The four header fields the operator API publishes. What else the header holds
  * stays in-process until #112 decides how the API carries it.
  */
-export const toPrintfileInspection = (file: InspectedPrintfile): PrintfileInspection => ({
+export const toPrintfileInspection = (file: PrintfileHead): PrintfileInspection => ({
   status: file.status,
   contentType: file.contentType,
   ...(file.bytes === undefined ? {} : { bytes: file.bytes }),
@@ -286,6 +286,16 @@ export const toPrintfileInspection = (file: InspectedPrintfile): PrintfileInspec
       }
     : {}),
 })
+
+/**
+ * The published inspection: the head of a file in the shape the operator API
+ * carries. `readPrintfileHead` is the same read with the whole header, for
+ * callers inside this process.
+ */
+export const inspectPrintfile = (
+  url: string,
+): Effect.Effect<PrintfileInspection, PrintfileInvalid, HttpClient.HttpClient> =>
+  readPrintfileHead(url).pipe(Effect.map(toPrintfileInspection))
 
 /**
  * Validate the Engine's answer against the Spec. `expectedSpecHash` is what
@@ -311,7 +321,7 @@ export const validatePrintfile = (
     const declared = checkDeclaration(spec, declaration)
     if (declared) return yield* declared
 
-    const served = yield* inspectPrintfile(ready.url)
+    const served = yield* readPrintfileHead(ready.url)
     const invalid = checkPrintfile(served.header, spec, { ...declaration, ...factsOf(served) })
     if (invalid) return yield* invalid
   }).pipe(Effect.scoped)

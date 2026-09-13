@@ -181,6 +181,11 @@ describe('parseImageHeader: what else the JPEG header says (#132)', () => {
     expect(plain?.format === 'jpeg' && plain.adobeTransform).toBeUndefined()
   })
 
+  it('reads the transform from its fixed offset, not the end of a padded segment', () => {
+    const padded = parseImageHeader(jpeg({}, app14(1, 6)))
+    expect(padded?.format === 'jpeg' && padded.adobeTransform).toBe(1)
+  })
+
   it('reads the JFIF density as dpi, per unit', () => {
     expect(parseImageHeader(jpeg({}, app0(300, 150)))?.density).toEqual({
       x: 300,

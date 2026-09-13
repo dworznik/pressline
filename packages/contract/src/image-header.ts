@@ -12,6 +12,14 @@
 export const HEADER_BYTES = 64 * 1024
 
 /**
+ * Bytes the parser needs at `pixelDataOffset` to read what is there: a PNG
+ * chunk header names `IDAT` in 8, a JPEG frame header gives its size in 10. A
+ * marker that starts inside the window but ends past it is no more use than one
+ * that never arrives.
+ */
+export const PIXEL_DATA_MARKER_BYTES = { png: 8, jpeg: 10 } as const
+
+/**
  * What the header read says about transparency. `unseen` means the chunk
  * table ran past the window before IDAT, so the read proved nothing either
  * way (#117); callers must not treat it as `absent`.
@@ -210,12 +218,16 @@ const readApp0 = (bytes: Uint8Array, view: DataView, at: number, length: number)
   return { x, y, unit: 'aspect' } satisfies Density
 }
 
-/** Adobe `APP14`: 'Adobe', version, two flag words, then the color transform. */
+/**
+ * Adobe `APP14`: 'Adobe'(5), version(2), two flag words(4), then the color
+ * transform — a fixed position, so a segment padded past its 14 bytes still
+ * reads correctly and a truncated one is refused rather than guessed at.
+ */
 const readApp14 = (bytes: Uint8Array, at: number, length: number) => {
-  if (length < 12 || at + 2 + length > bytes.length || ascii(bytes, at + 4, at + 9) !== 'Adobe') {
+  if (length < 14 || at + 16 > bytes.length || ascii(bytes, at + 4, at + 9) !== 'Adobe') {
     return undefined
   }
-  return bytes[at + 2 + length - 1]!
+  return bytes[at + 15]!
 }
 
 const parseJpeg = (bytes: Uint8Array, view: DataView): JpegImageHeader | undefined => {

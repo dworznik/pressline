@@ -141,11 +141,14 @@ export const app0 = (x: number, y = x, units = 1) => {
   return concat([new Uint8Array([0xff, 0xe0]), data])
 }
 
-/** An Adobe APP14 segment. `transform` is 0 (none/CMYK), 1 (YCbCr) or 2 (YCCK). */
-export const app14 = (transform: number) => {
-  const data = new Uint8Array(14)
+/**
+ * An Adobe APP14 segment. `transform` is 0 (none/CMYK), 1 (YCbCr) or 2 (YCCK).
+ * `padding` appends bytes past the documented 14, the way some encoders do.
+ */
+export const app14 = (transform: number, padding = 0) => {
+  const data = new Uint8Array(14 + padding)
   const v = new DataView(data.buffer)
-  v.setUint16(0, 14)
+  v.setUint16(0, data.length)
   data.set(new TextEncoder().encode('Adobe'), 2)
   v.setUint16(7, 100) // version
   data[13] = transform

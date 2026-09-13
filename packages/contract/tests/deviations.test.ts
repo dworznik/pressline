@@ -173,6 +173,19 @@ describe('deviations: the chunk table ends inside the header window', () => {
     expect(codes(jpeg({}, app0(300), filler(70_000)))).toEqual(['header_window'])
   })
 
+  it('flags an IDAT that starts inside the window but ends past it', () => {
+    // signature 8 + IHDR 25 + sRGB 13 + pHYs 21 + the iCCP chunk's own 12 = 79 bytes of
+    // table before the profile, so the filler decides where IDAT lands.
+    const idatAt = (offset: number) => png({}, srgb, phys(pixelsPerMeter(300)), iccp(offset - 79))
+    const straddling = idatAt(HEADER_BYTES - 4)
+    expect(header(straddling).pixelDataOffset).toBe(HEADER_BYTES - 4)
+    // A chunk header is 8 bytes; one that runs past the end leaves the read as blind.
+    expect(codes(straddling)).toEqual(['header_window'])
+    const inside = idatAt(HEADER_BYTES - 8)
+    expect(header(inside).pixelDataOffset).toBe(HEADER_BYTES - 8)
+    expect(codes(inside)).toEqual([])
+  })
+
   it('says nothing when the window itself cut the read short', () => {
     const windowed = png({}, srgb, phys(pixelsPerMeter(300)), iccp(70_000)).subarray(
       0,

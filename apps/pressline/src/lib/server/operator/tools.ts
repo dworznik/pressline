@@ -1,9 +1,9 @@
 import {
   checkPrintfile,
   factsOf,
-  inspectPrintfile,
   PrintfileInspection,
   PrintfileSpec,
+  readPrintfileHead,
   toPrintfileInspection,
 } from '@pressline/contract'
 import { Effect, Schema } from 'effect'
@@ -206,7 +206,7 @@ export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
         message: `no Offer "${req.offer}" with variant "${req.variant}"`,
       })
     }
-    const file = yield* inspectPrintfile(req.url).pipe(
+    const file = yield* readPrintfileHead(req.url).pipe(
       Effect.mapError((e) => new ToolError({ message: e.message })),
     )
     const spec = variant.spec
@@ -218,6 +218,8 @@ export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
       specHash: variant.specHash,
       file: toPrintfileInspection(file),
       ok: invalid === undefined,
+      // Validation stops at the first refusal, and so does this: the operator sees
+      // exactly what the bridge would say about the same file.
       problems: invalid ? [invalid.message] : [],
     } satisfies PrintfileCheckResult
   })

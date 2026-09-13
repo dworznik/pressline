@@ -34,3 +34,9 @@ playwright-report/
 # Astro's generated types (also via apps/docs/.gitignore; listed here so prettier sees it)
 .astro/
 apps/docs/public/architecture/
+
+# Editor scratch. A swap file was committed once by a `git add -A`; the ignore
+# rule is cheaper than remembering not to.
+*~
+*.sw[a-p]
+.*.sw[a-p]

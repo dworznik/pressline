@@ -1,6 +1,6 @@
 {
   "name": "@pressline/render",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Render helper for Pressline Engines: fit, pad and stamp an image into a print-ready PNG for a Printfile Spec, on Node (sharp) or in a Worker (WASM)",
   "keywords": [
     "pressline",

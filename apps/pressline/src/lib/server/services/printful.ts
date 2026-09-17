@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
 import type { HttpClientError } from '@effect/platform'
 
-import { Duration, Effect, Layer, Schema } from 'effect'
+import { Clock, Duration, Effect, Layer, Ref, Schema } from 'effect'
 import {
   FulfillmentProvider,
   FulfillmentProviderError,
@@ -15,6 +15,7 @@ import {
   type ProviderShipment,
   type ProviderWebhookEvent,
   ProviderWebhookRejected,
+  type RateLimitReading,
   type ShippingRate,
   type VariantPrices,
 } from './fulfillment-provider'
@@ -411,6 +412,43 @@ const parseRetryAfter = (res: HttpClientResponse.HttpClientResponse): number | u
   return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now())
 }
 
+/**
+ * A `X-Ratelimit-Reset` at or above this is an epoch, below it a delta. The
+ * docs call the header "Unix time when the limit resets", but a delta in
+ * seconds is the other common shape and costs nothing to accept; no real epoch
+ * is this small and no sane delta is this large.
+ */
+const EPOCH_FLOOR_SECONDS = 1_000_000_000
+
+/** The documented window when the provider sends a reading without a usable reset. */
+const DEFAULT_WINDOW_MS = 60_000
+
+/**
+ * The limiter's state as Printful publishes it on every response, the 429
+ * included. A response missing `limit` or `remaining` says nothing usable, and
+ * answers `undefined` rather than a guess (#153).
+ */
+const parseRateLimit = (
+  res: HttpClientResponse.HttpClientResponse,
+  now: number,
+): RateLimitReading | undefined => {
+  const limit = Number(res.headers['x-ratelimit-limit'])
+  const remaining = Number(res.headers['x-ratelimit-remaining'])
+  if (!Number.isFinite(limit) || !Number.isFinite(remaining)) return undefined
+  const reset = Number(res.headers['x-ratelimit-reset'])
+  const policy = res.headers['x-ratelimit-policy']
+  return {
+    limit,
+    remaining,
+    resetAt: !Number.isFinite(reset)
+      ? now + DEFAULT_WINDOW_MS
+      : reset >= EPOCH_FLOOR_SECONDS
+        ? reset * 1000
+        : now + reset * 1000,
+    ...(policy ? { policy } : {}),
+  }
+}
+
 const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
   res.json.pipe(
     Effect.orElseSucceed(() => ({})),
@@ -437,9 +475,18 @@ const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
 export const makePrintful = (options: PrintfulOptions) =>
   Effect.gen(function* () {
     const base = (options.baseUrl ?? 'https://api.printful.com').replace(/\/$/, '')
+    const seenRateLimit = yield* Ref.make<RateLimitReading | undefined>(undefined)
     const client = (yield* HttpClient.HttpClient).pipe(
       HttpClient.mapRequest(HttpClientRequest.bearerToken(options.token)),
       HttpClient.mapRequest(HttpClientRequest.prependUrl(base)),
+      // Every response carries the limiter's state, so one tap here covers every
+      // route — v2 reads and writes and the v1 cancel alike (#153).
+      HttpClient.tap((res) =>
+        Effect.flatMap(Clock.currentTimeMillis, (now) => {
+          const reading = parseRateLimit(res, now)
+          return reading ? Ref.set(seenRateLimit, reading) : Effect.void
+        }),
+      ),
     )
 
     const timeout = options.timeout ?? DEFAULT_TIMEOUT
@@ -565,6 +612,8 @@ export const makePrintful = (options: PrintfulOptions) =>
 
     const service: FulfillmentProviderService = {
       health: () => get('/v2/catalog-products?limit=1', Schema.Unknown).pipe(Effect.asVoid),
+
+      rateLimit: () => Ref.get(seenRateLimit),
 
       getWebhookStatus: () =>
         get(

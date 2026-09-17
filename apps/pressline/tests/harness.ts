@@ -85,6 +85,12 @@ export interface TestApp {
    * 429 naming `retryAfterMs`, the way Printful's leaky bucket behaves.
    */
   readonly setProviderRateLimited: (afterCalls: number | undefined, retryAfterMs?: number) => void
+  /**
+   * What the in-memory provider's rate-limit headers publish as left in the
+   * window; `undefined` publishes a full one. Independent of when it starts
+   * answering 429, so a test can have the limiter announce itself or not.
+   */
+  readonly setProviderRateLimitRemaining: (remaining: number | undefined) => void
   /** Deliver a Printful-shaped webhook the in-memory provider will accept (signature `memory:valid` unless overridden). */
   readonly printfulWebhook: (
     body: {
@@ -201,6 +207,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     providerOrders: provider.providerOrders,
     setProviderOrderStatus: provider.setProviderOrderStatus,
     setProviderRateLimited: provider.setProviderRateLimited,
+    setProviderRateLimitRemaining: provider.setProviderRateLimitRemaining,
     setProviderShipments: provider.setProviderShipments,
     printfulWebhook: async (body, signature = 'memory:valid') => {
       const res = await fetch('/webhooks/printful', {

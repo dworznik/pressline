@@ -22,6 +22,24 @@ export class FulfillmentProviderError extends Schema.TaggedError<FulfillmentProv
   },
 ) {}
 
+/**
+ * What the provider last said about how much of its rate limit is left.
+ * Printful publishes this on every response, the 429 included (ADR-0007). A
+ * caller walking a queue of Orders reads it to stop *before* the wall: the
+ * lockout it would otherwise earn is store-wide, and a new paid Order's submit
+ * needs those requests more than a status re-read does (#153).
+ */
+export interface RateLimitReading {
+  /** Requests the window allows. */
+  readonly limit: number
+  /** Requests left in the current window. */
+  readonly remaining: number
+  /** When the window refills, in epoch ms. */
+  readonly resetAt: number
+  /** The provider's own policy string, verbatim, when it sends one. */
+  readonly policy?: string
+}
+
 /** A (placement, technique) pair: how a product can be printed. */
 export interface PrintMethod {
   readonly placement: string
@@ -204,6 +222,12 @@ export interface WebhookStatus {
 
 export interface FulfillmentProviderService {
   readonly health: () => Effect.Effect<void, FulfillmentProviderError>
+  /**
+   * The most recent rate-limit reading, or `undefined` before the first
+   * response and from a provider that publishes none. A local read: it never
+   * makes a request of its own, so asking before every call costs nothing.
+   */
+  readonly rateLimit: () => Effect.Effect<RateLimitReading | undefined>
   /** Whether a webhook configuration exists on the provider account, and where it points. */
   readonly getWebhookStatus: () => Effect.Effect<WebhookStatus, FulfillmentProviderError>
   /** Verify a raw webhook body against the provider's signature headers. */

@@ -32,31 +32,31 @@ const stubFetch: typeof fetch = async (input, init) => {
     if (body.recipient?.country_code === 'XX') key = 'shipping-rates.XX'
   }
   if (hang) return new Promise<Response>(() => {})
-  if (forceStatus)
-    return Response.json(
-      { code: forceStatus, result: 'forced' },
-      { status: forceStatus, ...(forceHeaders ? { headers: forceHeaders } : {}) },
-    )
+  // Printful publishes its rate-limit headers on every response, so the stub
+  // attaches `forceHeaders` to all of them, not just the forced failures.
+  const reply = (body: unknown, status = 200) =>
+    Response.json(body, { status, ...(forceHeaders ? { headers: forceHeaders } : {}) })
+  if (forceStatus) return reply({ code: forceStatus, result: 'forced' }, forceStatus)
   if (req.headers.get('authorization') !== 'Bearer pf_test_token') {
-    return Response.json({ code: 401, result: 'Unauthorized' }, { status: 401 })
+    return reply({ code: 401, result: 'Unauthorized' }, 401)
   }
   // A method-specific fixture (`orders_123.patch.json`) wins over the shared one.
   const method = req.method.toLowerCase()
   const candidates = method === 'get' ? [key] : [`${key}.${method}`, key]
   for (const c of candidates) {
     try {
-      return Response.json(fixture(`${c}.json`))
+      return reply(fixture(`${c}.json`))
     } catch {
       /* next */
     }
     try {
       const { status, body } = fixture(`${c}.error.json`)
-      return Response.json(body, { status })
+      return reply(body, status)
     } catch {
       /* next */
     }
   }
-  return Response.json({ code: 404, result: 'Not found' }, { status: 404 })
+  return reply({ code: 404, result: 'Not found' }, 404)
 }
 
 const FIXTURE_HMAC_KEY = '0123456789abcdef'.repeat(4) // low-entropy on purpose: a fixture, not a secret
@@ -428,6 +428,45 @@ describe('Printful v2 adapter', () => {
     forceStatus = undefined
     expect(rate).toMatchObject({ retryable: true, status: 429 })
     expect(down).toMatchObject({ retryable: true, status: 503 })
+  })
+
+  it('carries what the rate-limit headers say off every response, the 429 included', async () => {
+    // Nothing read these before #153, so nothing could back off until the wall
+    // had already been hit. One tap on the client covers every route.
+    const provider = Effect.flatMap(FulfillmentProvider, (p) =>
+      p.getCatalogProduct(71).pipe(Effect.flatMap(() => p.rateLimit())),
+    )
+    forceHeaders = {
+      'x-ratelimit-limit': '120',
+      'x-ratelimit-remaining': '7',
+      'x-ratelimit-reset': '30',
+      'x-ratelimit-policy': '120;w=60',
+    }
+    const before = Date.now()
+    const near = await run(provider)
+    forceHeaders = undefined
+    expect(near).toMatchObject({ limit: 120, remaining: 7, policy: '120;w=60' })
+    // A reset too small to be an epoch reads as a delta from now.
+    expect(near!.resetAt).toBeGreaterThanOrEqual(before + 29_000)
+    expect(near!.resetAt).toBeLessThanOrEqual(Date.now() + 30_000)
+
+    // The 429 itself publishes them, which is the reading that matters most.
+    forceStatus = 429
+    forceHeaders = { 'x-ratelimit-limit': '120', 'x-ratelimit-remaining': '0' }
+    const limited = await Effect.runPromise(
+      Effect.flatMap(FulfillmentProvider, (p) =>
+        p.getCatalogProduct(71).pipe(
+          Effect.ignore,
+          Effect.flatMap(() => p.rateLimit()),
+        ),
+      ).pipe(Effect.provide(stubLayer())),
+    )
+    forceStatus = undefined
+    forceHeaders = undefined
+    expect(limited).toMatchObject({ limit: 120, remaining: 0 })
+
+    // A provider that publishes nothing usable says nothing, rather than a guess.
+    expect(await run(provider)).toBeUndefined()
   })
 
   it('carries the wait a 429 names, in seconds or as an HTTP date', async () => {

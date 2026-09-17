@@ -609,15 +609,47 @@ const PrintfileResult = Schema.Struct({
     contentType: Schema.String,
     bytes: Schema.optional(Schema.Number),
     header: Schema.optional(ImageHeader),
-    invalid: Schema.optionalWith(
+    invalid: Schema.optional(
       Schema.Array(Schema.Struct({ reason: Schema.String, message: Schema.String })),
-      { default: () => [] },
     ),
     deviations: Schema.optional(
       Schema.Array(Schema.Struct({ code: Schema.String, message: Schema.String })),
     ),
   }),
+  // An instance that predates the Inspection carries its verdict beside the
+  // file rather than its refusals inside it. Both are read; neither is assumed.
+  ok: Schema.optional(Schema.Boolean),
+  problems: Schema.optional(Schema.Array(Schema.String)),
 })
+
+const UNREADABLE_VERDICT = {
+  reason: 'unknown',
+  message:
+    'this instance answered in a shape this CLI cannot read, so what Validation refuses is unknown; upgrade the instance, or the CLI',
+}
+
+const REFUSED_WITHOUT_REASON = {
+  reason: 'unknown',
+  message: 'this instance refused the file without saying why',
+}
+
+/**
+ * The refusals, from whichever shape the instance speaks. A pre-Inspection
+ * instance answers with `ok` and `problems`, its refusals bare strings with no
+ * vocabulary behind them; they become refusals with an `unknown` reason, which
+ * is what they were.
+ *
+ * The one thing this may never do is read silence as a clean file. An answer
+ * carrying neither shape is not "nothing Validation would refuse", it is an
+ * answer we cannot read, and it fails closed with that said out loud.
+ */
+const refusalsOf = (r: (typeof PrintfileResult)['Type']) => {
+  if (r.file.invalid) return r.file.invalid
+  if (r.ok === undefined && r.problems === undefined) return [UNREADABLE_VERDICT]
+  const legacy = (r.problems ?? []).map((message) => ({ reason: 'unknown', message }))
+  if (legacy.length > 0) return legacy
+  return r.ok === false ? [REFUSED_WITHOUT_REASON] : []
+}
 
 /**
  * The size of a file the Operator is looking at, not an exact count: this
@@ -648,7 +680,8 @@ const printfileCheck = Command.make(
       const size = file.bytes === undefined ? '' : `, ${humanBytes(file.bytes)}`
       // One file's Inspection, in Preflight's own block: an envelope line for
       // what the host answered, the header, then the refusals and Deviations.
-      const inspection = { invalid: file.invalid, deviations: file.deviations ?? [] }
+      const invalid = refusalsOf(r)
+      const inspection = { invalid, deviations: file.deviations ?? [] }
       yield* print(
         `Spec ${offer}/${variant}: ${specSummary(r.spec, r.specHash)}`,
         `File: HTTP ${file.status}, ${file.contentType || 'no content type'}${size}`,
@@ -665,8 +698,8 @@ const printfileCheck = Command.make(
         return yield* failWith('--strict: this instance does not report Deviations')
       }
       return yield* failWith(
-        file.invalid.length > 0
-          ? `${file.invalid.length} problem(s)`
+        invalid.length > 0
+          ? `${invalid.length} problem(s)`
           : `--strict: ${inspection.deviations.length} Deviation(s)`,
       )
     }),

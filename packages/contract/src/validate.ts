@@ -48,7 +48,12 @@ const fail = (reason: InvalidReason, message: string) => new PrintfileInvalid({ 
  */
 export const MAX_PRINTFILE_BYTES = 200_000_000
 
-const megabytes = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`
+/**
+ * Rounded up to a tenth, so the refusal never contradicts itself: a file of
+ * 200_200_000 bytes read as `200 MB` against a bound also read as `200 MB`,
+ * leaving the Engine developer a refusal with no number to act on.
+ */
+const megabytes = (bytes: number) => `${Math.ceil(bytes / 100_000) / 10} MB`
 
 /** Why an `unseen` alpha is rejected, and what the Engine developer changes. */
 export const ALPHA_UNSEEN_ADVICE = `no IDAT chunk was found in the ${HEADER_BYTES / 1024} KiB Pressline reads, so whether the file has an alpha channel could not be seen; keep ancillary chunks (iCCP, eXIf, text) small enough that IDAT starts inside that window`

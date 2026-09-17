@@ -107,9 +107,19 @@ const RULES: readonly DeviationRule[] = [
   {
     code: 'icc_unseen',
     check: (header) => {
-      if (header.format !== 'png' || !header.iccProfile) return undefined
+      if (header.format !== 'png' || !header.chunks.includes('iCCP')) return undefined
       // Nothing in the Spec binds the profile's identity, so `unseen` deviates
       // here where an unseen alpha refuses: `unseen` refuses only where the Spec binds.
+      //
+      // The chunk's presence is the trigger, not a parsed profile: a malformed
+      // iCCP leaves `iccProfile` undefined, and keying on that dropped the file
+      // through every color rule at once — `color_undeclared` stayed silent
+      // because the chunk was there, and this rule stayed silent because the
+      // profile was not. Unreadable for want of a well-formed chunk and
+      // unreadable for want of window are the same fact to the developer.
+      if (!header.iccProfile) {
+        return `the PNG carries an iCCP chunk Pressline could not read; which color space it declares is unknown`
+      }
       return header.iccProfile.colorSpace === 'unseen'
         ? `the PNG embeds an ICC profile named "${header.iccProfile.name}" that Pressline could not read within its ${HEADER_BYTES / 1024} KiB window; which color space it declares is unknown`
         : undefined

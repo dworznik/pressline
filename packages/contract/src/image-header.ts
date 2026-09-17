@@ -409,10 +409,16 @@ const readProfileColorSpace = (
     const methodAt = icc.offset + icc.name.length + 1
     const profileAt = methodAt + 1
     if (methodAt >= bytes.length || bytes[methodAt] !== 0) return 'unseen'
+    // HEADER_BYTES is the fourth bound because `bytes` is the whole file when
+    // Preflight calls this, and only a ranged read when Validation does. Without
+    // it the same profile would read as its real space locally and as `unseen`
+    // at sale, which is exactly the disagreement an Inspection may not have
+    // (ADR-0002 as amended by #138: nothing outside the window is ever read).
     const end = Math.min(
       profileAt + ICC_INFLATE_INPUT_BYTES,
       profileAt + icc.compressedBytes,
       bytes.length,
+      HEADER_BYTES,
     )
     if (end <= profileAt) return 'unseen'
     const out = yield* inflatePrefix(bytes.subarray(profileAt, end))

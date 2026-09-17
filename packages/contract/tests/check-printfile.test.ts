@@ -293,6 +293,16 @@ describe('checkPrintfile: the provider’s size ceiling', () => {
   it('believes a declaration the host never confirmed', () => {
     expect(reasons(opaque, spec, { declaredBytes: 300_000_000 })).toEqual(['too_large'])
   })
+
+  it('never states a size that reads as the bound it just broke', () => {
+    // Rounded to the nearest MB this read "the file is 200 MB; ... refuses
+    // anything over 200 MB", which tells an Engine developer nothing to act on.
+    const wrong = first(opaque, spec, big(200_200_000))
+    expect(wrong?.reason).toBe('too_large')
+    expect(wrong?.message).toBe(
+      'the file is 200.2 MB; the fulfillment provider refuses anything over 200 MB',
+    )
+  })
 })
 
 describe('checkPrintfile: a file that breaks several rules', () => {

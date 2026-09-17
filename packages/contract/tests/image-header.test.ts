@@ -268,6 +268,17 @@ describe('inspectImageHeader: the bounded iCCP inflate (#116, ADR-0002 as amende
     expect(await spaceOf(straddling)).toBe('unseen')
   })
 
+  it('reads no profile byte past the window, whole file or ranged read', async () => {
+    // Preflight hands this the whole file and Validation hands it 64 KiB. If the
+    // bound were the buffer's length rather than the window, the same profile
+    // would be `cmyk` locally and `unseen` at sale — one file, two Inspections,
+    // which is the thing an Inspection may never be (ADR-0002 as amended).
+    const file = png({}, text(HEADER_BYTES - 65), iccpWith('CMYK'))
+    expect(file.length).toBeGreaterThan(HEADER_BYTES)
+    expect(await spaceOf(file)).toBe('unseen')
+    expect(await spaceOf(file.subarray(0, HEADER_BYTES))).toBe('unseen')
+  })
+
   it('leaves a compression method PNG does not define unread', async () => {
     const bytes = png({}, iccpWith('CMYK'))
     // The method byte follows the name and its NUL: signature 8 + IHDR 25 + chunk header 8 + name + NUL.

@@ -4,6 +4,7 @@ import type { ImageHeader, PrintfileSpec } from '../src/index'
 import { deviations, HEADER_BYTES, inspectImageHeader, parseImageHeader } from '../src/index'
 import {
   app0,
+  chunk,
   filler,
   gama,
   gamaWith,
@@ -149,6 +150,28 @@ describe('deviations: an ICC profile nobody could read', () => {
   it('reports a profile whose chunk straddles the window', async () => {
     const bytes = png({}, text(HEADER_BYTES - 65), iccpWith('CMYK')).subarray(0, HEADER_BYTES)
     expect(await inspectedCodes(bytes)).toContain('icc_unseen')
+  })
+
+  it('reports an iCCP chunk too malformed to yield a profile at all', async () => {
+    // PNG §11.3.3.3 wants a 1–79 byte name then a NUL; with no NUL the parse
+    // yields no profile. Keying this rule on the parsed profile dropped such a
+    // file through every color rule at once: `color_undeclared` stayed silent
+    // because the chunk was there, and this one because the profile was not.
+    const nameless = chunk('iCCP', new Uint8Array(100).fill(0x41))
+    const bytes = png({}, nameless, phys(pixelsPerMeter(300)))
+    expect(await inspectedCodes(bytes)).toEqual(['icc_unseen'])
+    expect(messageFor(bytes, 'icc_unseen')).toBe(
+      'the PNG carries an iCCP chunk Pressline could not read; which color space it declares is unknown',
+    )
+  })
+
+  it('still calls a broken declaration a declaration, and keeps gAMA subordinate to it', async () => {
+    const nameless = chunk('iCCP', new Uint8Array(100).fill(0x41))
+    const codes = await inspectedCodes(
+      png({}, nameless, gamaWith(100_000), phys(pixelsPerMeter(300))),
+    )
+    expect(codes).not.toContain('color_undeclared')
+    expect(codes).not.toContain('gamma')
   })
 })
 

@@ -357,6 +357,59 @@ describe('pressline CLI', () => {
     expect(strict.error).toContain('--strict: this instance does not report Deviations')
   })
 
+  it('printfile check reads a pre-Inspection instance rather than calling its refusals clean', async () => {
+    app = await boot()
+    const args = [
+      'printfile',
+      'check',
+      URL_OK,
+      '--offer',
+      'tee-black-front',
+      '--variant',
+      'black-m',
+    ]
+    // An instance from before the Inspection: the verdict sits beside the file
+    // as `ok`/`problems`, and `file.invalid` does not exist. Defaulting the
+    // missing field to an empty list turned a refusal into a clean answer.
+    const legacy = (body: Record<string, unknown>) => {
+      const file = { ...(body.file as Record<string, unknown>) }
+      delete file.invalid
+      delete file.deviations
+      return {
+        ...body,
+        file,
+        ok: false,
+        problems: ['dimensions: file is 1200×1600, spec requires 1800×2400'],
+      }
+    }
+    const r = await run(app, args, OPERATOR_TOKEN, true, legacy)
+    expect(r.out).toContain('✗ unknown: dimensions: file is 1200×1600, spec requires 1800×2400')
+    expect(r.out).not.toContain('nothing Validation would refuse')
+    expect(r.error).toContain('1 problem(s)')
+  })
+
+  it('printfile check fails closed on an answer that states no verdict at all', async () => {
+    app = await boot()
+    const args = [
+      'printfile',
+      'check',
+      URL_OK,
+      '--offer',
+      'tee-black-front',
+      '--variant',
+      'black-m',
+    ]
+    // Neither shape: silence is not "nothing Validation would refuse".
+    const mute = (body: Record<string, unknown>) => {
+      const file = { ...(body.file as Record<string, unknown>) }
+      delete file.invalid
+      return { ...body, file }
+    }
+    const r = await run(app, args, OPERATOR_TOKEN, true, mute)
+    expect(r.out).toContain('✗ unknown: this instance answered in a shape this CLI cannot read')
+    expect(r.error).toContain('1 problem(s)')
+  })
+
   it('offers lists every Offer with its distinct Specs, without a token', async () => {
     app = await boot()
     const r = await run(app, ['offers'], null)

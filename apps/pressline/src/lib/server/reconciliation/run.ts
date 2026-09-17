@@ -8,7 +8,7 @@ import { catalogCheck } from '../operator/tools'
 import { annotate, listOrders, transition, type Order } from '../orders/orders'
 import { submitOrder } from '../orders/submit'
 import type { DesignSource } from '../services/design-source'
-import { FulfillmentProvider } from '../services/fulfillment-provider'
+import { FulfillmentProvider, type RateLimitReading } from '../services/fulfillment-provider'
 import { Mailer } from '../services/mailer'
 import { DISPUTE_CLOSED, isInquiry, Psp, type PaymentDispute } from '../services/psp'
 import { listUnprocessed, receive, release, settle, type InboundOutcome } from '../webhooks/inbound'
@@ -88,6 +88,47 @@ const step = (): Step => ({ checked: 0, repaired: 0, notes: [] })
 const olderThan = (orders: ReadonlyArray<Order>, now: number, ms: number) =>
   orders.filter((o) => now - o.updatedAt > ms)
 
+/**
+ * How many requests to leave in the provider's window. A nightly pass that
+ * spends the last of it earns a store-wide lockout, and a status re-read is
+ * worth far less than the submit for a paid Order that arrives while the pass
+ * is running (#153).
+ */
+export const RATE_LIMIT_FLOOR = 10
+
+/**
+ * The reading, when the provider says we are close enough to the wall to stop.
+ * A reading whose window has since refilled is stale and says nothing.
+ */
+const atTheWall = (reading: RateLimitReading | undefined, now: number) =>
+  reading && reading.remaining <= RATE_LIMIT_FLOOR && reading.resetAt > now ? reading : undefined
+
+/**
+ * Where a pass stopped for the provider's limiter, said once on the run and
+ * once to the Operator. Handing the rest of the window back matters more than
+ * finishing tonight: every pass here is idempotent, and what it never reached
+ * is still waiting on the next run (#153).
+ */
+const haltedByLimiter = (
+  run: Run,
+  r: Step,
+  halt: {
+    readonly reason: string
+    readonly done: number
+    readonly total: number
+    readonly noun: string
+    readonly rest: string
+  },
+) => {
+  r.notes.push(
+    `${halt.reason}: pass ended after ${halt.done} of ${halt.total} ${halt.noun}, the rest are ${halt.rest}`,
+  )
+  run.alarms.push({
+    kind: 'provider_status',
+    message: `provider rate limit reached: the pass handled ${halt.done} of ${halt.total} ${halt.noun} and stopped; the next run continues`,
+  })
+}
+
 /** 1. `checkout_open` past its session's life: ask the PSP; paid → settle (missed webhook), else expire. */
 const staleCheckouts = (run: Run) =>
   Effect.gen(function* () {
@@ -157,7 +198,19 @@ const stuckPaid = (run: Run) =>
       run.now,
       PAID_STALE_MS,
     )
+    const provider = yield* FulfillmentProvider
     for (const order of stuck) {
+      const wall = atTheWall(yield* provider.rateLimit(), yield* Clock.currentTimeMillis)
+      if (wall) {
+        haltedByLimiter(run, r, {
+          reason: `close to the provider's rate limit (${wall.remaining} of ${wall.limit} left)`,
+          done: r.checked,
+          total: stuck.length,
+          noun: 'stuck Orders',
+          rest: 'still paid',
+        })
+        break
+      }
       r.checked++
       const age = `paid ${Math.round((run.now - order.updatedAt) / 60000)} min ago`
       if (run.dryRun) {
@@ -166,15 +219,14 @@ const stuckPaid = (run: Run) =>
       }
       const outcome = yield* submitOrder(order.id, 'reconciliation', 'reconcile')
       if (outcome.outcome === 'retry_later' && outcome.rateLimited) {
-        // Same reason the catch-up pass stops: the lockout is store-wide, so
-        // submitting the rest of the queue into it only holds it open (#153).
+        // The wall was already there, unannounced: same halt, after the fact.
         r.checked--
-        r.notes.push(
-          `rate limited by the provider: pass ended after ${r.checked} of ${stuck.length} stuck Orders, the rest are still paid`,
-        )
-        run.alarms.push({
-          kind: 'provider_status',
-          message: `provider rate limit reached: ${stuck.length - r.checked} stuck Order(s) were not resubmitted; the next run continues`,
+        haltedByLimiter(run, r, {
+          reason: 'rate limited by the provider',
+          done: r.checked,
+          total: stuck.length,
+          noun: 'stuck Orders',
+          rest: 'still paid',
         })
         break
       }
@@ -200,6 +252,17 @@ const providerCatchUp = (run: Run) =>
       ...(yield* listOrders({ state: 'on_hold', limit: PAGE })),
     ]
     for (const order of open) {
+      const wall = atTheWall(yield* provider.rateLimit(), yield* Clock.currentTimeMillis)
+      if (wall) {
+        haltedByLimiter(run, r, {
+          reason: `close to the provider's rate limit (${wall.remaining} of ${wall.limit} left)`,
+          done: r.checked,
+          total: open.length,
+          noun: 'open Orders',
+          rest: 'still open',
+        })
+        break
+      }
       if (!order.providerOrderId) {
         r.checked++
         run.alarms.push({
@@ -211,16 +274,14 @@ const providerCatchUp = (run: Run) =>
       }
       const fetched = yield* provider.getOrder(order.providerOrderId).pipe(Effect.either)
       if (fetched._tag === 'Left' && fetched.left.status === 429) {
-        // The provider's limiter is store-wide and locks us out for a minute, so a
-        // pass that keeps walking can fail the submit for a new paid Order. Stop,
-        // and say so rather than reporting a half-done pass as a clean one: this
-        // step is idempotent and the Orders it never reached are still open (#153).
-        r.notes.push(
-          `rate limited by the provider: pass ended after ${r.checked} of ${open.length} open Orders, the rest are still open`,
-        )
-        run.alarms.push({
-          kind: 'provider_status',
-          message: `provider rate limit reached: the catch-up pass checked ${r.checked} of ${open.length} open Orders and stopped; the next run continues`,
+        // The wall was already there, unannounced — an older reading, or a window
+        // the store spent elsewhere. Same halt, after the fact instead of before.
+        haltedByLimiter(run, r, {
+          reason: 'rate limited by the provider',
+          done: r.checked,
+          total: open.length,
+          noun: 'open Orders',
+          rest: 'still open',
         })
         break
       }

@@ -283,7 +283,7 @@ describe('Reconciliation repairs', () => {
       {
         kind: 'provider_status',
         message:
-          'provider rate limit reached: the catch-up pass checked 1 of 3 open Orders and stopped; the next run continues',
+          'provider rate limit reached: the pass handled 1 of 3 open Orders and stopped; the next run continues',
       },
     ])
 
@@ -292,6 +292,37 @@ describe('Reconciliation repairs', () => {
     const full = await reconcile(app)
     expect(full.steps.providerCatchUp).toMatchObject({ checked: 3 })
     expect(full.steps.providerCatchUp?.notes).toEqual([])
+    expect(full.alarms).toEqual([])
+  })
+
+  it('yields before the wall when the provider publishes what is left of the window', async () => {
+    // Stopping on a 429 means the lockout has already been earned. Printful says
+    // on every response how much of the window is left, so the pass can hand the
+    // rest back and never trip it (#153).
+    app = await boot()
+    for (let i = 0; i < 3; i++) {
+      const { session } = await checkout(app)
+      await pay(app, session)
+    }
+
+    app.setProviderRateLimitRemaining(3)
+    const yielded = await reconcile(app)
+    expect(yielded.steps.providerCatchUp).toMatchObject({ checked: 0, repaired: 0 })
+    expect(yielded.steps.providerCatchUp?.notes).toEqual([
+      "close to the provider's rate limit (3 of 120 left): pass ended after 0 of 3 open Orders, the rest are still open",
+    ])
+    expect(yielded.alarms).toEqual([
+      {
+        kind: 'provider_status',
+        message:
+          'provider rate limit reached: the pass handled 0 of 3 open Orders and stopped; the next run continues',
+      },
+    ])
+
+    // The window refills: the next run walks all three, having never been locked out.
+    app.setProviderRateLimitRemaining(undefined)
+    const full = await reconcile(app)
+    expect(full.steps.providerCatchUp).toMatchObject({ checked: 3 })
     expect(full.alarms).toEqual([])
   })
 
@@ -314,7 +345,7 @@ describe('Reconciliation repairs', () => {
     expect(report.alarms).toContainEqual({
       kind: 'provider_status',
       message:
-        'provider rate limit reached: 3 stuck Order(s) were not resubmitted; the next run continues',
+        'provider rate limit reached: the pass handled 0 of 3 stuck Orders and stopped; the next run continues',
     })
     // No Order was dragged into submit_failed by a limiter that says nothing about it.
     const { body } = await app.json<{ orders: { state: string }[] }>('/api/operator/orders', {

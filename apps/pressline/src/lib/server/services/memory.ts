@@ -8,7 +8,7 @@ import {
   type PrintfileRendering,
   type PrintfileSpec,
 } from '@pressline/contract'
-import { Effect, Layer, Ref } from 'effect'
+import { Clock, Effect, Layer, Ref } from 'effect'
 import { DesignSource, DesignSourceError, UnknownEngine } from './design-source'
 import {
   FulfillmentProvider,
@@ -21,6 +21,7 @@ import {
   type ProviderShipment,
   type ProviderWebhookEvent,
   ProviderWebhookRejected,
+  type RateLimitReading,
   type ShippingRate,
   type ShippingRateRequest,
   type VariantPrices,
@@ -390,6 +391,9 @@ const parseProviderWebhook = (rawBody: string) => {
   }
 }
 
+/** Printful's documented default window, which the double publishes as its own. */
+const MEMORY_RATE_LIMIT = 120
+
 export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCatalog) =>
   Effect.map(Ref.make(0), (calls) => {
     const providerOrders = new Map<string, ProviderOrder>()
@@ -427,10 +431,13 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
      */
     let limitAfter: number | undefined
     let limitRetryAfterMs = 60_000
+    /** What the headers publish as left, apart from when the limiter actually bites. */
+    let publishedRemaining: number | undefined
     let orderCalls = 0
     const limited = <A>(eff: Effect.Effect<A, FulfillmentProviderError>) =>
-      Effect.suspend(() =>
-        limitAfter !== undefined && orderCalls++ >= limitAfter
+      Effect.suspend(() => {
+        orderCalls += 1
+        return limitAfter !== undefined && orderCalls > limitAfter
           ? Effect.fail(
               new FulfillmentProviderError({
                 message: 'Printful 429: rate limit exceeded',
@@ -439,11 +446,25 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
                 retryAfterMs: limitRetryAfterMs,
               }),
             )
-          : eff,
-      )
+          : eff
+      })
+    /**
+     * What the double publishes as its remaining budget. Deliberately separate
+     * from when it starts answering 429: a real 429 can arrive with no warning
+     * when the store spent its window elsewhere, and a pass has to handle both
+     * the announced wall and the unannounced one (#153). A window defaults to
+     * full, so a test that never asked about the limiter cannot drift into the
+     * floor just by making enough calls.
+     */
+    const rateLimitReading = (now: number): RateLimitReading => ({
+      limit: MEMORY_RATE_LIMIT,
+      remaining: publishedRemaining ?? MEMORY_RATE_LIMIT,
+      resetAt: now + limitRetryAfterMs,
+    })
     return {
       layer: Layer.succeed(FulfillmentProvider, {
         health: () => Effect.void,
+        rateLimit: () => Effect.map(Clock.currentTimeMillis, rateLimitReading),
         getWebhookStatus: () => Effect.succeed({ configured: true, url: providerWebhookUrl }),
         registerWebhook: (url) => {
           if (url === providerWebhookUrl)
@@ -658,6 +679,15 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
         limitAfter = afterCalls
         limitRetryAfterMs = retryAfterMs
         orderCalls = 0
+      },
+      /**
+       * What the provider's rate-limit headers publish as left in the window;
+       * `undefined` publishes a full one. Independent of `setProviderRateLimited`,
+       * so a test can have the limiter announce itself, bite without warning, or
+       * both.
+       */
+      setProviderRateLimitRemaining: (remaining: number | undefined) => {
+        publishedRemaining = remaining
       },
     }
   })

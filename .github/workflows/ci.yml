@@ -1,8 +1,14 @@
 name: ci
 
 on:
+  # Every pull request, whatever it targets. Scoping this to `branches: [main]`
+  # left a PR stacked on another branch with no checks at all while reporting
+  # itself mergeable, and retargeting it to `main` afterwards ran nothing either
+  # (a base change is a `pull_request` `edited` event, which is not one of the
+  # default types), so the `ci-ok` the ruleset requires sat "Expected" forever.
+  # Running on every base attaches `ci-ok` to the head commit, which is what the
+  # ruleset matches once the PR is retargeted.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 

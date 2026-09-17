@@ -24,12 +24,12 @@ We create a hosted Checkout Session per Order and never hold card data. Source:
 
 ### Session state
 
-| Stripe says                                                                                                                | Our handling                                                                                                              | Proof                                                                 | Gap |
-| -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --- |
-| `status` is `open`, `complete` or `expired`. `complete` explicitly means "Payment processing **may still be in progress**" | We never treat `complete` as money. `applyPaid` returns `ignored` when `payment_status` is `unpaid`                       | `stripe-webhook.test.ts`, "never acts on the delivery body"           | —   |
-| `payment_status` is `paid`, `unpaid` or `no_payment_required`                                                              | All three handled; `no_payment_required` (a fully discounted session) counts as paid                                      | `stripe-webhook.test.ts`, "treats a fully discounted session as paid" | —   |
-| Default expiry 24 h, settable 30 min to 24 h. An expired session cannot be paid                                            | We do not set `expires_at`, so 24 h. `staleCheckouts` sweeps `checkout_open` at 24 h and asks Stripe rather than assuming | `reconciliation.test.ts`                                              | —   |
-| Only an `open` session can be expired via the API                                                                          | `expireCheckoutSession` is called on the Operator's cancel path                                                           | `operator-actions.test.ts`                                            | —   |
+| Stripe says                                                                                                                | Our handling                                                                                                                                                                                                                | Proof                                                                 | Gap  |
+| -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---- |
+| `status` is `open`, `complete` or `expired`. `complete` explicitly means "Payment processing **may still be in progress**" | We never treat `complete` as money. `applyPaid` returns `ignored` when `payment_status` is `unpaid`                                                                                                                         | `stripe-webhook.test.ts`, "never acts on the delivery body"           | —    |
+| `payment_status` is `paid`, `unpaid` or `no_payment_required`                                                              | All three handled; `no_payment_required` (a fully discounted session) counts as paid                                                                                                                                        | `stripe-webhook.test.ts`, "treats a fully discounted session as paid" | —    |
+| Default expiry 24 h, settable 30 min to 24 h. An expired session cannot be paid                                            | **Corrected 2026-09-17**: we _do_ set `expires_at`, to **1 h**, to keep the Quote's shipping rate fresh. `staleCheckouts` still sweeps `checkout_open` at 24 h, so a dead Order looks live for 23 h longer than its session | `reconciliation.test.ts`                                              | #152 |
+| Only an `open` session can be expired via the API                                                                          | `expireCheckoutSession` is called on the Operator's cancel path                                                                                                                                                             | `operator-actions.test.ts`                                            | —    |
 
 ### Events
 
@@ -141,6 +141,15 @@ Worth recording so they are not re-audited.
   identical bytes.
 - **`complete` is never treated as paid**, which is exactly Stripe's own
   guidance for delayed-notification methods.
+- **One Order can only ever have one Checkout Session** (established 2026-09-17,
+  while triaging #94). Checkout mints the Order ID and then creates the session,
+  so a client retry of the checkout endpoint produces a _new Order_, not a second
+  session for the old one; `expired` is terminal, so an Order never acquires a
+  second session later either. The PSP call is not retried internally, and a
+  failed create transitions the Order straight to `expired` with the session URL
+  never returned to anyone. #94's missing `Idempotency-Key` is therefore
+  hardening — it makes a lost response replay rather than create — and not the
+  double-payment risk the ticket originally described.
 - **A cancelled order stays visible to v2; an archived one does not.** After the
   v1 cancel, `GET /v2/orders/{id}` and `GET /v2/orders/@{external_id}` both
   answer 200 with `status: canceled`, so `submit`'s idempotency lookup finds it
@@ -192,17 +201,19 @@ before anything is built on them.
 Each is a sub-issue of #85 carrying the provider reference, the current
 behaviour, a proposed fix and the test that would prove it.
 
-| #    | Gap                                                                           |
-| ---- | ----------------------------------------------------------------------------- |
-| #92  | A partial refund was invisible: no Transition, no Alarm. **Fixed**            |
-| #93  | `checkout.session.async_payment_failed` is not subscribed                     |
-| #94  | Checkout Session creation sends no `Idempotency-Key`                          |
-| #95  | Disputes are a single boolean; the Alarm likely repeats forever               |
-| #97  | We could not cancel a confirmed Printful order: v2 DELETE archives. **Fixed** |
-| #77  | A resubmit after cancellation needed a fresh external id. **Fixed**           |
-| #98  | Printful 429 ignores `retry-after`                                            |
-| #99  | Approval holds, refunds and several shipment events are unsubscribed          |
-| #100 | ADR-0009's "Printful does not report delivery" premise is now false           |
+| #    | Gap                                                                                                                      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ |
+| #92  | A partial refund was invisible: no Transition, no Alarm. **Fixed**                                                       |
+| #93  | `checkout.session.async_payment_failed` is not subscribed                                                                |
+| #94  | Checkout Session creation sends no `Idempotency-Key`. **Rescoped 2026-09-17**: hardening, not a reachable defect (below) |
+| #95  | Disputes are a single boolean; the Alarm likely repeats forever                                                          |
+| #97  | We could not cancel a confirmed Printful order: v2 DELETE archives. **Fixed**                                            |
+| #77  | A resubmit after cancellation needed a fresh external id. **Fixed**                                                      |
+| #98  | Printful 429 ignores `retry-after`                                                                                       |
+| #99  | Approval holds, refunds and several shipment events are unsubscribed                                                     |
+| #100 | ADR-0009's "Printful does not report delivery" premise is now false. **Fixed**: premise corrected, exclusion re-affirmed |
+| #152 | Sessions expire in 1 h but the stale sweep waits 24 h. Found 2026-09-17                                                  |
+| #153 | Reconciliation's provider pass has no rate-limit pacing. Split from #98                                                  |
 
 Still open from before the audit: #77 (a deleted draft's `external_id` stays
 reserved), #78 (Review Mode), #87 (Printfile validation checks less than the

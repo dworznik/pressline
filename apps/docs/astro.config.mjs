@@ -22,6 +22,14 @@ export default defineConfig({
       head: [
         { tag: 'link', attrs: { rel: 'icon', href: '/favicon.ico', sizes: '16x16 32x32 48x48' } },
         { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
+        {
+          tag: 'script',
+          attrs: {
+            'data-goatcounter': 'https://pressline.goatcounter.com/count',
+            async: true,
+            src: '//gc.zgo.at/count.js',
+          },
+        },
       ],
       description:
         'A self-hostable bridge from image-generating apps to print-on-demand: Printful fulfills, Stripe Checkout pays.',

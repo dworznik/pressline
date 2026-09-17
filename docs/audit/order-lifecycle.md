@@ -36,15 +36,15 @@ We create a hosted Checkout Session per Order and never hold card data. Source:
 We subscribe to exactly three, and the endpoint is registered with exactly
 those (`STRIPE_WEBHOOK_EVENTS`).
 
-| Event                                      | Carries                 | Our handling                                                                                          | Gap |
-| ------------------------------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------- | --- |
-| `checkout.session.completed`               | Session                 | Re-fetch, then `checkout_open → paid`, submit, email                                                  | —   |
-| `checkout.session.async_payment_succeeded` | Session                 | Same path as completed                                                                                | —   |
-| `checkout.session.expired`                 | Session                 | `checkout_open → expired`                                                                             | —   |
-| `checkout.session.async_payment_failed`    | Session                 | **Not subscribed.** A declined delayed payment is invisible until the stale sweep, now ~90 min (#152) | #93 |
-| `charge.refunded`                          | **Charge**, not Refund  | Not subscribed; refunds are polled instead (below)                                                    | #92 |
-| `charge.dispute.*` (5 events)              | **Dispute**, not Charge | Not subscribed; the Dispute is polled instead, with its full status (below)                           | #95 |
-| `payment_intent.payment_failed`            | PaymentIntent           | Not subscribed. A card decline leaves the session `open`, which is the Customer's to retry            | —   |
+| Event                                      | Carries                 | Our handling                                                                                                                                            | Gap |
+| ------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `checkout.session.completed`               | Session                 | Re-fetch, then `checkout_open → paid`, submit, email                                                                                                    | —   |
+| `checkout.session.async_payment_succeeded` | Session                 | Same path as completed                                                                                                                                  | —   |
+| `checkout.session.expired`                 | Session                 | `checkout_open → expired`                                                                                                                               | —   |
+| `checkout.session.async_payment_failed`    | Session                 | **Not subscribed.** Nothing clears a declined delayed payment: the sweep now keeps a `complete` session, so the Order sits in `checkout_open` until #93 | #93 |
+| `charge.refunded`                          | **Charge**, not Refund  | Not subscribed; refunds are polled instead (below)                                                                                                      | #92 |
+| `charge.dispute.*` (5 events)              | **Dispute**, not Charge | Not subscribed; the Dispute is polled instead, with its full status (below)                                                                             | #95 |
+| `payment_intent.payment_failed`            | PaymentIntent           | Not subscribed. A card decline leaves the session `open`, which is the Customer's to retry                                                              | —   |
 
 Delayed-notification methods (ACH, SEPA, Bacs, Boleto, Konbini, OXXO and
 friends) complete the session `unpaid` and settle 2 to 14 days later. Our flow

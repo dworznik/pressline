@@ -1,0 +1,20 @@
+{
+  "object": "list",
+  "url": "/v1/disputes",
+  "has_more": false,
+  "data": [
+    {
+      "id": "du_1Disputed",
+      "object": "dispute",
+      "amount": 3479,
+      "charge": "ch_3Disputed",
+      "created": 1789082600,
+      "currency": "eur",
+      "is_charge_refundable": false,
+      "livemode": false,
+      "payment_intent": "pi_3Disputed",
+      "reason": "fraudulent",
+      "status": "warning_needs_response"
+    }
+  ]
+}

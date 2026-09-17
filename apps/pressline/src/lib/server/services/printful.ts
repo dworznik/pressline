@@ -398,6 +398,19 @@ const toFulfillmentProviderError = (
   return new FulfillmentProviderError({ message: `Printful: ${e.message}`, retryable: true })
 }
 
+/**
+ * `retry-after` as Printful sends it on a 429: delta-seconds, or an HTTP date.
+ * Anything unreadable names no wait at all rather than a wrong one.
+ */
+const parseRetryAfter = (res: HttpClientResponse.HttpClientResponse): number | undefined => {
+  const header = res.headers['retry-after']
+  if (!header) return undefined
+  const seconds = Number(header.trim())
+  if (Number.isFinite(seconds)) return seconds > 0 ? Math.round(seconds * 1000) : 0
+  const at = Date.parse(header)
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now())
+}
+
 const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
   res.json.pipe(
     Effect.orElseSucceed(() => ({})),
@@ -411,10 +424,12 @@ const failStatus = (res: HttpClientResponse.HttpClientResponse) =>
       // Printful refuses to confirm a draft while its cost calculation runs (a 400); that clears in seconds.
       const retryable =
         res.status === 429 || res.status >= 500 || /cost calculations still running/i.test(detail)
+      const wait = retryable ? parseRetryAfter(res) : undefined
       return new FulfillmentProviderError({
         message: `Printful ${res.status}: ${detail}`,
         retryable,
         status: res.status,
+        ...(wait === undefined ? {} : { retryAfterMs: wait }),
       })
     }),
   )

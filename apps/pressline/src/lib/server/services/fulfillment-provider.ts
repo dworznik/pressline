@@ -12,6 +12,13 @@ export class FulfillmentProviderError extends Schema.TaggedError<FulfillmentProv
     message: Schema.String,
     retryable: Schema.Boolean,
     status: Schema.optional(Schema.Number),
+    /**
+     * How long the provider asked us to wait (its `retry-after`), when it named
+     * one. A caller that retries obeys this in place of its own backoff: the
+     * limiter locks the store out for a fixed minute, so guessing is worse than
+     * waiting the time the provider gave (ADR-0007, #98).
+     */
+    retryAfterMs: Schema.optional(Schema.Number),
   },
 ) {}
 

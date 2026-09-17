@@ -7,6 +7,8 @@ import {
   WebhookRejected,
   type CheckoutSessionDetails,
   type CheckoutSessionInput,
+  isDisputeStatus,
+  type PaymentDispute,
   type PspService,
   type PspWebhookEvent,
 } from './psp'
@@ -24,6 +26,12 @@ export interface StripeOptions {
   /** Seconds of clock skew tolerated on webhook timestamps. */
   readonly webhookToleranceSeconds?: number
 }
+
+const toDispute = (d: Stripe.Dispute): PaymentDispute => ({
+  status: isDisputeStatus(d.status) ? d.status : 'unknown',
+  amount: d.amount,
+  ...(d.reason ? { reason: d.reason } : {}),
+})
 
 const toSessionDetails = (s: Stripe.Checkout.Session): CheckoutSessionDetails => {
   const ship = s.collected_information?.shipping_details
@@ -119,21 +127,34 @@ export const makeStripe = (options: StripeOptions) =>
       health: () => call(() => stripe.balance.retrieve()).pipe(Effect.asVoid),
 
       getPaymentStatus: (paymentIntentId) =>
-        call(() =>
-          stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] }),
-        ).pipe(
-          Effect.map((pi) => {
-            const charge =
-              typeof pi.latest_charge === 'object' && pi.latest_charge
-                ? pi.latest_charge
-                : undefined
-            return {
-              refunded: charge?.refunded ?? false,
-              amountRefunded: charge?.amount_refunded ?? 0,
-              disputed: charge?.disputed ?? false,
-            }
-          }),
-        ),
+        Effect.gen(function* () {
+          const pi = yield* call(() =>
+            stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] }),
+          )
+          const charge =
+            typeof pi.latest_charge === 'object' && pi.latest_charge ? pi.latest_charge : undefined
+          // `disputed` is "has ever been disputed": it never goes back to false and
+          // reads the same won or lost, so it is only the gate. The Dispute itself
+          // carries the state, and is only fetched for a payment that has one (#95).
+          const dispute = charge?.disputed
+            ? yield* call(() =>
+                stripe.disputes.list({ payment_intent: paymentIntentId, limit: 1 }),
+              ).pipe(
+                Effect.map((list) =>
+                  // Disputed but the Dispute is not listable: an unreadable status is
+                  // reported as `unknown`, never silently treated as closed.
+                  list.data[0]
+                    ? toDispute(list.data[0])
+                    : { status: 'unknown' as const, amount: 0 },
+                ),
+              )
+            : undefined
+          return {
+            refunded: charge?.refunded ?? false,
+            amountRefunded: charge?.amount_refunded ?? 0,
+            ...(dispute ? { dispute } : {}),
+          }
+        }),
 
       getWebhookStatus: () =>
         call(() => stripe.webhookEndpoints.list({ limit: 100 })).pipe(

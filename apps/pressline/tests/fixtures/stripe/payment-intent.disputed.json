@@ -1,0 +1,22 @@
+{
+  "id": "pi_3Disputed",
+  "object": "payment_intent",
+  "amount": 3479,
+  "amount_received": 3479,
+  "currency": "eur",
+  "status": "succeeded",
+  "latest_charge": {
+    "id": "ch_3Disputed",
+    "object": "charge",
+    "amount": 3479,
+    "amount_captured": 3479,
+    "amount_refunded": 0,
+    "currency": "eur",
+    "disputed": true,
+    "livemode": false,
+    "paid": true,
+    "payment_intent": "pi_3Disputed",
+    "refunded": false,
+    "status": "succeeded"
+  }
+}

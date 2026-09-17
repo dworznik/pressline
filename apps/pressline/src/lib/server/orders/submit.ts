@@ -10,13 +10,40 @@ import { attachProviderOrder, findOrder, transition, type Order } from './orders
 import { toProviderRecipient } from './recipient'
 import type { Cause } from './state'
 
-/** Backoff for retryable provider errors within one submit attempt. */
-export const SUBMIT_RETRY = Schedule.exponential(Duration.millis(100)).pipe(
+/** Wall-clock cap on one submit attempt: a webhook handler must answer well within the Inbound Event claim TTL. */
+export const SUBMIT_BUDGET = Duration.seconds(20)
+
+/** Our own guess at how long to wait, used when the provider names nothing. */
+const SUBMIT_BACKOFF = Schedule.exponential(Duration.millis(100)).pipe(
   Schedule.compose(Schedule.recurs(3)),
 )
 
-/** Wall-clock cap on one submit attempt: a webhook handler must answer well within the Inbound Event claim TTL. */
-export const SUBMIT_BUDGET = Duration.seconds(20)
+/**
+ * Backoff for retryable provider errors within one submit attempt. A wait the
+ * provider named (`retry-after` on a 429) replaces the guess: Printful's
+ * limiter locks the store out for a fixed minute, and three tries on a 100 ms
+ * ramp only burn the attempt on a condition that had not cleared yet (#98).
+ */
+export const SUBMIT_RETRY = Schedule.identity<FulfillmentProviderError>().pipe(
+  Schedule.intersect(SUBMIT_BACKOFF),
+  Schedule.modifyDelay(([e], backoff) =>
+    e.retryAfterMs === undefined ? backoff : Duration.millis(e.retryAfterMs),
+  ),
+)
+
+/**
+ * The longest named wait worth taking inside one attempt. The budget has to
+ * cover the call that already failed and the one that follows it, so a wait
+ * that eats most of it ends in the budget's own timeout with nothing to show —
+ * exactly what honoring it was meant to avoid. A quarter leaves room for both.
+ * Printful's own lockout is a minute, far past this, and that is the point: a
+ * minute is Reconciliation's to wait out, not a webhook handler's (#98).
+ */
+const LONGEST_NAMED_WAIT_MS = Duration.toMillis(SUBMIT_BUDGET) / 4
+
+/** Fail through instead, so the Order stays `paid` and Reconciliation picks it up. */
+const waitFitsBudget = (e: FulfillmentProviderError) =>
+  e.retryAfterMs === undefined || e.retryAfterMs <= LONGEST_NAMED_WAIT_MS
 
 /** Pauses between re-reads of a draft whose costs are still calculating; about 7 s in all, inside the budget. */
 export const COSTS_POLL: ReadonlyArray<Duration.Duration> = [
@@ -31,7 +58,12 @@ export type SubmitOutcome =
   | { readonly outcome: 'submitted'; readonly providerOrderId: string }
   | { readonly outcome: 'already_submitted'; readonly providerOrderId: string }
   | { readonly outcome: 'submit_failed'; readonly reason: string }
-  | { readonly outcome: 'retry_later'; readonly reason: string }
+  | {
+      readonly outcome: 'retry_later'
+      readonly reason: string
+      /** The provider's rate limiter refused us. A caller walking a queue should stop (#153). */
+      readonly rateLimited?: boolean
+    }
   | { readonly outcome: 'skipped'; readonly reason: string }
 
 const CONFIRMED: ReadonlySet<ProviderOrder['status']> = new Set([
@@ -130,7 +162,12 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
     }
     const provider = yield* FulfillmentProvider
     const retrying = <A>(eff: Effect.Effect<A, FulfillmentProviderError>) =>
-      eff.pipe(Effect.retry({ schedule: SUBMIT_RETRY, while: (e) => e.retryable }))
+      eff.pipe(
+        Effect.retry({
+          schedule: SUBMIT_RETRY,
+          while: (e) => e.retryable && waitFitsBudget(e),
+        }),
+      )
 
     // 1. Lookup by external id: the idempotency step.
     let attempt = order.providerAttempt
@@ -223,7 +260,11 @@ const submitAttempt = (orderId: string, cause: Cause, causeRef?: string) =>
           yield* Effect.logWarning(
             `order ${orderId}: provider unavailable, will retry later: ${e.message}`,
           )
-          return { outcome: 'retry_later', reason: e.message } satisfies SubmitOutcome
+          return {
+            outcome: 'retry_later',
+            reason: e.message,
+            ...(e.status === 429 ? { rateLimited: true } : {}),
+          } satisfies SubmitOutcome
         }
         const order = yield* findOrder(orderId)
         return yield* fail(order, cause, causeRef, e.message, order.providerOrderId)

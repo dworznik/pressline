@@ -44,6 +44,17 @@ const stubFetch: typeof fetch = async (input, init) => {
       headers: { 'content-type': 'application/json' },
     })
   }
+  if (path.startsWith('/v1/payment_intents/')) {
+    const name = path.endsWith('pi_3Disputed')
+      ? 'payment-intent.disputed.json'
+      : 'payment-intent.json'
+    return new Response(fixture(name), { headers: { 'content-type': 'application/json' } })
+  }
+  if (path === '/v1/disputes') {
+    return new Response(fixture('disputes.json'), {
+      headers: { 'content-type': 'application/json' },
+    })
+  }
   return Response.json(
     { error: { type: 'invalid_request_error', message: 'not stubbed' } },
     { status: 404 },
@@ -176,6 +187,30 @@ describe('Stripe Checkout adapter', () => {
       )
       expect((await verify(undefined))._tag).toBe('Failure')
     })
+  })
+
+  it('reads where a dispute stands, and only asks when the charge has ever had one', async () => {
+    // `disputed` is a boolean that never goes back to false, so it cannot tell an
+    // inquiry from a chargeback or a win from a loss; the Dispute can (#95).
+    const status = await Effect.runPromise(
+      Effect.flatMap(Psp, (p) => p.getPaymentStatus('pi_3Disputed')).pipe(Effect.provide(layer)),
+    )
+    expect(status).toEqual({
+      refunded: false,
+      amountRefunded: 0,
+      dispute: { status: 'warning_needs_response', amount: 3479, reason: 'fraudulent' },
+    })
+    expect(seen.at(-1)?.url).toContain('/v1/disputes')
+
+    const before = seen.length
+    const clean = await Effect.runPromise(
+      Effect.flatMap(Psp, (p) => p.getPaymentStatus('pi_3Clean')).pipe(Effect.provide(layer)),
+    )
+    // No dispute key at all, and the second call was never made.
+    expect(clean).toEqual({ refunded: false, amountRefunded: 1000 })
+    expect(seen.slice(before).map((s) => new URL(s.url).pathname)).toEqual([
+      '/v1/payment_intents/pi_3Clean',
+    ])
   })
 
   it('maps Stripe errors: 4xx non-retryable, 429/5xx retryable', async () => {

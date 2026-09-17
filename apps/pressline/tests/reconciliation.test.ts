@@ -162,6 +162,38 @@ describe('Reconciliation repairs', () => {
     expect((await app.sentMail()).map((m) => m.subject)).toHaveLength(1)
   })
 
+  it('leaves a delayed payment alone: the sweep expires abandonment, not settlement', async () => {
+    // ACH, SEPA, Boleto and friends complete the Session `unpaid` and settle days
+    // later. Expiring one dead-ends it — `expired` has no outgoing edges — so the
+    // settlement is refused and the Customer has paid for an Order that never ships.
+    app = await boot()
+    const { orderId, session } = await checkout(app)
+    app.setPspSession(session, {
+      status: 'complete',
+      paymentStatus: 'unpaid',
+      consentAccepted: true,
+      customer: { email: 'anna@example.com' },
+    })
+
+    app.advanceClock('2 hours')
+    const report = await reconcile(app)
+    expect((await detail(app, orderId)).order.state).toBe('checkout_open')
+    expect(report.steps.staleCheckouts?.notes).toEqual([
+      `${orderId}: awaiting a delayed payment (session complete, still unpaid)`,
+    ])
+
+    // Days later the bank settles, and the Order is still able to take it.
+    app.advanceClock('3 days')
+    app.setPspSession(session, { ...paidSession, paymentIntentId: 'pi_settled' })
+    const ack = await app.pspWebhook({
+      id: 'evt_settled',
+      type: 'checkout.session.async_payment_succeeded',
+      sessionId: session,
+    })
+    expect(ack.body.outcome).toMatch(/^applied/)
+    expect((await detail(app, orderId)).order.state).toBe('submitted')
+  })
+
   it('submits a paid Order the webhook could not, and alarms for one that failed outright', async () => {
     // Four retryable failures exhaust the webhook's retry budget; the Order stays paid.
     app = await boot({ createRetryableFailures: 4 })

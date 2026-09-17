@@ -125,6 +125,16 @@ const staleCheckouts = (run: Run) =>
         r.repaired++
         continue
       }
+      // A `complete` session is a Customer who already committed. A delayed
+      // notification method (ACH, SEPA, Boleto, Konbini…) completes the session
+      // `unpaid` and settles days later, and `expired` has no outgoing edges, so
+      // expiring one here would dead-end an Order that is about to be paid: the
+      // settlement is then refused and the money has nowhere to land. Only a
+      // session the Customer never completed is this sweep's to expire.
+      if (session && session.right.status === 'complete') {
+        r.notes.push(`${order.id}: awaiting a delayed payment (session complete, still unpaid)`)
+        continue
+      }
       if (run.dryRun) {
         r.notes.push(`${order.id}: would expire`)
         continue

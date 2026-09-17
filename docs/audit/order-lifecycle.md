@@ -51,6 +51,18 @@ friends) complete the session `unpaid` and settle 2 to 14 days later. Our flow
 holds the Order at `checkout_open` throughout, which is what Stripe's own
 fulfilment guidance asks for.
 
+**This claim was false until 2026-09-17.** `staleCheckouts` expired any
+`checkout_open` Order past the window whatever its session said, so a delayed
+payment was expired while it was still settling — and `expired` has no outgoing
+edges, so the settlement was then refused (`refused:expired->paid`) and the
+Customer had paid for an Order that could never ship. At the inherited 24 h it
+needed a slow settlement to bite; at #152's ~90 min it caught every delayed
+payment. The sweep now expires only a session the Customer never completed, and
+leaves a `complete`-but-unpaid one for the settlement. Proven by
+`reconciliation.test.ts`, "leaves a delayed payment alone". The consequence for
+a _failed_ delayed payment is #93: nothing clears it now, which is why that
+issue stopped being optional.
+
 ### Refunds and disputes
 
 Recorded by Reconciliation polling `getPaymentStatus`, not by webhook, within a

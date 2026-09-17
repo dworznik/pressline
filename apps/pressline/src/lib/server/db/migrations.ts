@@ -247,4 +247,17 @@ export const migrations: ReadonlyArray<Migration> = [
       `ALTER TABLE orders ADD COLUMN provider_attempt INTEGER NOT NULL DEFAULT 0`,
     ],
   },
+  {
+    version: 14,
+    name: 'printfile_inspection',
+    statements: [
+      // What looking at the Printfile concluded (#87): the header read and the
+      // Deviations recorded, as JSON. `printfiles` holds the live record;
+      // the Order holds the snapshot at sale, so the Order page never joins and
+      // a rule that changes later cannot rewrite what was sold. Nullable, no
+      // backfill: an Order placed before this renders "no Inspection recorded".
+      `ALTER TABLE printfiles ADD COLUMN inspection TEXT`,
+      `ALTER TABLE orders ADD COLUMN printfile_inspection TEXT`,
+    ],
+  },
 ]

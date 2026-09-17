@@ -1,10 +1,9 @@
 import {
-  checkPrintfile,
   factsOf,
+  inspectionOf,
   PrintfileInspection,
   PrintfileSpec,
   readPrintfileHead,
-  toPrintfileInspection,
 } from '@pressline/contract'
 import { Effect, Schema } from 'effect'
 import { deriveSpec, resolveCatalog } from '../catalog/catalog'
@@ -187,9 +186,8 @@ export const PrintfileCheckRequest = Schema.Struct({
 export const PrintfileCheckResult = Schema.Struct({
   spec: PrintfileSpec,
   specHash: Schema.String,
+  /** The whole Inspection: the header that was read, every refusal, every Deviation. */
   file: PrintfileInspection,
-  ok: Schema.Boolean,
-  problems: Schema.Array(Schema.String),
 })
 export type PrintfileCheckResult = typeof PrintfileCheckResult.Type
 
@@ -210,16 +208,17 @@ export const printfileCheck = (req: typeof PrintfileCheckRequest.Type) =>
       Effect.mapError((e) => new ToolError({ message: e.message })),
     )
     const spec = variant.spec
-    // The same verdict function Validation runs, so the operator's check and the
+    // The same Inspection Validation produces, so the operator's check and the
     // bridge cannot disagree about the same file (#132).
-    const invalid = checkPrintfile(file.header, spec, factsOf(file, req.url))
+    const inspection = inspectionOf(file, spec, factsOf(file, req.url))
     return {
       spec,
       specHash: variant.specHash,
-      file: toPrintfileInspection(file),
-      ok: invalid === undefined,
-      // Validation stops at the first refusal, and so does this: the operator sees
-      // exactly what the bridge would say about the same file.
-      problems: invalid ? [invalid.message] : [],
+      file: {
+        status: file.status,
+        contentType: file.contentType,
+        ...(file.bytes === undefined ? {} : { bytes: file.bytes }),
+        ...inspection,
+      },
     } satisfies PrintfileCheckResult
   })

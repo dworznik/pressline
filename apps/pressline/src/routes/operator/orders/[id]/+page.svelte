@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { describeHeader, formatInspection } from '@pressline/contract'
   import { formatMoney } from '$lib/money'
   import type { PageData } from './$types'
   let { data }: { data: PageData } = $props()
   const d = $derived(data.detail)
   const o = $derived(data.detail.order)
+  const inspection = $derived(data.detail.order.printfile.inspection)
   const when = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19)
   const money = (n: number) => formatMoney(n, o.currency)
 </script>
@@ -27,6 +29,18 @@
           0,
           12,
         )}…
+        <!-- What Validation concluded at sale (#87), through the same renderer
+             the three commands print. Deviations are recorded and shown, never
+             an Alarm: the file was sellable, and it sold. A sold Printfile has
+             no refusals, so the block is the ⚠ lines and nothing else. -->
+        {#if !inspection}
+          <div class="quiet">no Inspection recorded</div>
+        {:else}
+          {#if inspection.header}<div class="quiet">{describeHeader(inspection.header)}</div>{/if}
+          {#each formatInspection({ invalid: [], deviations: inspection.deviations }, { affirmClean: false }) as line (line)}
+            <div class="deviation">{line.trim()}</div>
+          {/each}
+        {/if}
       </dd>
       <dt>Retail + shipping</dt>
       <dd>{money(o.retail)} + {money(o.shipping)} ({o.shippingMethod.name})</dd>
@@ -169,5 +183,12 @@
   }
   address {
     font-style: normal;
+  }
+  .quiet {
+    color: #666;
+    font-size: 0.85rem;
+  }
+  .deviation {
+    font-size: 0.85rem;
   }
 </style>

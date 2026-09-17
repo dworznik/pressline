@@ -67,15 +67,15 @@ chunk table. It never inflates `IDAT` and never sees a pixel.
 The 8-byte signature, then `IHDR`, which is always the first chunk and always 13
 bytes long. Its fields, and what each must be:
 
-| Byte offset | Field       | Requirement                                                                                    |
-| ----------- | ----------- | ---------------------------------------------------------------------------------------------- |
-| 16          | Width       | Exactly `spec.width`.                                                                          |
-| 20          | Height      | Exactly `spec.height`.                                                                         |
-| 24          | Bit depth   | `8`. Not 16: Printful gains nothing from it and the file doubles. Not 1, 2 or 4.               |
-| 25          | Color type  | `2` (RGB) or `6` (RGBA) for truecolor; `0`, `3` and `4` are accepted but rarely what you want. |
-| 26          | Compression | `0`, the only defined value.                                                                   |
-| 27          | Filter      | `0`, the only defined value.                                                                   |
-| 28          | Interlace   | `0`. Adam7 interlacing (`1`) makes the file larger and slower for no benefit in print.         |
+| Byte offset | Field       | Requirement                                                                                                               |
+| ----------- | ----------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 16          | Width       | Exactly `spec.width`.                                                                                                     |
+| 20          | Height      | Exactly `spec.height`.                                                                                                    |
+| 24          | Bit depth   | `8`. Not 16: Printful gains nothing from it and the file doubles. Not 1, 2 or 4. Rejected otherwise.                      |
+| 25          | Color type  | `2` (RGB) or `6` (RGBA). `3` (palette) is **rejected**; `0` and `4` (grayscale) are accepted and recorded as a Deviation. |
+| 26          | Compression | `0`, the only defined value.                                                                                              |
+| 27          | Filter      | `0`, the only defined value.                                                                                              |
+| 28          | Interlace   | `0`. Adam7 interlacing (`1`) makes the file larger and slower for no benefit in print. Rejected otherwise.                |
 
 Color type decides transparency. Types `4` and `6` carry an alpha channel and
 count as transparent, whatever the pixels hold. Types `0`, `2` and `3` are
@@ -86,19 +86,19 @@ opaque unless a `tRNS` chunk follows.
 The PNG specification requires every chunk Pressline or Printful cares about to
 precede the first `IDAT`. Emit them in this order:
 
-| Chunk  | Emit it        | Contents                                                                                                                                                                                |
-| ------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sRGB` | Yes, or `iCCP` | One byte, rendering intent `0` (perceptual). Declares the color space without a profile.                                                                                                |
-| `iCCP` | Or `sRGB`      | An embedded **sRGB IEC61966-2.1** profile, which is what Printful asks for. Only that profile, and the small one: see [the 64 KiB window](#the-64-kib-window). Never CMYK or Adobe RGB. |
-| `gAMA` | Yes            | `45455`, the sRGB gamma of 1/2.2 scaled by 100 000. Readers that ignore both chunks above still honor this.                                                                             |
-| `pHYs` | Yes            | Pixels per meter, both axes, unit byte `1`. `round(dpi / 0.0254)`: 150 dpi is `5906`, 300 dpi is `11811`.                                                                               |
-| `PLTE` | Only for `3`   | The palette. Indexed color is accepted but pointless for photographic prints.                                                                                                           |
-| `tRNS` | Only for alpha | Transparency for color types `0`, `2` and `3`. Its presence alone counts as alpha. After `PLTE` if there is one.                                                                        |
+| Chunk  | Emit it        | Contents                                                                                                                                                                                                                                                        |
+| ------ | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sRGB` | Yes, or `iCCP` | One byte, rendering intent `0` (perceptual). Declares the color space without a profile.                                                                                                                                                                        |
+| `iCCP` | Or `sRGB`      | An embedded **sRGB IEC61966-2.1** profile, which is what Printful asks for. Only that profile, and the small one: see [the 64 KiB window](#the-64-kib-window). A profile declaring CMYK or grayscale is **rejected**; which _RGB_ profile it is is not checked. |
+| `gAMA` | Yes            | `45455`, the sRGB gamma of 1/2.2 scaled by 100 000. Readers that ignore both chunks above still honor this.                                                                                                                                                     |
+| `pHYs` | Yes            | Pixels per meter, both axes, unit byte `1`. `round(dpi / 0.0254)`: 150 dpi is `5906`, 300 dpi is `11811`.                                                                                                                                                       |
+| `PLTE` | Never          | The palette. Indexed color caps the file at 256 colors and is rejected.                                                                                                                                                                                         |
+| `tRNS` | Only for alpha | Transparency for color types `0`, `2` and `3`. Its presence alone counts as alpha. After `PLTE` if there is one.                                                                                                                                                |
 
 The PNG specification says a file should carry `sRGB` **or** `iCCP`, not both;
 a decoder that finds both is told to prefer the profile. `@pressline/render`
 writes `sRGB`. Write `iCCP` instead if you want to follow Printful's
-embedded-profile advice to the letter; Pressline accepts either today.
+embedded-profile advice to the letter.
 
 Do not emit `cHRM` with non-sRGB primaries, `eXIf` blocks with thumbnails, or
 large `iTXt`, `zTXt` and `tEXt` blocks. They are legal, but they are the usual
@@ -211,33 +211,49 @@ background instead.
 
 Pressline rejects before any payment when:
 
-| Check            | Rejection when                                                                         |
-| ---------------- | -------------------------------------------------------------------------------------- |
-| `spec_hash`      | The `specHash` you echo is not the one Pressline sent.                                 |
-| `format`         | The declared `contentType` is not in `formats`, or the file's signature disagrees.     |
-| `content_type`   | The served `Content-Type` differs from the declared one.                               |
-| `content_length` | The served length differs from the `bytes` you declared.                               |
-| `header`         | No readable PNG or JPEG header in the first 64 KiB, including a malformed chunk table. |
-| `dimensions`     | Width or height differs from the Spec, or from the `width` and `height` you declared.  |
-| `alpha`          | Alpha present on `forbidden`, absent on `required`, or unseen on either.               |
+| Check            | Rejection when                                                                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `spec_hash`      | The `specHash` you echo is not the one Pressline sent.                                                            |
+| `format`         | The declared `contentType` is not in `formats`, or the file's signature disagrees.                                |
+| `content_type`   | The served `Content-Type` differs from the declared one.                                                          |
+| `content_length` | The served length differs from the `bytes` you declared.                                                          |
+| `too_large`      | The served or declared size is over 200 000 000 bytes.                                                            |
+| `header`         | No readable PNG or JPEG header in the first 64 KiB, including a malformed chunk table.                            |
+| `dimensions`     | Width or height differs from the Spec, or from the `width` and `height` you declared.                             |
+| `bit_depth`      | The PNG `IHDR` bit depth, or the JPEG `SOF` sample precision, is not `8`.                                         |
+| `color_type`     | The PNG color type is `3` (palette-indexed).                                                                      |
+| `interlaced`     | The PNG `IHDR` interlace byte is `1` (Adam7).                                                                     |
+| `color_space`    | An `iCCP` profile declares CMYK or grayscale, or a JPEG has four components or an Adobe `APP14` transform of `2`. |
+| `alpha`          | Alpha present on `forbidden`, absent on `required`, or unseen on either.                                          |
 
-Pressline does **not** yet check bit depth, interlacing, the color space
-chunks, the identity of an embedded profile, the `pHYs` stamp against
-`spec.dpi`, or a JPEG's component count. Printful prints whatever it receives,
-so a 16-bit, Adobe RGB or CMYK file passes today and comes back wrong from the
-printer. Ship the file correct regardless. Tighter checks are tracked in
-[issue #87](https://github.com/dworznik/pressline/issues/87).
+**Deviations.** A Deviation is a file that satisfies the Spec but departs from
+what this page documents or what Printful promotes: it is recorded against the
+Printfile, shown to the Operator on the Order, and never blocks a sale. There
+are seven: `color_type` (grayscale), `color_undeclared` (no `sRGB`, `gAMA` or
+`iCCP` before `IDAT`), `gamma` (a `gAMA` far from 45455 and nothing else
+declaring the space), `icc_unseen` (an embedded profile Pressline could not
+read inside its window), `dpi_missing`, `dpi_mismatch` and `header_window`.
+`pressline engine preflight` and the conformance suite report all of them to
+you at build time, and `--strict` turns them into a failing exit code.
+
+Some things Pressline can see and deliberately says nothing about: **which RGB
+profile a file embeds is not identified, by design** — sRGB and Adobe RGB are
+indistinguishable from the header alone — and a JPEG's `APP2` ICC profile is
+never read, because the frame header already proves the channel count.
 
 ## Limits Printful enforces itself
 
-These are the only hard refusals Printful documents, and Pressline checks none
-of them yet:
+These are the only hard refusals Printful documents:
 
-- **200 MB** maximum file size.
-- **20 000 px** maximum on either side.
+- **200 MB** maximum file size, checked by Pressline (`too_large`). A 213 MB
+  file submitted as a draft order was accepted and its file silently never
+  attached (probed 2026-09-13), which is why the check is precautionary and the
+  bound is the decimal reading.
+- **20 000 px** maximum on either side. Not checked, and unreachable: the exact-size
+  rule makes the dimensions Printful's own.
 - **One dot in the filename.** A URL whose last path segment reads
-  `name..png` fails Printful's upload. Content-addressed names like
-  `<specHash>.png` are safe.
+  `name..png` fails Printful's upload. Not checked, because it is a property of your
+  URL rather than of the file; content-addressed names like `<specHash>.png` are safe.
 - **No stitch files** for embroidery (DST, PES, EXP). Send the image; Printful
   digitizes it.
 
@@ -247,8 +263,13 @@ of them yet:
   a file on disk, whole, and reports both what Validation would refuse and every
   Deviation from this page. See [Preflight](/engine/conformance/#preflight).
 - `pressline printfile check <url> --offer <slug> --variant <key>` runs the same
-  validator the bridge runs, against any URL, and prints the Spec, what it
-  found in the file, and each problem. See the [CLI reference](/reference/cli/).
+  validator the bridge runs, against any URL, and prints the Spec, the header it
+  read, and then the same block Preflight prints: a `✗` line per refusal and a
+  `⚠` line per Deviation. `--strict` fails on Deviations too. Against an
+  instance too old to report Deviations it says
+  `this instance does not report Deviations`, which is a different fact from
+  finding none, and `--strict` refuses to exit 0 on it. See the
+  [CLI reference](/reference/cli/).
 - The [conformance suite](/engine/conformance/) drives your Engine end to end
   and validates the file it produces exactly as production would.
 - Diff your output against `@pressline/render`'s: same IHDR, same three

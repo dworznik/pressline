@@ -1,5 +1,7 @@
+import { StoredInspection } from '@pressline/contract'
 import { Clock, Effect, Schema } from 'effect'
 import { Db } from '../db/db'
+import { InspectionJson } from '../printfile/ensure'
 import { statusToken } from './ids'
 import { canTransition, Cause, OrderState, TERMINAL } from './state'
 
@@ -42,6 +44,13 @@ export const Order = Schema.Struct({
     url: Schema.String,
     sha256: Schema.String,
     contentType: Schema.String,
+    /**
+     * What Validation saw when this file was accepted, copied here at sale.
+     * The Order never re-validates and never joins `printfiles`: a rule that
+     * changes later must not rewrite what was sold. Absent on an Order placed
+     * before migration 14.
+     */
+    inspection: Schema.optional(StoredInspection),
   }),
   quoteId: Schema.String,
   currency: Schema.String,
@@ -113,6 +122,7 @@ type Row = {
   printfile_url: string
   printfile_sha256: string
   printfile_content_type: string
+  printfile_inspection: string | null
   quote_id: string
   currency: string
   retail: number
@@ -151,6 +161,9 @@ const fromRow = (r: Row): Effect.Effect<Order> =>
     const tracking = r.tracking
       ? yield* Schema.decode(TrackingJson)(r.tracking).pipe(Effect.orDie)
       : undefined
+    const inspection = r.printfile_inspection
+      ? yield* Schema.decode(InspectionJson)(r.printfile_inspection).pipe(Effect.orDie)
+      : undefined
     return {
       id: r.id,
       state: r.state,
@@ -164,6 +177,7 @@ const fromRow = (r: Row): Effect.Effect<Order> =>
         url: r.printfile_url,
         sha256: r.printfile_sha256,
         contentType: r.printfile_content_type,
+        ...(inspection ? { inspection } : {}),
       },
       quoteId: r.quote_id,
       currency: r.currency,
@@ -282,7 +296,12 @@ export interface NewOrder {
   readonly offer: string
   readonly variant: string
   readonly specHash: string
-  readonly printfile: { url: string; sha256: string; contentType: string }
+  readonly printfile: {
+    url: string
+    sha256: string
+    contentType: string
+    inspection?: StoredInspection
+  }
   readonly quoteId: string
   readonly currency: string
   readonly retail: number
@@ -299,13 +318,18 @@ export const createOrder = (o: NewOrder, causeRef: string, cause: Cause = 'store
   Effect.gen(function* () {
     const db = yield* Db
     const now = yield* Clock.currentTimeMillis
+    // The Inspection is copied, not referenced: the Order page reads this
+    // snapshot and never joins `printfiles`, so what was sold stays what was sold.
+    const inspection = o.printfile.inspection
+      ? yield* Schema.encode(InspectionJson)(o.printfile.inspection).pipe(Effect.orDie)
+      : null
     yield* db.batch([
       {
         sql: `INSERT INTO orders (id, state, status_token, engine, design_id, offer_slug, variant_key, spec_hash,
-                printfile_url, printfile_sha256, printfile_content_type, quote_id, currency, retail, shipping,
+                printfile_url, printfile_sha256, printfile_content_type, printfile_inspection, quote_id, currency, retail, shipping,
                 shipping_method, shipping_method_name, country, cost_product, cost_shipping, cost_currency,
                 public_origin, preview_url, created_at, updated_at)
-              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              VALUES (?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         params: [
           o.id,
           o.statusToken,
@@ -317,6 +341,7 @@ export const createOrder = (o: NewOrder, causeRef: string, cause: Cause = 'store
           o.printfile.url,
           o.printfile.sha256,
           o.printfile.contentType,
+          inspection,
           o.quoteId,
           o.currency,
           o.retail,

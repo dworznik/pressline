@@ -84,6 +84,10 @@ export const startCheckout = (req: CheckoutRequest, origin: string) =>
           url: printfile.url,
           sha256: printfile.sha256,
           contentType: printfile.contentType,
+          // Snapshot at sale, beside the URL and the hash. Nothing is
+          // re-validated here: this is what Validation concluded when it
+          // accepted the file (ADR-0004).
+          ...(printfile.inspection ? { inspection: printfile.inspection } : {}),
         },
         quoteId: quote.id,
         currency: quote.currency,

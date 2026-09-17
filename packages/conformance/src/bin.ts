@@ -19,7 +19,7 @@ class NotConformant {
 const command = Command.make('pressline-conformance', conformanceFlags, (a) =>
   Effect.gen(function* () {
     const report = yield* runConformance(conformanceOptions(a))
-    yield* Console.log(formatReport(report))
+    yield* Console.log(a.json ? JSON.stringify(report, null, 2) : formatReport(report))
     if (!report.ok) return yield* Effect.fail(new NotConformant())
   }).pipe(
     // Anything but a verdict (bad URL, unreachable host, a bug) is printed, then exit 1.

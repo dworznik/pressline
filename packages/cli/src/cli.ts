@@ -1,9 +1,16 @@
 import { createRequire } from 'node:module'
 import { Args, Command, Options } from '@effect/cli'
-import { CatalogResponse } from '@pressline/contract'
+import {
+  CatalogResponse,
+  describeHeader,
+  formatInspection,
+  ImageHeader,
+  inspectionFails,
+} from '@pressline/contract'
 import { Config, Effect, Option, Schema } from 'effect'
 import { api, failWith, Instance, publicGet } from './client.js'
 import { engine } from './engine.js'
+import { strict } from './options.js'
 import { print } from './output.js'
 import { groupBySpec, specSummary } from './spec-source.js'
 
@@ -586,6 +593,14 @@ const reconcile = Command.make('reconcile', { dryRun }, ({ dryRun }) =>
 
 // ---- printfile ------------------------------------------------------------
 
+/**
+ * The instance's answer, decoded leniently in both directions. A field the
+ * instance may not have is optional, so a newer CLI reads an older instance —
+ * and `deviations` missing is itself a fact worth printing, distinct from "no
+ * Deviations found". A `reason` or `code` is read as text rather than as the
+ * vocabulary this CLI shipped with, so an older CLI prints a refusal added
+ * after it was built instead of refusing the whole answer.
+ */
 const PrintfileResult = Schema.Struct({
   spec: Spec,
   specHash: Schema.String,
@@ -593,42 +608,100 @@ const PrintfileResult = Schema.Struct({
     status: Schema.Number,
     contentType: Schema.String,
     bytes: Schema.optional(Schema.Number),
-    header: Schema.optional(
-      Schema.Struct({
-        format: Schema.String,
-        width: Schema.Number,
-        height: Schema.Number,
-        alpha: Schema.Literal('present', 'absent', 'unseen'),
-      }),
+    header: Schema.optional(ImageHeader),
+    invalid: Schema.optional(
+      Schema.Array(Schema.Struct({ reason: Schema.String, message: Schema.String })),
+    ),
+    deviations: Schema.optional(
+      Schema.Array(Schema.Struct({ code: Schema.String, message: Schema.String })),
     ),
   }),
-  ok: Schema.Boolean,
-  problems: Schema.Array(Schema.String),
+  // An instance that predates the Inspection carries its verdict beside the
+  // file rather than its refusals inside it. Both are read; neither is assumed.
+  ok: Schema.optional(Schema.Boolean),
+  problems: Schema.optional(Schema.Array(Schema.String)),
 })
 
-const alphaNote = { present: ' with alpha', absent: '', unseen: ', alpha unseen in the header' }
+const UNREADABLE_VERDICT = {
+  reason: 'unknown',
+  message:
+    'this instance answered in a shape this CLI cannot read, so what Validation refuses is unknown; upgrade the instance, or the CLI',
+}
+
+const REFUSED_WITHOUT_REASON = {
+  reason: 'unknown',
+  message: 'this instance refused the file without saying why',
+}
+
+/**
+ * The refusals, from whichever shape the instance speaks. A pre-Inspection
+ * instance answers with `ok` and `problems`, its refusals bare strings with no
+ * vocabulary behind them; they become refusals with an `unknown` reason, which
+ * is what they were.
+ *
+ * The one thing this may never do is read silence as a clean file. An answer
+ * carrying neither shape is not "nothing Validation would refuse", it is an
+ * answer we cannot read, and it fails closed with that said out loud.
+ */
+const refusalsOf = (r: (typeof PrintfileResult)['Type']) => {
+  if (r.file.invalid) return r.file.invalid
+  if (r.ok === undefined && r.problems === undefined) return [UNREADABLE_VERDICT]
+  const legacy = (r.problems ?? []).map((message) => ({ reason: 'unknown', message }))
+  if (legacy.length > 0) return legacy
+  return r.ok === false ? [REFUSED_WITHOUT_REASON] : []
+}
+
+/**
+ * The size of a file the Operator is looking at, not an exact count: this
+ * command answers "is that the file I meant?", where `4.2 MB` reads and
+ * `4404019 bytes` does not. Preflight prints the exact count, because a
+ * developer chasing the 64 KiB window needs it.
+ */
+const humanBytes = (bytes: number) =>
+  bytes < 1_000_000
+    ? `${Math.round(bytes / 100) / 10} KB`
+    : `${Math.round(bytes / 100_000) / 10} MB`
+
 const fileUrl = Args.text({ name: 'url' })
 const offer = Options.text('offer')
 const variant = Options.text('variant')
 
 const printfileCheck = Command.make(
   'check',
-  { fileUrl, offer, variant },
-  ({ fileUrl, offer, variant }) =>
+  { fileUrl, offer, variant, strict },
+  ({ fileUrl, offer, variant, strict }) =>
     Effect.gen(function* () {
       const r = yield* api('POST', '/api/operator/printfile/check', PrintfileResult, {
         url: fileUrl,
         offer,
         variant,
       })
-      const h = r.file.header
+      const file = r.file
+      const size = file.bytes === undefined ? '' : `, ${humanBytes(file.bytes)}`
+      // One file's Inspection, in Preflight's own block: an envelope line for
+      // what the host answered, the header, then the refusals and Deviations.
+      const invalid = refusalsOf(r)
+      const inspection = { invalid, deviations: file.deviations ?? [] }
       yield* print(
         `Spec ${offer}/${variant}: ${specSummary(r.spec, r.specHash)}`,
-        `File: HTTP ${r.file.status}, ${r.file.contentType || 'no content type'}${r.file.bytes ? `, ${r.file.bytes} bytes` : ''}${h ? `, ${h.format} ${h.width}×${h.height}${alphaNote[h.alpha]}` : ''}`,
+        `File: HTTP ${file.status}, ${file.contentType || 'no content type'}${size}`,
+        ...(file.header ? [`  ${describeHeader(file.header)}`] : []),
+        ...formatInspection(inspection),
+        // An instance that predates Deviations reported none because it looked
+        // for none: that is not the same fact as a file that has none.
+        ...(file.deviations ? [] : ['  · this instance does not report Deviations']),
       )
-      if (r.ok) return yield* print('✓ The file satisfies the Spec.')
-      yield* print(...r.problems.map((p) => `✗ ${p}`))
-      return yield* failWith(`${r.problems.length} problem(s)`)
+      // The shared exit rule, plus the one case an Inspection cannot express:
+      // `--strict` cannot pass on an answer that never looked for Deviations.
+      if (!inspectionFails(inspection, strict)) {
+        if (!strict || file.deviations) return
+        return yield* failWith('--strict: this instance does not report Deviations')
+      }
+      return yield* failWith(
+        invalid.length > 0
+          ? `${invalid.length} problem(s)`
+          : `--strict: ${inspection.deviations.length} Deviation(s)`,
+      )
     }),
 ).pipe(
   Command.withDescription('Check any image URL against the Printfile Spec of an Offer variant'),

@@ -9,8 +9,9 @@ import {
 } from '@pressline/conformance'
 import { Effect, Option } from 'effect'
 import { CliError, failWith } from './client.js'
+import { strict } from './options.js'
 import { print } from './output.js'
-import { formatPreflight, preflight, tally, type PreflightEntry } from './preflight.js'
+import { formatPreflight, runPreflight, tally, type PreflightEntry } from './preflight.js'
 import { resolveSpecs } from './spec-source.js'
 
 /**
@@ -23,7 +24,7 @@ const conformance = Command.make('conformance', conformanceFlags, (a) =>
     // Use the fetch the CLI was given (tests route it in-process); the global one otherwise.
     const fetch = yield* Effect.serviceOption(FetchHttpClient.Fetch)
     const report = yield* runConformance(conformanceOptions(a, Option.getOrUndefined(fetch)))
-    yield* print(formatReport(report))
+    yield* a.json ? print(JSON.stringify(report, null, 2)) : print(formatReport(report))
     if (!report.ok) return yield* Effect.fail(new CliError({ message: 'not conformant' }))
   }).pipe(
     // Anything short of a verdict (an http:// URL, a bug) becomes one readable line.
@@ -86,9 +87,6 @@ const specSource = Options.text('spec').pipe(
   ),
   Options.optional,
 )
-const strict = Options.boolean('strict').pipe(
-  Options.withDescription('Fail on Deviations too, not only on what Validation would refuse'),
-)
 const asJson = Options.boolean('json').pipe(
   Options.withDescription('Print the report as JSON: the header and the two tiers, per file'),
 )
@@ -110,8 +108,10 @@ const preflightCommand = Command.make(
           .readFile(path)
           .pipe(Effect.mapError((e) => new CliError({ message: e.message })))
         // No Spec is a legitimate answer: the file still answers for itself.
-        if (specs.length === 0) entries.push({ result: preflight({ path, bytes }) })
-        for (const spec of specs) entries.push({ result: preflight({ path, bytes }, spec), spec })
+        if (specs.length === 0) entries.push({ result: yield* runPreflight({ path, bytes }) })
+        for (const spec of specs) {
+          entries.push({ result: yield* runPreflight({ path, bytes }, spec), spec })
+        }
       }
       yield* a.json
         ? print(JSON.stringify({ results: entries.map((e) => e.result) }, null, 2))

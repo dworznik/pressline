@@ -49,18 +49,30 @@ const boot = () =>
     },
   })
 
-/** Run `pressline <args>` against the app; returns the lines printed and the failure, if any. `token: null` omits `--token`. */
+/**
+ * Run `pressline <args>` against the app; returns the lines printed and the
+ * failure, if any. `token: null` omits `--token`. `rewrite` edits the JSON the
+ * instance answers with, which is how a newer CLI is pointed at an older
+ * instance without one existing.
+ */
 const run = async (
   app: TestApp,
   args: string[],
   token: string | null = OPERATOR_TOKEN,
   withUrl = true,
+  rewrite?: (body: Record<string, unknown>) => Record<string, unknown>,
 ) => {
   const lines: string[] = []
-  const fetch: typeof globalThis.fetch = (input, init) => {
+  const fetch: typeof globalThis.fetch = async (input, init) => {
     const req = new Request(input, init)
     const u = new URL(req.url)
-    return app.fetch(u.pathname + u.search, req)
+    const res = await app.fetch(u.pathname + u.search, req)
+    if (!rewrite || !res.ok) return res
+    const body = rewrite((await res.json()) as Record<string, unknown>)
+    return new Response(JSON.stringify(body), {
+      status: res.status,
+      headers: { 'content-type': 'application/json' },
+    })
   }
   const layer = Layer.mergeAll(
     NodeContext.layer,
@@ -264,8 +276,24 @@ describe('pressline CLI', () => {
     expect(good.out).toContain(
       'Spec tee-black-front/black-m: 1800×2400px @ 150 dpi, png, alpha allowed',
     )
-    expect(good.out).toContain('File: HTTP 206, image/png, 5000 bytes, png 1800×2400')
-    expect(good.out).toContain('✓ The file satisfies the Spec.')
+    expect(good.out).toContain('File: HTTP 206, image/png, 5 KB')
+    expect(good.out).toContain('  png 1800×2400, 8-bit color type 6, alpha present')
+    expect(good.out).toContain('✓ nothing Validation would refuse')
+    // The fixture declares no color space and stamps no DPI: sellable, and said so.
+    expect(good.out).toContain('⚠ color_undeclared:')
+    expect(good.out).toContain('⚠ dpi_missing:')
+
+    const strict = await run(app, [
+      'printfile',
+      'check',
+      URL_OK,
+      '--offer',
+      'tee-black-front',
+      '--variant',
+      'black-m',
+      '--strict',
+    ])
+    expect(strict.error).toContain('--strict: 2 Deviation(s)')
 
     const wrong = await run(app, [
       'printfile',
@@ -276,7 +304,7 @@ describe('pressline CLI', () => {
       '--variant',
       'black-m',
     ])
-    expect(wrong.out).toContain('✗ file is 900×1200, spec requires 1800×2400')
+    expect(wrong.out).toContain('✗ dimensions: file is 900×1200, spec requires 1800×2400')
     expect(wrong.error).toContain('1 problem(s)')
 
     const unknown = await run(app, [
@@ -300,7 +328,86 @@ describe('pressline CLI', () => {
       'black-m',
     ])
     expect(gone.out).toContain('File: HTTP 404')
-    expect(gone.out).toContain('✗ https://engine.test/nope.png answered 404')
+    expect(gone.out).toContain('✗ status: https://engine.test/nope.png answered 404')
+  })
+
+  it('printfile check tells an instance that reports no Deviations from a file that has none', async () => {
+    app = await boot()
+    const args = [
+      'printfile',
+      'check',
+      URL_OK,
+      '--offer',
+      'tee-black-front',
+      '--variant',
+      'black-m',
+    ]
+    // An instance from before Deviations existed: the field is simply absent.
+    const older = (body: Record<string, unknown>) => {
+      const file = { ...(body.file as Record<string, unknown>) }
+      delete file.deviations
+      return { ...body, file }
+    }
+    const lax = await run(app, args, OPERATOR_TOKEN, true, older)
+    expect(lax.out).toContain('· this instance does not report Deviations')
+    expect(lax.out).not.toContain('⚠')
+    expect(lax.error).toBeUndefined()
+
+    const strict = await run(app, [...args, '--strict'], OPERATOR_TOKEN, true, older)
+    expect(strict.error).toContain('--strict: this instance does not report Deviations')
+  })
+
+  it('printfile check reads a pre-Inspection instance rather than calling its refusals clean', async () => {
+    app = await boot()
+    const args = [
+      'printfile',
+      'check',
+      URL_OK,
+      '--offer',
+      'tee-black-front',
+      '--variant',
+      'black-m',
+    ]
+    // An instance from before the Inspection: the verdict sits beside the file
+    // as `ok`/`problems`, and `file.invalid` does not exist. Defaulting the
+    // missing field to an empty list turned a refusal into a clean answer.
+    const legacy = (body: Record<string, unknown>) => {
+      const file = { ...(body.file as Record<string, unknown>) }
+      delete file.invalid
+      delete file.deviations
+      return {
+        ...body,
+        file,
+        ok: false,
+        problems: ['dimensions: file is 1200×1600, spec requires 1800×2400'],
+      }
+    }
+    const r = await run(app, args, OPERATOR_TOKEN, true, legacy)
+    expect(r.out).toContain('✗ unknown: dimensions: file is 1200×1600, spec requires 1800×2400')
+    expect(r.out).not.toContain('nothing Validation would refuse')
+    expect(r.error).toContain('1 problem(s)')
+  })
+
+  it('printfile check fails closed on an answer that states no verdict at all', async () => {
+    app = await boot()
+    const args = [
+      'printfile',
+      'check',
+      URL_OK,
+      '--offer',
+      'tee-black-front',
+      '--variant',
+      'black-m',
+    ]
+    // Neither shape: silence is not "nothing Validation would refuse".
+    const mute = (body: Record<string, unknown>) => {
+      const file = { ...(body.file as Record<string, unknown>) }
+      delete file.invalid
+      return { ...body, file }
+    }
+    const r = await run(app, args, OPERATOR_TOKEN, true, mute)
+    expect(r.out).toContain('✗ unknown: this instance answered in a shape this CLI cannot read')
+    expect(r.error).toContain('1 problem(s)')
   })
 
   it('offers lists every Offer with its distinct Specs, without a token', async () => {

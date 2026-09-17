@@ -15,6 +15,7 @@ import { layerPrintful } from '$lib/server/services/printful'
  */
 const seen: Request[] = []
 let forceStatus: number | undefined
+let forceHeaders: Record<string, string> | undefined
 let hang = false
 const fixture = (name: string) =>
   JSON.parse(readFileSync(new URL(`./fixtures/printful/${name}`, import.meta.url), 'utf8'))
@@ -32,7 +33,10 @@ const stubFetch: typeof fetch = async (input, init) => {
   }
   if (hang) return new Promise<Response>(() => {})
   if (forceStatus)
-    return Response.json({ code: forceStatus, result: 'forced' }, { status: forceStatus })
+    return Response.json(
+      { code: forceStatus, result: 'forced' },
+      { status: forceStatus, ...(forceHeaders ? { headers: forceHeaders } : {}) },
+    )
   if (req.headers.get('authorization') !== 'Bearer pf_test_token') {
     return Response.json({ code: 401, result: 'Unauthorized' }, { status: 401 })
   }
@@ -424,6 +428,30 @@ describe('Printful v2 adapter', () => {
     forceStatus = undefined
     expect(rate).toMatchObject({ retryable: true, status: 429 })
     expect(down).toMatchObject({ retryable: true, status: 503 })
+  })
+
+  it('carries the wait a 429 names, in seconds or as an HTTP date', async () => {
+    // Printful's limiter locks the store out for a minute; retrying on our own
+    // 100 ms backoff burns the whole attempt for a condition that would have
+    // cleared had we waited the time the provider named (#98).
+    const get = Effect.flatMap(FulfillmentProvider, (p) => p.getCatalogProduct(71))
+    forceStatus = 429
+    forceHeaders = { 'retry-after': '60' }
+    const seconds = (await fail(get)) as FulfillmentProviderError
+    forceHeaders = { 'retry-after': new Date(Date.now() + 120_000).toUTCString() }
+    const httpDate = (await fail(get)) as FulfillmentProviderError
+    forceHeaders = { 'retry-after': 'soon' }
+    const nonsense = (await fail(get)) as FulfillmentProviderError
+    forceHeaders = undefined
+    const silent = (await fail(get)) as FulfillmentProviderError
+    forceStatus = undefined
+
+    expect(seconds).toMatchObject({ retryable: true, status: 429, retryAfterMs: 60_000 })
+    expect(httpDate.retryAfterMs).toBeGreaterThan(110_000)
+    expect(httpDate.retryAfterMs).toBeLessThanOrEqual(120_000)
+    // Unreadable or absent: no wait is named, and our own backoff decides.
+    expect(nonsense.retryAfterMs).toBeUndefined()
+    expect(silent.retryAfterMs).toBeUndefined()
   })
 })
 

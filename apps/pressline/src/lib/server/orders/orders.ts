@@ -420,21 +420,46 @@ export interface OrderPatch {
 }
 
 /**
+ * How far back to look for the note before writing it again.
+ *
+ * `state` is once per reason *while the Order sits where it is*: the provider
+ * failing an Order already on hold is about this stay, and coming back to the
+ * state later is a fresh occasion worth recording.
+ *
+ * `order` is once per Order, ever. A refund or a dispute is a fact about the
+ * payment, and the Order goes on moving underneath it — scoping those to the
+ * state would re-announce the same dispute at every step from `paid` to
+ * `shipped`, which is the nightly repeat #95 exists to end.
+ */
+export type AnnotateScope = 'state' | 'order'
+
+/**
  * Record a fact that moved nothing: a same-state Transition row carrying a
- * note (the provider failing an Order already on hold). Written once per
- * reason, so a repeat of the latest note is a no-op; one INSERT (ADR-0008),
- * conditional on the state read, like `transition`. Answers whether it wrote.
+ * note. Written once per reason within `scope`, however much was recorded in
+ * between, so a step that records two kinds of fact about one Order cannot make
+ * each one look new to the other. One INSERT (ADR-0008), conditional on the
+ * state read, like `transition`. Answers whether it wrote.
  */
 export const annotate = (
   orderId: string,
   cause: Cause,
   causeRef: string | undefined,
   note: string,
+  scope: AnnotateScope = 'state',
 ) =>
   Effect.gen(function* () {
     const order = yield* findOrder(orderId)
-    const latest = (yield* listTransitions(orderId)).at(-1)
-    if (latest && latest.to === order.state && latest.note === note) return false
+    const history = yield* listTransitions(orderId)
+    // A `state`-scoped note is about *this* stay, so the ledger from before the
+    // Order last entered the state it is in belongs to an earlier one: a provider
+    // that failed an Order on hold, released it, and failed it again is saying
+    // something new both times. Annotations are same-state rows, so only a row
+    // that changed state counts as an entry.
+    const stay =
+      scope === 'order'
+        ? 0
+        : history.findLastIndex((t) => t.to === order.state && t.from !== t.to) + 1
+    if (history.slice(stay).some((t) => t.note === note)) return false
     const db = yield* Db
     const now = yield* Clock.currentTimeMillis
     yield* db

@@ -90,11 +90,57 @@ export interface PspWebhookStatus {
   readonly detail?: string
 }
 
+/**
+ * Where a dispute stands. A `warning_*` status is an inquiry: it withdraws no
+ * funds and may close without ever becoming a chargeback. The rest are a real
+ * chargeback, which withdraws the amount plus the dispute fee until it closes.
+ * The lifecycle runs 2-3 months and can even move from `lost` back to `won`.
+ * `unknown` is a status this adapter does not recognize; it is never terminal.
+ */
+export const DISPUTE_STATUSES = [
+  'warning_needs_response',
+  'warning_under_review',
+  'warning_closed',
+  'needs_response',
+  'under_review',
+  'won',
+  'lost',
+  'prevented',
+] as const
+
+export type DisputeStatus = (typeof DISPUTE_STATUSES)[number] | 'unknown'
+
+/** Whether the PSP names a status this adapter knows; anything else reads as `unknown`. */
+export const isDisputeStatus = (s: string): s is DisputeStatus =>
+  (DISPUTE_STATUSES as ReadonlyArray<string>).includes(s)
+
+/** A dispute has closed and asks nothing further of the Operator. */
+export const DISPUTE_CLOSED: ReadonlySet<DisputeStatus> = new Set<DisputeStatus>([
+  'won',
+  'warning_closed',
+  'prevented',
+])
+
+/**
+ * An inquiry (Stripe's `warning_*`): the Customer's bank is asking, no funds
+ * have moved, and answering it can stop a chargeback from ever opening.
+ */
+export const isInquiry = (status: DisputeStatus) => status.startsWith('warning_')
+
+export interface PaymentDispute {
+  readonly status: DisputeStatus
+  /** Minor units under dispute, in the payment's currency. */
+  readonly amount: number
+  /** The PSP's reason code, when it names one (`fraudulent`, `product_not_received`, …). */
+  readonly reason?: string
+}
+
 /** What the PSP says about a payment after the fact (refunds and disputes happen outside Pressline). */
 export interface PaymentStatus {
   readonly refunded: boolean
   readonly amountRefunded: number
-  readonly disputed: boolean
+  /** Present once the PSP knows of a dispute, and it stays present after the dispute closes. */
+  readonly dispute?: PaymentDispute
 }
 
 export interface PspService {

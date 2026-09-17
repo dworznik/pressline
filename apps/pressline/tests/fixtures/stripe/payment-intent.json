@@ -1,0 +1,22 @@
+{
+  "id": "pi_3Clean",
+  "object": "payment_intent",
+  "amount": 3479,
+  "amount_received": 3479,
+  "currency": "eur",
+  "status": "succeeded",
+  "latest_charge": {
+    "id": "ch_3Clean",
+    "object": "charge",
+    "amount": 3479,
+    "amount_captured": 3479,
+    "amount_refunded": 1000,
+    "currency": "eur",
+    "disputed": false,
+    "livemode": false,
+    "paid": true,
+    "payment_intent": "pi_3Clean",
+    "refunded": false,
+    "status": "succeeded"
+  }
+}

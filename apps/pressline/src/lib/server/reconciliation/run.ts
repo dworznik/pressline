@@ -1,4 +1,5 @@
 import { Clock, Effect, Schema } from 'effect'
+import { SESSION_TTL_MS } from '../checkout/checkout'
 import { Config } from '../config/schema'
 import { Db } from '../db/db'
 import { Engines } from '../design/engines'
@@ -9,7 +10,7 @@ import { submitOrder } from '../orders/submit'
 import type { DesignSource } from '../services/design-source'
 import { FulfillmentProvider } from '../services/fulfillment-provider'
 import { Mailer } from '../services/mailer'
-import { Psp } from '../services/psp'
+import { DISPUTE_CLOSED, isInquiry, Psp, type PaymentDispute } from '../services/psp'
 import { listUnprocessed, receive, release, settle, type InboundOutcome } from '../webhooks/inbound'
 import { PROVIDER_FAILED_NOTE, applyPrintfulEvent, stateFor } from '../webhooks/printful'
 import { applyPaid, applyStripeEvent } from '../webhooks/stripe'
@@ -59,7 +60,13 @@ export const ReconciliationReport = Schema.Struct({
 })
 export type ReconciliationReport = typeof ReconciliationReport.Type
 
-export const CHECKOUT_STALE_MS = 24 * 60 * 60 * 1000
+/**
+ * How long a `checkout_open` Order may sit before the sweep asks the PSP about
+ * it. The sweep exists to catch a missed `checkout.session.expired`, so it is
+ * the session's own life plus a margin for a late webhook — not a number of its
+ * own (#152). Change `SESSION_TTL_MS` and this moves with it.
+ */
+export const CHECKOUT_STALE_MS = SESSION_TTL_MS + 30 * 60_000
 export const PAID_STALE_MS = 15 * 60 * 1000
 /** How far back the refund scan looks; refunds older than this are the Operator's bookkeeping. */
 export const REFUND_WINDOW_MS = 90 * 24 * 60 * 60 * 1000
@@ -81,7 +88,7 @@ const step = (): Step => ({ checked: 0, repaired: 0, notes: [] })
 const olderThan = (orders: ReadonlyArray<Order>, now: number, ms: number) =>
   orders.filter((o) => now - o.updatedAt > ms)
 
-/** 1. `checkout_open` older than 24h: ask the PSP; paid → settle (missed webhook), else expire. */
+/** 1. `checkout_open` past its session's life: ask the PSP; paid → settle (missed webhook), else expire. */
 const staleCheckouts = (run: Run) =>
   Effect.gen(function* () {
     const r = step()
@@ -118,6 +125,16 @@ const staleCheckouts = (run: Run) =>
         r.repaired++
         continue
       }
+      // A `complete` session is a Customer who already committed. A delayed
+      // notification method (ACH, SEPA, Boleto, Konbini…) completes the session
+      // `unpaid` and settles days later, and `expired` has no outgoing edges, so
+      // expiring one here would dead-end an Order that is about to be paid: the
+      // settlement is then refused and the money has nowhere to land. Only a
+      // session the Customer never completed is this sweep's to expire.
+      if (session && session.right.status === 'complete') {
+        r.notes.push(`${order.id}: awaiting a delayed payment (session complete, still unpaid)`)
+        continue
+      }
       if (run.dryRun) {
         r.notes.push(`${order.id}: would expire`)
         continue
@@ -148,6 +165,19 @@ const stuckPaid = (run: Run) =>
         continue
       }
       const outcome = yield* submitOrder(order.id, 'reconciliation', 'reconcile')
+      if (outcome.outcome === 'retry_later' && outcome.rateLimited) {
+        // Same reason the catch-up pass stops: the lockout is store-wide, so
+        // submitting the rest of the queue into it only holds it open (#153).
+        r.checked--
+        r.notes.push(
+          `rate limited by the provider: pass ended after ${r.checked} of ${stuck.length} stuck Orders, the rest are still paid`,
+        )
+        run.alarms.push({
+          kind: 'provider_status',
+          message: `provider rate limit reached: ${stuck.length - r.checked} stuck Order(s) were not resubmitted; the next run continues`,
+        })
+        break
+      }
       if (outcome.outcome === 'submitted' || outcome.outcome === 'already_submitted') r.repaired++
       else
         run.alarms.push({
@@ -170,8 +200,8 @@ const providerCatchUp = (run: Run) =>
       ...(yield* listOrders({ state: 'on_hold', limit: PAGE })),
     ]
     for (const order of open) {
-      r.checked++
       if (!order.providerOrderId) {
+        r.checked++
         run.alarms.push({
           kind: 'provider_status',
           orderId: order.id,
@@ -180,6 +210,21 @@ const providerCatchUp = (run: Run) =>
         continue
       }
       const fetched = yield* provider.getOrder(order.providerOrderId).pipe(Effect.either)
+      if (fetched._tag === 'Left' && fetched.left.status === 429) {
+        // The provider's limiter is store-wide and locks us out for a minute, so a
+        // pass that keeps walking can fail the submit for a new paid Order. Stop,
+        // and say so rather than reporting a half-done pass as a clean one: this
+        // step is idempotent and the Orders it never reached are still open (#153).
+        r.notes.push(
+          `rate limited by the provider: pass ended after ${r.checked} of ${open.length} open Orders, the rest are still open`,
+        )
+        run.alarms.push({
+          kind: 'provider_status',
+          message: `provider rate limit reached: the catch-up pass checked ${r.checked} of ${open.length} open Orders and stopped; the next run continues`,
+        })
+        break
+      }
+      r.checked++
       if (fetched._tag === 'Left') {
         r.notes.push(`${order.id}: provider unavailable (${fetched.left.message})`)
         continue
@@ -231,6 +276,22 @@ const providerCatchUp = (run: Run) =>
   })
 
 /**
+ * What the Operator needs from an Alarm about a dispute: whether the money is
+ * gone, how much, and whether anything is owed in return. A `warning_*` status
+ * is an inquiry — no funds move, but answering it can stop a chargeback.
+ */
+const disputeMessage = (d: PaymentDispute) => {
+  const why = d.reason ? ` (${d.reason})` : ''
+  if (isInquiry(d.status)) {
+    return `inquiry (${d.status}) for ${d.amount}${why}: no funds withdrawn, but answer it before it becomes a chargeback`
+  }
+  if (d.status === 'lost') {
+    return `dispute lost${why}: ${d.amount} is withdrawn, along with the dispute fee`
+  }
+  return `chargeback (${d.status}) for ${d.amount}${why}: the funds are withheld until it closes`
+}
+
+/**
  * 4. Refunds and disputes seen at the PSP within the refund window. A refund
  * is a fact wherever the Order is (ADR-0009); it is recorded and alarmed once.
  */
@@ -262,12 +323,36 @@ const refundsAndDisputes = (run: Run) =>
         r.notes.push(`${order.id}: PSP unavailable (${status.left.message})`)
         continue
       }
-      if (status.right.disputed) {
-        run.alarms.push({
-          kind: 'dispute',
-          orderId: order.id,
-          message: 'payment is disputed at the PSP',
-        })
+      // A dispute walks up to eight states over 2-3 months and ADR-0009 has no Order
+      // state for any of them, so it is recorded as a same-state Transition, once per
+      // state, and alarmed on the state the ledger has not seen before. A closed
+      // dispute is recorded and never alarmed: winning one needs no human (#95).
+      const dispute = status.right.dispute
+      if (dispute) {
+        const note = `dispute ${dispute.status} for ${dispute.amount} at the PSP`
+        if (run.dryRun) {
+          r.notes.push(`${order.id}: would record ${note}`)
+        } else {
+          // Scoped to the Order, not its state: the Order keeps moving under a
+          // dispute that runs for months, and each move must not re-announce it.
+          const recorded = yield* annotate(
+            order.id,
+            'reconciliation',
+            paymentIntentId,
+            note,
+            'order',
+          ).pipe(Effect.orElseSucceed(() => false))
+          if (recorded) {
+            r.repaired++
+            if (!DISPUTE_CLOSED.has(dispute.status)) {
+              run.alarms.push({
+                kind: 'dispute',
+                orderId: order.id,
+                message: disputeMessage(dispute),
+              })
+            }
+          }
+        }
       }
       // `refunded` is the PSP's "fully refunded" flag and stays false for a partial
       // refund, so the amount is the only signal that money went back (#92).
@@ -289,6 +374,7 @@ const refundsAndDisputes = (run: Run) =>
           'reconciliation',
           paymentIntentId,
           `partially refunded ${amount} of ${captured} at the PSP`,
+          'order',
         ).pipe(Effect.orElseSucceed(() => false))
         if (noted) {
           r.repaired++

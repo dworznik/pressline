@@ -127,6 +127,47 @@ describe('paid → submitted (Printful draft → check → confirm)', () => {
     expect(app.providerOrders()[0]!.status).toBe('draft') // never confirmed while calculating
   }, 20_000)
 
+  it('waits the time the provider names rather than its own backoff', async () => {
+    // Our ramp is 100 ms, 200 ms, 400 ms — over before a provider that asked for a
+    // second has let go. Retrying early just spends the attempt on a wall (#98).
+    app = await boot({ createRetryableFailures: 2, retryAfterMs: 1000 })
+    const started = Date.now()
+    const { orderId, token, ack } = await payFor(app)
+    const elapsed = Date.now() - started
+    expect(ack.body.outcome).toMatch(/^applied:submit=submitted/)
+    expect(await stateOf(app, orderId, token)).toBe('submitted')
+    expect(elapsed).toBeGreaterThanOrEqual(1_900)
+  }, 20_000)
+
+  it('answers retry_later at once when the provider names a wait longer than the attempt budget', async () => {
+    // Printful's limiter locks the store out for a minute; the webhook handler has
+    // twenty seconds. Sitting out a wait it cannot finish only ends in the budget's
+    // own timeout, so the Order is left paid for Reconciliation instead (#98).
+    // 15 s is inside the 20 s budget and still too long: waiting it out would leave
+    // no room for the call it was waiting for, so the whole attempt would time out.
+    app = await boot()
+    app.setProviderRateLimited(0, 15_000)
+    const started = Date.now()
+    const { orderId, token, ack } = await payFor(app)
+    const elapsed = Date.now() - started
+
+    expect(ack.status).toBe(200)
+    expect(ack.body.outcome).toMatch(/^applied:submit=retry_later/)
+    expect(await stateOf(app, orderId, token)).toBe('paid')
+    expect(app.providerOrders()).toEqual([])
+    expect(elapsed).toBeLessThan(5_000)
+
+    // The limiter lifts: the redelivery submits normally.
+    app.setProviderRateLimited(undefined)
+    const again = await app.pspWebhook({
+      id: 'evt_2',
+      type: 'checkout.session.completed',
+      sessionId: (await app.pspSessions())[0]!.session.id,
+    })
+    expect(again.body.outcome).toMatch(/submit=submitted/)
+    expect(await stateOf(app, orderId, token)).toBe('submitted')
+  })
+
   it('re-run after a confirm failure reuses the existing draft: no second draft, then confirmed', async () => {
     app = await boot({ confirmRetryableFailures: 5 }) // more than one handler's retries (1 + 3), fewer than two
     const { orderId, token, sessionId, ack } = await payFor(app)

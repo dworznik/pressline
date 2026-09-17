@@ -131,13 +131,20 @@ describe('Reconciliation repairs', () => {
   let app: TestApp
   afterEach(() => app?.dispose())
 
-  it('expires stale checkouts, and settles one that was paid but never announced', async () => {
+  it('expires stale checkouts once their session has died, and settles one that was paid but never announced', async () => {
     app = await boot()
     const abandoned = await checkout(app)
     const missedWebhook = await checkout(app)
     const fresh = await checkout(app)
     app.setPspSession(missedWebhook.session, { ...paidSession, paymentIntentId: 'pi_missed' })
-    app.advanceClock('25 hours')
+
+    // The session dies after an hour; the sweep waits a half-hour longer for a late
+    // `checkout.session.expired` before acting on its own (#152).
+    app.advanceClock('80 minutes')
+    expect((await reconcile(app)).steps.staleCheckouts).toMatchObject({ checked: 0, repaired: 0 })
+    expect((await detail(app, abandoned.orderId)).order.state).toBe('checkout_open')
+
+    app.advanceClock('20 minutes')
     const late = await checkout(app)
 
     const report = await reconcile(app)
@@ -153,6 +160,38 @@ describe('Reconciliation repairs', () => {
       ['submitted', 'reconciliation'],
     ])
     expect((await app.sentMail()).map((m) => m.subject)).toHaveLength(1)
+  })
+
+  it('leaves a delayed payment alone: the sweep expires abandonment, not settlement', async () => {
+    // ACH, SEPA, Boleto and friends complete the Session `unpaid` and settle days
+    // later. Expiring one dead-ends it — `expired` has no outgoing edges — so the
+    // settlement is refused and the Customer has paid for an Order that never ships.
+    app = await boot()
+    const { orderId, session } = await checkout(app)
+    app.setPspSession(session, {
+      status: 'complete',
+      paymentStatus: 'unpaid',
+      consentAccepted: true,
+      customer: { email: 'anna@example.com' },
+    })
+
+    app.advanceClock('2 hours')
+    const report = await reconcile(app)
+    expect((await detail(app, orderId)).order.state).toBe('checkout_open')
+    expect(report.steps.staleCheckouts?.notes).toEqual([
+      `${orderId}: awaiting a delayed payment (session complete, still unpaid)`,
+    ])
+
+    // Days later the bank settles, and the Order is still able to take it.
+    app.advanceClock('3 days')
+    app.setPspSession(session, { ...paidSession, paymentIntentId: 'pi_settled' })
+    const ack = await app.pspWebhook({
+      id: 'evt_settled',
+      type: 'checkout.session.async_payment_succeeded',
+      sessionId: session,
+    })
+    expect(ack.body.outcome).toMatch(/^applied/)
+    expect((await detail(app, orderId)).order.state).toBe('submitted')
   })
 
   it('submits a paid Order the webhook could not, and alarms for one that failed outright', async () => {
@@ -222,6 +261,68 @@ describe('Reconciliation repairs', () => {
     )
   })
 
+  it('ends the provider pass when the limiter bites instead of holding the store in a lockout', async () => {
+    // The limiter is store-wide and the lockout lasts a minute, so a nightly pass
+    // that keeps walking Orders can fail a submit for a *new* paid Order (#153).
+    app = await boot()
+    const orders: string[] = []
+    for (let i = 0; i < 3; i++) {
+      const { orderId, session } = await checkout(app)
+      await pay(app, session)
+      orders.push(orderId)
+    }
+
+    // One provider read gets through; the next is a 429.
+    app.setProviderRateLimited(1)
+    const limited = await reconcile(app)
+    expect(limited.steps.providerCatchUp).toMatchObject({ checked: 1, repaired: 0 })
+    expect(limited.steps.providerCatchUp?.notes).toEqual([
+      'rate limited by the provider: pass ended after 1 of 3 open Orders, the rest are still open',
+    ])
+    expect(limited.alarms).toEqual([
+      {
+        kind: 'provider_status',
+        message:
+          'provider rate limit reached: the catch-up pass checked 1 of 3 open Orders and stopped; the next run continues',
+      },
+    ])
+
+    // The lockout lifts: the next run walks all three, including the ones it never reached.
+    app.setProviderRateLimited(undefined)
+    const full = await reconcile(app)
+    expect(full.steps.providerCatchUp).toMatchObject({ checked: 3 })
+    expect(full.steps.providerCatchUp?.notes).toEqual([])
+    expect(full.alarms).toEqual([])
+  })
+
+  it('stops resubmitting stuck Orders into a lockout too', async () => {
+    // The stuck-paid pass runs before the catch-up pass and also calls the provider
+    // per Order, so it has to yield to the limiter for the same reason (#153).
+    app = await boot({ createRetryableFailures: 100 })
+    for (let i = 0; i < 3; i++) {
+      const { session } = await checkout(app)
+      await pay(app, session)
+    }
+    app.advanceClock('20 minutes')
+    app.setProviderRateLimited(0)
+
+    const report = await reconcile(app)
+    expect(report.steps.stuckPaid).toMatchObject({ checked: 0, repaired: 0 })
+    expect(report.steps.stuckPaid?.notes).toEqual([
+      'rate limited by the provider: pass ended after 0 of 3 stuck Orders, the rest are still paid',
+    ])
+    expect(report.alarms).toContainEqual({
+      kind: 'provider_status',
+      message:
+        'provider rate limit reached: 3 stuck Order(s) were not resubmitted; the next run continues',
+    })
+    // No Order was dragged into submit_failed by a limiter that says nothing about it.
+    const { body } = await app.json<{ orders: { state: string }[] }>('/api/operator/orders', {
+      headers: bearer,
+    })
+    expect(body.orders.map((o) => o.state)).toEqual(['paid', 'paid', 'paid'])
+  })
+
   it('a confirmed order the provider then fails (payment, file) goes on_hold and alarms', async () => {
     app = await boot()
     const { orderId, session } = await checkout(app)
@@ -271,7 +372,6 @@ describe('Reconciliation repairs', () => {
     app.setPspPayment('pi_partial', {
       refunded: false,
       amountRefunded: 1000,
-      disputed: false,
     })
 
     let report = await reconcile(app)
@@ -299,7 +399,7 @@ describe('Reconciliation repairs', () => {
     expect(again.transitions).toHaveLength(after.transitions.length)
 
     // A further partial refund is a new amount, so a new row and a new Alarm.
-    app.setPspPayment('pi_partial', { refunded: false, amountRefunded: 1500, disputed: false })
+    app.setPspPayment('pi_partial', { refunded: false, amountRefunded: 1500 })
     report = await reconcile(app)
     expect(report.alarms).toHaveLength(1)
     expect((await detail(app, a.orderId)).transitions.at(-1)).toMatchObject({
@@ -310,7 +410,6 @@ describe('Reconciliation repairs', () => {
     app.setPspPayment('pi_partial', {
       refunded: true,
       amountRefunded: captured,
-      disputed: false,
     })
     await reconcile(app)
     expect((await detail(app, a.orderId)).order.state).toBe('refunded')
@@ -323,13 +422,22 @@ describe('Reconciliation repairs', () => {
     await pay(app, a.session, 'pi_refunded')
     const b = await checkout(app)
     await pay(app, b.session, 'pi_disputed')
-    app.setPspPayment('pi_refunded', { refunded: true, amountRefunded: 3479, disputed: false })
-    app.setPspPayment('pi_disputed', { refunded: false, amountRefunded: 0, disputed: true })
+    app.setPspPayment('pi_refunded', { refunded: true, amountRefunded: 3479 })
+    app.setPspPayment('pi_disputed', {
+      refunded: false,
+      amountRefunded: 0,
+      dispute: { status: 'needs_response', amount: 3479, reason: 'fraudulent' },
+    })
 
     const report = await reconcile(app)
     expect(report.alarms).toEqual([
       { kind: 'refund', orderId: a.orderId, message: 'refund of 3479 recorded' },
-      { kind: 'dispute', orderId: b.orderId, message: 'payment is disputed at the PSP' },
+      {
+        kind: 'dispute',
+        orderId: b.orderId,
+        message:
+          'chargeback (needs_response) for 3479 (fraudulent): the funds are withheld until it closes',
+      },
     ])
     const refunded = await detail(app, a.orderId)
     expect(refunded.order.state).toBe('refunded')
@@ -346,11 +454,106 @@ describe('Reconciliation repairs', () => {
     ).toHaveLength(1)
   })
 
+  it('records every dispute state once, and a closed dispute never wakes the Operator', async () => {
+    // A dispute walks eight states over 2-3 months. Before #95 it was one boolean,
+    // so the Operator could not tell an inquiry from a chargeback and the Alarm
+    // repeated every night forever, win or lose.
+    app = await boot()
+    const { orderId, session } = await checkout(app)
+    await pay(app, session, 'pi_dispute')
+    const providerOrderId = (await detail(app, orderId)).order.providerOrderId!
+
+    // An inquiry: nothing is withdrawn yet, but it has a deadline.
+    app.setPspPayment('pi_dispute', {
+      refunded: false,
+      amountRefunded: 0,
+      dispute: { status: 'warning_needs_response', amount: 3479, reason: 'fraudulent' },
+    })
+    let report = await reconcile(app)
+    expect(report.alarms).toEqual([
+      {
+        kind: 'dispute',
+        orderId,
+        message:
+          'inquiry (warning_needs_response) for 3479 (fraudulent): no funds withdrawn, but answer it before it becomes a chargeback',
+      },
+    ])
+    let seen = await detail(app, orderId)
+    expect(seen.order.state).toBe('submitted')
+    expect(seen.transitions.at(-1)).toMatchObject({
+      from: 'submitted',
+      to: 'submitted',
+      cause: 'reconciliation',
+      causeRef: 'pi_dispute',
+      note: 'dispute warning_needs_response for 3479 at the PSP',
+    })
+
+    // Nothing moved at the PSP: no second row and no second Alarm.
+    report = await reconcile(app)
+    expect(report.alarms).toEqual([])
+    expect((await detail(app, orderId)).transitions).toHaveLength(seen.transitions.length)
+
+    // The Order moves on underneath the dispute, which runs for months. A dispute is
+    // a fact about the payment, not about where the Order is, so every step from paid
+    // to shipped must not re-announce the same one.
+    app.setProviderOrderStatus(providerOrderId, 'inprocess')
+    report = await reconcile(app)
+    expect((await detail(app, orderId)).order.state).toBe('in_production')
+    expect(report.alarms.filter((a) => a.kind === 'dispute')).toEqual([])
+    expect(
+      (await detail(app, orderId)).transitions.filter((t) => t.note?.startsWith('dispute ')),
+    ).toHaveLength(1)
+
+    // The inquiry became a real chargeback: a new state, so a new row and one Alarm.
+    app.setPspPayment('pi_dispute', {
+      refunded: false,
+      amountRefunded: 0,
+      dispute: { status: 'needs_response', amount: 3479, reason: 'fraudulent' },
+    })
+    report = await reconcile(app)
+    expect(report.alarms).toEqual([
+      {
+        kind: 'dispute',
+        orderId,
+        message:
+          'chargeback (needs_response) for 3479 (fraudulent): the funds are withheld until it closes',
+      },
+    ])
+
+    // Lost: the money is gone, said once.
+    app.setPspPayment('pi_dispute', {
+      refunded: false,
+      amountRefunded: 0,
+      dispute: { status: 'lost', amount: 3479, reason: 'fraudulent' },
+    })
+    report = await reconcile(app)
+    expect(report.alarms).toEqual([
+      {
+        kind: 'dispute',
+        orderId,
+        message: 'dispute lost (fraudulent): 3479 is withdrawn, along with the dispute fee',
+      },
+    ])
+
+    // A late win. Recorded for the ledger; a closed dispute needs no human, tonight or ever.
+    app.setPspPayment('pi_dispute', {
+      refunded: false,
+      amountRefunded: 0,
+      dispute: { status: 'won', amount: 3479, reason: 'fraudulent' },
+    })
+    report = await reconcile(app)
+    expect(report.alarms).toEqual([])
+    seen = await detail(app, orderId)
+    expect(seen.transitions.at(-1)).toMatchObject({ note: 'dispute won for 3479 at the PSP' })
+    expect((await reconcile(app)).alarms).toEqual([])
+    expect((await detail(app, orderId)).transitions).toHaveLength(seen.transitions.length)
+  })
+
   it('records a refund after submission and tells the Operator to cancel at the provider', async () => {
     app = await boot()
     const { orderId, session } = await checkout(app)
     await pay(app, session, 'pi_late_refund')
-    app.setPspPayment('pi_late_refund', { refunded: true, amountRefunded: 3479, disputed: false })
+    app.setPspPayment('pi_late_refund', { refunded: true, amountRefunded: 3479 })
     const report = await reconcile(app)
     expect(report.alarms).toEqual([
       {

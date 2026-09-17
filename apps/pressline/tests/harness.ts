@@ -79,6 +79,12 @@ export interface TestApp {
   readonly setProviderOrderStatus: (id: string, status: ProviderOrder['status']) => void
   /** What the in-memory provider reports as shipments for one of its orders. */
   readonly setProviderShipments: (id: string, list: ReadonlyArray<ProviderShipment>) => void
+  /**
+   * Trip the in-memory provider's rate limiter after this many further order
+   * calls (0 trips the next one); `undefined` lifts it. Past it every call is a
+   * 429 naming `retryAfterMs`, the way Printful's leaky bucket behaves.
+   */
+  readonly setProviderRateLimited: (afterCalls: number | undefined, retryAfterMs?: number) => void
   /** Deliver a Printful-shaped webhook the in-memory provider will accept (signature `memory:valid` unless overridden). */
   readonly printfulWebhook: (
     body: {
@@ -194,6 +200,7 @@ export const makeTestApp = async (options: TestAppOptions = {}): Promise<TestApp
     bytesServed: (url) => served.get(url) ?? 0,
     providerOrders: provider.providerOrders,
     setProviderOrderStatus: provider.setProviderOrderStatus,
+    setProviderRateLimited: provider.setProviderRateLimited,
     setProviderShipments: provider.setProviderShipments,
     printfulWebhook: async (body, signature = 'memory:valid') => {
       const res = await fetch('/webhooks/printful', {

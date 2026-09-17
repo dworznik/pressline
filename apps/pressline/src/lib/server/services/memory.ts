@@ -233,13 +233,7 @@ export const makePspMemory = (options: PspMemoryOptions = {}) =>
       getPaymentStatus: (paymentIntentId) =>
         down
           ? Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
-          : Effect.succeed(
-              payments.get(paymentIntentId) ?? {
-                refunded: false,
-                amountRefunded: 0,
-                disputed: false,
-              },
-            ),
+          : Effect.succeed(payments.get(paymentIntentId) ?? { refunded: false, amountRefunded: 0 }),
       getWebhookStatus: () => Effect.succeed({ configured: true, url: pspWebhookUrl }),
       expireCheckoutSession: (id) => {
         if (down) return Effect.fail(new PspError({ message: 'PSP unreachable', retryable: true }))
@@ -339,6 +333,8 @@ export interface MemoryCatalog {
   readonly orders?: {
     /** Fail the next N create calls with a retryable error. */
     readonly createRetryableFailures?: number
+    /** The wait every scripted retryable failure names (its `retry-after`); none by default. */
+    readonly retryAfterMs?: number
     /** Reject every create with a non-retryable error (address problem, bad file). */
     readonly createRejects?: string
     /** Fail the next N confirm calls with a retryable error. */
@@ -415,6 +411,36 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
       Ref.update(calls, (n) => n + 1).pipe(
         Effect.flatMap(() => (item ? Effect.succeed(item) : notFound(what, id))),
       )
+    /** A scripted retryable failure, naming a wait only when the test asked for one. */
+    const scriptedOutage = () =>
+      new FulfillmentProviderError({
+        message: 'provider 503',
+        retryable: true,
+        status: 503,
+        ...(catalog.orders?.retryAfterMs === undefined
+          ? {}
+          : { retryAfterMs: catalog.orders.retryAfterMs }),
+      })
+    /**
+     * Printful's leaky bucket, as a test can trip it: once this many order calls
+     * have gone through, every further one is a 429 naming a wait (#98, #153).
+     */
+    let limitAfter: number | undefined
+    let limitRetryAfterMs = 60_000
+    let orderCalls = 0
+    const limited = <A>(eff: Effect.Effect<A, FulfillmentProviderError>) =>
+      Effect.suspend(() =>
+        limitAfter !== undefined && orderCalls++ >= limitAfter
+          ? Effect.fail(
+              new FulfillmentProviderError({
+                message: 'Printful 429: rate limit exceeded',
+                retryable: true,
+                status: 429,
+                retryAfterMs: limitRetryAfterMs,
+              }),
+            )
+          : eff,
+      )
     return {
       layer: Layer.succeed(FulfillmentProvider, {
         health: () => Effect.void,
@@ -457,122 +483,127 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
             Effect.map(() => shipments.get(providerOrderId) ?? []),
           ),
         findOrderByExternalId: (externalId, attempt) =>
-          Ref.update(calls, (n) => n + 1).pipe(
-            Effect.map(() =>
-              [...providerOrders.values()].find(
-                (o) => o.externalId === externalId && (o.attempt ?? 0) === (attempt ?? 0),
+          limited(
+            Ref.update(calls, (n) => n + 1).pipe(
+              Effect.map(() =>
+                [...providerOrders.values()].find(
+                  (o) => o.externalId === externalId && (o.attempt ?? 0) === (attempt ?? 0),
+                ),
               ),
             ),
           ),
         createOrderDraft: (d: ProviderOrderDraft) =>
-          Ref.update(calls, (n) => n + 1).pipe(
-            Effect.flatMap(() => {
-              const cfg = catalog.orders ?? {}
-              if (cfg.createRejects) {
-                return Effect.fail(
-                  new FulfillmentProviderError({
-                    message: cfg.createRejects,
-                    retryable: false,
-                    status: 400,
-                  }),
-                )
-              }
-              if (createFailuresLeft > 0) {
-                createFailuresLeft -= 1
-                return Effect.fail(
-                  new FulfillmentProviderError({
-                    message: 'provider 503',
-                    retryable: true,
-                    status: 503,
-                  }),
-                )
-              }
-              const key = `${d.externalId}#${d.attempt ?? 0}`
-              if (usedExternalIds.has(key)) {
-                return Effect.fail(
-                  new FulfillmentProviderError({
-                    message: `External ID validation error. external_id must be unique per store, ${key} is already used`,
-                    retryable: false,
-                    status: 400,
-                  }),
-                )
-              }
-              usedExternalIds.add(key)
-              const id = String(1000 + providerOrders.size)
-              const order: ProviderOrder = {
-                id,
-                externalId: d.externalId,
-                attempt: d.attempt ?? 0,
-                status: 'draft',
-                recipient: {
-                  countryCode: cfg.draftCountryOverride ?? d.recipient.countryCode,
-                  ...(d.recipient.stateCode ? { stateCode: d.recipient.stateCode } : {}),
-                },
-                items: [
-                  {
-                    catalogVariantId: cfg.draftVariantOverride ?? d.item.catalogVariantId,
-                    quantity: 1,
-                    ...(cfg.placementFailure ? { failedPlacement: cfg.placementFailure } : {}),
+          limited(
+            Ref.update(calls, (n) => n + 1).pipe(
+              Effect.flatMap(() => {
+                const cfg = catalog.orders ?? {}
+                if (cfg.createRejects) {
+                  return Effect.fail(
+                    new FulfillmentProviderError({
+                      message: cfg.createRejects,
+                      retryable: false,
+                      status: 400,
+                    }),
+                  )
+                }
+                if (createFailuresLeft > 0) {
+                  createFailuresLeft -= 1
+                  return Effect.fail(scriptedOutage())
+                }
+                const key = `${d.externalId}#${d.attempt ?? 0}`
+                if (usedExternalIds.has(key)) {
+                  return Effect.fail(
+                    new FulfillmentProviderError({
+                      message: `External ID validation error. external_id must be unique per store, ${key} is already used`,
+                      retryable: false,
+                      status: 400,
+                    }),
+                  )
+                }
+                usedExternalIds.add(key)
+                const id = String(1000 + providerOrders.size)
+                const order: ProviderOrder = {
+                  id,
+                  externalId: d.externalId,
+                  attempt: d.attempt ?? 0,
+                  status: 'draft',
+                  recipient: {
+                    countryCode: cfg.draftCountryOverride ?? d.recipient.countryCode,
+                    ...(d.recipient.stateCode ? { stateCode: d.recipient.stateCode } : {}),
                   },
-                ],
-                costs: {
-                  currency: d.currency,
-                  subtotal: 1090,
-                  shipping: 479,
-                  tax: 0,
-                  total: 1569,
-                  calculating: false,
-                },
-              }
-              providerOrders.set(id, order)
-              return Effect.succeed(stillCalculating(order))
-            }),
+                  items: [
+                    {
+                      catalogVariantId: cfg.draftVariantOverride ?? d.item.catalogVariantId,
+                      quantity: 1,
+                      ...(cfg.placementFailure ? { failedPlacement: cfg.placementFailure } : {}),
+                    },
+                  ],
+                  costs: {
+                    currency: d.currency,
+                    subtotal: 1090,
+                    shipping: 479,
+                    tax: 0,
+                    total: 1569,
+                    calculating: false,
+                  },
+                }
+                providerOrders.set(id, order)
+                return Effect.succeed(stillCalculating(order))
+              }),
+            ),
           ),
         confirmOrder: (id) =>
-          Ref.update(calls, (n) => n + 1).pipe(
-            Effect.flatMap(() => {
+          limited(
+            Ref.update(calls, (n) => n + 1).pipe(
+              Effect.flatMap(() => {
+                const o = providerOrders.get(id)
+                if (!o) return notFound('provider order', Number(id))
+                if (costsCalculatingLeft > 0) {
+                  return Effect.fail(
+                    new FulfillmentProviderError({
+                      message:
+                        'provider 400: Order cannot be confirmed. Cost calculations still running, try again after costs have been calculated.',
+                      retryable: true,
+                      status: 400,
+                    }),
+                  )
+                }
+                if (confirmFailuresLeft > 0) {
+                  confirmFailuresLeft -= 1
+                  return Effect.fail(scriptedOutage())
+                }
+                const confirmed: ProviderOrder = { ...o, status: 'pending' }
+                providerOrders.set(id, confirmed)
+                return Effect.succeed(confirmed)
+              }),
+            ),
+          ),
+        getOrder: (id) =>
+          // Suspended: `stillCalculating` spends one scripted calculating-read, and
+          // a call the limiter refused never reached the provider to spend it.
+          limited(
+            Effect.suspend(() => {
               const o = providerOrders.get(id)
-              if (!o) return notFound('provider order', Number(id))
-              if (costsCalculatingLeft > 0) {
-                return Effect.fail(
-                  new FulfillmentProviderError({
-                    message:
-                      'provider 400: Order cannot be confirmed. Cost calculations still running, try again after costs have been calculated.',
-                    retryable: true,
-                    status: 400,
-                  }),
-                )
-              }
-              if (confirmFailuresLeft > 0) {
-                confirmFailuresLeft -= 1
-                return Effect.fail(
-                  new FulfillmentProviderError({
-                    message: 'provider 503',
-                    retryable: true,
-                    status: 503,
-                  }),
-                )
-              }
-              const confirmed: ProviderOrder = { ...o, status: 'pending' }
-              providerOrders.set(id, confirmed)
-              return Effect.succeed(confirmed)
+              return counted('provider order', Number(id), o && stillCalculating(o))
             }),
           ),
-        getOrder: (id) => {
-          const o = providerOrders.get(id)
-          return counted('provider order', Number(id), o && stillCalculating(o))
-        },
         cancelOrder: (id) =>
-          Ref.update(calls, (n) => n + 1).pipe(
-            Effect.flatMap(() => {
-              const o = providerOrders.get(id)
-              if (!o) return notFound('provider order', Number(id))
-              if (o.status === 'inprocess' || o.status === 'partial' || o.status === 'fulfilled') {
-                return Effect.succeed('not_cancelable' as const)
-              }
-              providerOrders.set(id, { ...o, status: 'canceled' })
-              return Effect.succeed('canceled' as const)
-            }),
+          limited(
+            Ref.update(calls, (n) => n + 1).pipe(
+              Effect.flatMap(() => {
+                const o = providerOrders.get(id)
+                if (!o) return notFound('provider order', Number(id))
+                if (
+                  o.status === 'inprocess' ||
+                  o.status === 'partial' ||
+                  o.status === 'fulfilled'
+                ) {
+                  return Effect.succeed('not_cancelable' as const)
+                }
+                providerOrders.set(id, { ...o, status: 'canceled' })
+                return Effect.succeed('canceled' as const)
+              }),
+            ),
           ),
         updateOrderRecipient: (id, recipient) =>
           Ref.update(calls, (n) => n + 1).pipe(
@@ -617,6 +648,16 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
       /** What the provider reports as shipments for one of its orders. */
       setProviderShipments: (id: string, list: ReadonlyArray<ProviderShipment>) => {
         shipments.set(id, list)
+      },
+      /**
+       * Trip the provider's rate limiter after this many further order calls
+       * (0 trips the next one); `undefined` lifts it. Every call past it is a
+       * 429 naming `retryAfterMs`, as Printful's leaky bucket behaves.
+       */
+      setProviderRateLimited: (afterCalls: number | undefined, retryAfterMs = 60_000) => {
+        limitAfter = afterCalls
+        limitRetryAfterMs = retryAfterMs
+        orderCalls = 0
       },
     }
   })

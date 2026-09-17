@@ -14,7 +14,17 @@ to `ci-ok`'s `needs`, not by adding its name here.
 
 The Operator's account is a bypass actor, so a stuck check can always be merged
 through by hand. That is deliberate: a gate nobody can open is worse than the
-drift it prevents.
+drift it prevents, and one case has no other way out. A workflow file GitHub
+cannot parse produces a run with no jobs at all, so no check reports — not the
+jobs, not `ci-ok`. Required checks do not fail, they never exist, and the branch
+is closed until someone bypasses it or pushes a parseable file. `ci-ok` cannot
+help there; it is the thing that went missing. The signature is a run whose name
+is the path `.github/workflows/ci.yml` instead of `ci`:
+
+```sh
+gh run list --branch "$(git branch --show-current)" --limit 1 \
+  --json name,conclusion --jq '.[]'
+```
 
 ## Apply it
 

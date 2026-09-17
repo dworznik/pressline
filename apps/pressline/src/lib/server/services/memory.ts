@@ -578,10 +578,15 @@ export const makeFulfillmentProviderMemory = (catalog: MemoryCatalog = emptyCata
               }),
             ),
           ),
-        getOrder: (id) => {
-          const o = providerOrders.get(id)
-          return limited(counted('provider order', Number(id), o && stillCalculating(o)))
-        },
+        getOrder: (id) =>
+          // Suspended: `stillCalculating` spends one scripted calculating-read, and
+          // a call the limiter refused never reached the provider to spend it.
+          limited(
+            Effect.suspend(() => {
+              const o = providerOrders.get(id)
+              return counted('provider order', Number(id), o && stillCalculating(o))
+            }),
+          ),
         cancelOrder: (id) =>
           limited(
             Ref.update(calls, (n) => n + 1).pipe(

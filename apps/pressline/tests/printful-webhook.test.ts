@@ -197,6 +197,40 @@ describe('POST /webhooks/printful', () => {
     expect(again.body.outcome).toBe('applied:already')
     detail = await read()
     expect(detail.transitions.filter((t) => t.to === 'on_hold')).toHaveLength(2)
+
+    // Released, put back on hold, and failed again for the same reason. This is a
+    // second stay in the state, so the Operator hears it a second time: "once per
+    // reason" is about this stay, not about the Order's whole history.
+    app.setProviderOrderStatus(providerOrderId, 'inprocess')
+    await app.printfulWebhook({
+      type: 'order_remove_hold',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    })
+    expect((await stateOf(app, orderId, token)).state).toBe('in_production')
+    app.setProviderOrderStatus(providerOrderId, 'onhold')
+    await app.printfulWebhook({
+      type: 'order_put_hold',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId }, reason: 'address' } as never,
+    })
+    expect((await stateOf(app, orderId, token)).state).toBe('on_hold')
+
+    // Now the Transition is refused as same-state, so this goes through `annotate`.
+    app.setProviderOrderStatus(providerOrderId, 'failed')
+    const relapse = await app.printfulWebhook({
+      type: 'order_failed',
+      occurred_at: new Date().toISOString(),
+      data: { order: { id: providerOrderId, external_id: orderId } },
+    })
+    expect(relapse.body.outcome).toBe('applied:noted')
+    detail = await read()
+    expect(detail.transitions.at(-1)).toMatchObject({
+      from: 'on_hold',
+      to: 'on_hold',
+      note: PROVIDER_FAILED_NOTE,
+    })
+    expect(detail.transitions.filter((t) => t.note === PROVIDER_FAILED_NOTE)).toHaveLength(2)
   })
 
   it('shipment_sent → shipped with tracking number, carrier and URL', async () => {

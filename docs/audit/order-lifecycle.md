@@ -36,15 +36,15 @@ We create a hosted Checkout Session per Order and never hold card data. Source:
 We subscribe to exactly three, and the endpoint is registered with exactly
 those (`STRIPE_WEBHOOK_EVENTS`).
 
-| Event                                      | Carries                 | Our handling                                                                               | Gap |
-| ------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------ | --- |
-| `checkout.session.completed`               | Session                 | Re-fetch, then `checkout_open → paid`, submit, email                                       | —   |
-| `checkout.session.async_payment_succeeded` | Session                 | Same path as completed                                                                     | —   |
-| `checkout.session.expired`                 | Session                 | `checkout_open → expired`                                                                  | —   |
-| `checkout.session.async_payment_failed`    | Session                 | **Not subscribed.** A declined delayed payment is invisible until the 24 h sweep           | #93 |
-| `charge.refunded`                          | **Charge**, not Refund  | Not subscribed; refunds are polled instead (below)                                         | #92 |
-| `charge.dispute.*` (5 events)              | **Dispute**, not Charge | Not subscribed; the Dispute is polled instead, with its full status (below)                | #95 |
-| `payment_intent.payment_failed`            | PaymentIntent           | Not subscribed. A card decline leaves the session `open`, which is the Customer's to retry | —   |
+| Event                                      | Carries                 | Our handling                                                                                          | Gap |
+| ------------------------------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------- | --- |
+| `checkout.session.completed`               | Session                 | Re-fetch, then `checkout_open → paid`, submit, email                                                  | —   |
+| `checkout.session.async_payment_succeeded` | Session                 | Same path as completed                                                                                | —   |
+| `checkout.session.expired`                 | Session                 | `checkout_open → expired`                                                                             | —   |
+| `checkout.session.async_payment_failed`    | Session                 | **Not subscribed.** A declined delayed payment is invisible until the stale sweep, now ~90 min (#152) | #93 |
+| `charge.refunded`                          | **Charge**, not Refund  | Not subscribed; refunds are polled instead (below)                                                    | #92 |
+| `charge.dispute.*` (5 events)              | **Dispute**, not Charge | Not subscribed; the Dispute is polled instead, with its full status (below)                           | #95 |
+| `payment_intent.payment_failed`            | PaymentIntent           | Not subscribed. A card decline leaves the session `open`, which is the Customer's to retry            | —   |
 
 Delayed-notification methods (ACH, SEPA, Bacs, Boleto, Konbini, OXXO and
 friends) complete the session `unpaid` and settle 2 to 14 days later. Our flow
@@ -218,6 +218,6 @@ behaviour, a proposed fix and the test that would prove it.
 | #152 | Sessions expire in 1 h but the stale sweep waited 24 h. Found 2026-09-17. **Fixed**                                                                                                              |
 | #153 | Reconciliation's provider passes had no rate-limit pacing. Split from #98. **Partly fixed**: they stop on a 429; the `X-Ratelimit-*` headers are still unread, so nothing yields before the wall |
 
-Still open from before the audit: #77 (a deleted draft's `external_id` stays
-reserved), #78 (Review Mode), #87 (Printfile validation checks less than the
-docs promise).
+Still open from before the audit: #78 (Review Mode). #77 (a deleted draft's
+`external_id` stays reserved) and #87 (Printfile validation checks less than the
+docs promise) have both since been fixed and closed.

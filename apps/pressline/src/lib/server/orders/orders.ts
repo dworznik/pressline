@@ -449,10 +449,17 @@ export const annotate = (
 ) =>
   Effect.gen(function* () {
     const order = yield* findOrder(orderId)
-    const said = (yield* listTransitions(orderId)).some(
-      (t) => t.note === note && (scope === 'order' || t.to === order.state),
-    )
-    if (said) return false
+    const history = yield* listTransitions(orderId)
+    // A `state`-scoped note is about *this* stay, so the ledger from before the
+    // Order last entered the state it is in belongs to an earlier one: a provider
+    // that failed an Order on hold, released it, and failed it again is saying
+    // something new both times. Annotations are same-state rows, so only a row
+    // that changed state counts as an entry.
+    const stay =
+      scope === 'order'
+        ? 0
+        : history.findLastIndex((t) => t.to === order.state && t.from !== t.to) + 1
+    if (history.slice(stay).some((t) => t.note === note)) return false
     const db = yield* Db
     const now = yield* Clock.currentTimeMillis
     yield* db

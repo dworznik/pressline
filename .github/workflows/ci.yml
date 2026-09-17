@@ -88,3 +88,30 @@ jobs:
       - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The only check `main` requires. Branch protection matches contexts by job
+  # name, so requiring the jobs above would pin their names: renaming one (as
+  # #73 renamed `checks` when it gained architecture:check) would leave a
+  # required name nothing reports, and every PR would wait on it forever.
+  # Adding a job to `needs` is what enrolls it in the gate.
+  ci-ok:
+    name: ci-ok
+    # Without always() an upstream failure skips this job, and GitHub counts a
+    # skipped required check as passing — the gate would open when it must close.
+    if: always()
+    needs: [checks, platform-builds, e2e, secrets-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: every job this gate depends on succeeded
+        # Through env rather than interpolated into the script: expressions are
+        # substituted as text before the shell parses it.
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::a required job did not succeed: $result"
+              exit 1
+            fi
+          done

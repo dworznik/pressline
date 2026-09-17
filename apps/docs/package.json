@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.6",
-    "@types/node": "^24.13.4",
+    "@types/node": "^26.5.1",
     "likec4": "1.59.3",
     "pressline": "workspace:*",
     "typescript": "^6.0.3",

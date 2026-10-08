@@ -54,12 +54,12 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@effect/cli": "^0.77.1",
+    "@effect/cli": "^0.77.2",
     "@effect/platform": "^0.97.2",
-    "@effect/platform-node": "^0.108.2",
+    "@effect/platform-node": "^4.0.1",
     "@pressline/conformance": "workspace:^",
     "@pressline/contract": "workspace:^",
-    "effect": "^3.22.2"
+    "effect": "^4.0.1"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

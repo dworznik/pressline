@@ -21,7 +21,7 @@
     "@pressline/render": "workspace:*",
     "@resvg/resvg-wasm": "^2.6.2",
     "@vercel/blob": "^2.8.0",
-    "effect": "^3.22.2",
+    "effect": "^4.0.1",
     "opentype.js": "2.0.0",
     "sharp": "^0.35.4"
   },

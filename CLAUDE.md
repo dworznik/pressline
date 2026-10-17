@@ -30,7 +30,7 @@ Pressline: a self-hostable bridge from an image-generating app (an Engine) to pr
 
 ### Commands
 
-- `pnpm install` wires git hooks (`.githooks/`: lint-staged on commit, conventional subject line).
+- `pnpm install` wires git hooks (`.githooks/`: on commit `scripts/check-ignored.mjs`, which refuses a gitignored file under a source folder, then lint-staged; conventional subject line).
 - `pnpm verify` runs format, lint, typecheck, ADR check, tests, build; CI runs the same steps.
 - `pnpm adr:check` guards ADR numbering and frontmatter; new ADRs take the next number.
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
-# Runs lint-staged (prettier, oxlint, ADR check) on staged files.
+# Refuses gitignored files under the source folders (scripts/check-ignored.mjs),
+# then runs lint-staged (prettier, oxlint, ADR check) on staged files.
 # Enabled by `git config core.hooksPath .githooks`, wired by the root
 # `prepare` script on `pnpm install`. Bypass with `git commit --no-verify`.
 set -e
+node scripts/check-ignored.mjs
 pnpm exec lint-staged

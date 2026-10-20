@@ -32,7 +32,7 @@ jobs:
       - run: pnpm --filter pressline-docs build
         env:
           DOCS_SITE: https://pressline.0xff.sh
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: apps/docs/dist
 

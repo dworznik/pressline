@@ -60,6 +60,23 @@ describe('GET /api/quote', () => {
     expect(again.body).not.toHaveProperty('providerCostEstimate')
   })
 
+  it('reuses a still-valid Quote for identical terms, and re-quotes when they differ', async () => {
+    app = await makeTestApp({ config: { catalog: { offers } }, catalog, engines })
+    const first = await q(app, { country: 'DE' })
+    expect(first.status).toBe(200)
+
+    // Same terms within the TTL → the same stored Quote, not a fresh provider call.
+    const same = await q(app, { country: 'DE' })
+    expect(same.status).toBe(200)
+    expect(same.body.id).toBe(first.body.id)
+    expect(same.body).toMatchObject({ total: first.body.total, specHash: first.body.specHash })
+
+    // A different destination is a different price → a new Quote.
+    const other = await q(app, { country: 'CH' })
+    expect(other.status).toBe(200)
+    expect(other.body.id).not.toBe(first.body.id)
+  })
+
   it('applies the configured shipping markup to the Customer line only', async () => {
     app = await makeTestApp({
       config: { catalog: { offers }, shipping: { markupPercent: 10 } },

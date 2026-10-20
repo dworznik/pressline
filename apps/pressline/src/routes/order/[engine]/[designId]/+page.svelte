@@ -29,7 +29,11 @@
   let printfile = $state<State>({ kind: 'idle' })
   let attempt = 0
   let timer: ReturnType<typeof setTimeout> | undefined
-  $effect(() => () => clearTimeout(timer)) // stop polling when the page goes away
+  let quoteTimer: ReturnType<typeof setTimeout> | undefined
+  $effect(() => () => {
+    clearTimeout(timer) // stop polling when the page goes away
+    clearTimeout(quoteTimer)
+  })
 
   // Narrow guards for the two bodies this island reads; the server validated
   // them with Schema already, this only protects against a wrong deploy pairing.
@@ -50,6 +54,32 @@
   const engineMockup = $derived(offer ? design.mockups?.[offer.slug] : undefined)
   const overlayAspect = $derived(variant ? variant.spec.width / variant.spec.height : 1)
   const base = $derived(`/api/designs/${data.page.engine}/${design.id}/printfile`)
+
+  // Pre-warm (perf): render every Offer's Printfile in the background the moment
+  // the page loads, so the first switch to any shirt is instant instead of
+  // waiting on a first-time Engine render. A Printfile is keyed on the print
+  // Spec (dimensions/dpi/placement/technique) — not colour or size — so one
+  // variant warms a whole Offer; deduped by Spec in case two Offers share one.
+  // Fire-and-forget POST (the server renders, validates and stores the result);
+  // it never touches the visible selection state.
+  let prewarmed = false
+  $effect(() => {
+    if (prewarmed || offers.length === 0) return
+    prewarmed = true
+    const seen = new Set<string>()
+    for (const o of offers) {
+      const v = o.variants[0]
+      if (!v) continue
+      const key = JSON.stringify(v.spec)
+      if (seen.has(key)) continue
+      seen.add(key)
+      void fetch(base, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ offer: o.slug, variant: v.key }),
+      }).catch(() => {})
+    }
+  })
 
   // Quote (ticket #7): re-fetched whenever the variant or destination changes.
   type Quote = {
@@ -135,11 +165,19 @@
     }
   }
 
+  // Coalesce rapid re-quotes (perf): switching Offers or typing a destination
+  // fires one quote after a short pause instead of one per change. The server
+  // also reuses a still-valid Quote, so a switch-back never re-hits the provider.
+  const scheduleQuote = () => {
+    clearTimeout(quoteTimer)
+    quoteTimer = setTimeout(() => void fetchQuote(), 180)
+  }
+
   const choose = (slug: string, key: string) => {
     offerSlug = slug
     variantKey = key
     void ensure()
-    void fetchQuote()
+    scheduleQuote()
   }
 
   const apply = async (res: Response, mine: number) => {
@@ -254,7 +292,7 @@
         <div class="destination">
           <label>
             {t.shipTo}
-            <select bind:value={country} onchange={() => void fetchQuote()}>
+            <select bind:value={country} onchange={scheduleQuote}>
               <option value="">{t.chooseCountry}</option>
               {#each COUNTRIES as [code, name] (code)}
                 <option value={code}>{name}</option>
@@ -268,7 +306,7 @@
                 bind:value={stateCode}
                 maxlength="3"
                 placeholder={t.statePlaceholder}
-                oninput={() => stateCode.length >= 2 && void fetchQuote()}
+                oninput={() => stateCode.length >= 2 && scheduleQuote()}
               />
             </label>
           {/if}

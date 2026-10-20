@@ -181,6 +181,44 @@ export const findQuote = (id: string) =>
     return rows[0] ? fromRow(rows[0]) : yield* new QuoteNotFound({ id })
   })
 
+/**
+ * The most recent still-valid Quote for exactly these terms, if any (perf).
+ * Switching Offers back and forth in the storefront re-quotes on every change;
+ * within the Quote TTL the provider's shipping rate and the retail price have
+ * not moved, so an unexpired Quote for the same (Engine, Design, Offer variant,
+ * destination, currency, retail) is returned as-is instead of making two live
+ * provider calls. Matched on `retail` too, so a price change (a redeploy) is
+ * never served from an old row — that row's terms no longer match.
+ */
+const findReusableQuote = (req: QuoteRequest, currency: string, retail: number) =>
+  Effect.gen(function* () {
+    const db = yield* Db
+    const now = yield* Clock.currentTimeMillis
+    const state = req.state?.toUpperCase()
+    const stateClause = state === undefined ? 'state IS NULL' : 'state = ?'
+    const params: (string | number)[] = [
+      req.engine,
+      req.designId,
+      req.offer,
+      req.variant,
+      req.country,
+      ...(state === undefined ? [] : [state]),
+      currency,
+      retail,
+      now,
+    ]
+    const rows = yield* db
+      .all<Row>(
+        `SELECT * FROM quotes
+           WHERE engine = ? AND design_id = ? AND offer_slug = ? AND variant_key = ?
+             AND country = ? AND ${stateClause} AND currency = ? AND retail = ? AND expires_at > ?
+           ORDER BY created_at DESC LIMIT 1`,
+        params,
+      )
+      .pipe(Effect.orDie)
+    return rows[0] ? fromRow(rows[0]) : undefined
+  })
+
 export const makeQuote = (req: QuoteRequest) =>
   Effect.gen(function* () {
     const country = req.country
@@ -218,6 +256,11 @@ export const makeQuote = (req: QuoteRequest) =>
         message: `Offer "${offer.slug}" variant "${variant.key}" is no longer configured`,
       })
     }
+    // Reuse a still-valid Quote for these exact terms before paying for two
+    // live provider round trips (perf: fast Offer switching before "buy").
+    const reusable = yield* findReusableQuote(req, config.currency, offer.retailPrice.amount)
+    if (reusable) return reusable
+
     const provider = yield* FulfillmentProvider
 
     const rates = yield* provider.getShippingRates({

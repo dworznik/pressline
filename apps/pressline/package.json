@@ -20,11 +20,11 @@
     "@libsql/client": "^0.18.0",
     "@pressline/contract": "workspace:*",
     "better-sqlite3": "^13.0.3",
-    "effect": "^3.22.2",
+    "effect": "^4.0.6",
     "stripe": "^22.6.2"
   },
   "devDependencies": {
-    "@effect/platform-node": "^0.108.2",
+    "@effect/platform-node": "^4.0.6",
     "@playwright/test": "^1.63.0",
     "@pressline/cli": "workspace:*",
     "@pressline/conformance": "workspace:*",

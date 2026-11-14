@@ -33,7 +33,7 @@
     "@sveltejs/adapter-auto": "^7.0.1",
     "@sveltejs/adapter-cloudflare": "^7.2.9",
     "@sveltejs/adapter-node": "^5.5.7",
-    "@sveltejs/adapter-vercel": "^6.3.4",
+    "@sveltejs/adapter-vercel": "^6.3.5",
     "lint-staged": "^17.5.1",
     "oxlint": "^1.82.0",
     "oxlint-tsgolint": "^7.0.2001",
